@@ -1,0 +1,235 @@
+<!-- index.html (MODIFICADO: Añadido popup de acciones de usuario) -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MundoChat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- PANTALLA DE BIENVENIDA -->
+    <div id="welcome-container">
+        <div class="welcome-box">
+            <h1>Bienvenido a MundoChat</h1>
+            <div class="auth-tabs">
+                <button id="show-guest-tab" class="auth-tab active" data-form="guest-form">Entrar como Invitado</button>
+                <button id="show-login-tab" class="auth-tab" data-form="login-form">Entrar como Registrado</button>
+                <button id="show-register-tab" class="auth-tab" data-form="register-form">Registrarse</button>
+            </div>
+
+            <div id="guest-form" class="auth-form">
+                <input type="text" id="guest-nick-input" placeholder="Elige un nick de invitado" maxlength="15">
+                <label for="guest-room-select" class="room-label">Elige una sala para entrar:</label>
+                <select id="guest-room-select"></select>
+                <button id="guest-join-button">Entrar como Invitado</button>
+            </div>
+            <div id="login-form" class="auth-form hidden">
+                <input type="text" id="login-nick-input" placeholder="Tu Nick Registrado" autocomplete="username" maxlength="15">
+                <input type="password" id="login-password-input" placeholder="Contraseña" autocomplete="current-password">
+                <label for="login-room-select" class="room-label">Selecciona una sala:</label>
+                <select id="login-room-select"></select>
+                <button id="login-button">Entrar al Chat</button>
+            </div>
+            <div id="register-form" class="auth-form hidden">
+                <input type="text" id="register-nick-input" placeholder="Elige un Nick (3-15 caracteres)" autocomplete="username" maxlength="15">
+                <input type="password" id="register-password-input" placeholder="Elige una Contraseña" autocomplete="new-password">
+                <input type="password" id="register-password-confirm" placeholder="Confirma la Contraseña" autocomplete="new-password">
+                <button id="register-button">Registrar Nick</button>
+            </div>
+            <p id="auth-error" class="hidden"></p>
+            <p id="auth-success" class="hidden"></p>
+        </div>
+    </div>
+
+    <!-- CONTENEDOR PRINCIPAL DEL CHAT -->
+    <div id="chat-container" class="hidden">
+        
+        <div id="conversations-panel">
+            <h3>Conversaciones</h3>
+            <div id="conversation-list-container">
+                <div class="conversation-group">
+                    <h4 class="group-header">Salas</h4>
+                    <ul id="room-list"></ul>
+                </div>
+                <div class="conversation-group">
+                    <h4 class="group-header">Mensajes Privados</h4>
+                    <ul id="private-chat-list"></ul>
+                </div>
+            </div>
+            <div id="action-buttons-container">
+            </div>
+        </div>
+        
+        <div id="chat-area-wrapper">
+            <div id="main-chat-area">
+                <div id="room-header-container" class="room-header-container">
+                    <h2 id="room-name-header"></h2>
+                    <div id="room-switcher" class="room-switcher">
+                        <ul id="room-switcher-list"></ul>
+                    </div>
+                </div>
+                <div id="chat-window">
+                    <ul id="messages"></ul>
+                    <div id="typing-indicator"></div>
+                </div>
+            </div>
+
+            <div id="private-chat-view" class="hidden">
+                <div class="chat-header">
+                    <h2 id="private-chat-with-user"></h2>
+                </div>
+                <div id="private-chat-window"></div>
+            </div>
+            
+            <form id="form" action="">
+                <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
+                <button type="button" id="emoji-button" class="chat-action-button">😀</button>
+                <label for="image-upload" class="file-label chat-action-button">📷</label>
+                <input type="file" id="image-upload" accept="image/*" style="display: none;">
+                <label for="audio-upload" class="file-label chat-action-button">🎤</label>
+                <input type="file" id="audio-upload" accept="audio/*" style="display: none;">
+                <button id="send-button">Enviar</button>
+                
+                <div id="command-suggestions" class="hidden"></div>
+            </form>
+            
+            <div id="emoji-picker" class="hidden"></div>
+        </div>
+        
+        <div id="user-list-container">
+            <h3>Usuarios (<span id="user-count">0</span>)</h3>
+            <div class="user-search-wrapper">
+                <input type="text" id="user-search-input" placeholder="Buscar usuario...">
+            </div>
+            <b><ul id="user-list"></ul></b>
+        </div>
+
+    </div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="client.js"></script>
+
+     <div id="welcome-popup-overlay" class="modal-overlay hidden">
+        <div class="modal-content" id="welcome-popup-content">
+            <span class="modal-close-button" id="close-welcome-popup">×</span>
+            <div class="popup-body">
+                <h2 style="text-align: center;">🌟 ¡Bienvenido a MundoChat! 🌟</h2>
+                <p>Has llegado a un espacio pensado para compartir, conversar y pasar un buen momento.</p>
+                <p>La regla más importante es el <strong>respeto</strong>. No toleramos faltas de educación, acoso, ni comportamientos ofensivos.</p>
+                <p><strong>🌍 Recuerda que estás hablando con personas reales.</strong> Valora las diferencias, sé amable, y usa el chat para construir cosas buenas.</p>
+                <p style="text-align: center; font-weight: bold; margin-top: 20px;">👉 Disfruta del chat y gracias por ser parte de esta comunidad. 💖</p>
+            </div>
+            <button class="action-button" id="confirm-welcome-popup" style="margin: 0 auto; display: block; background-color: #1877f2;">¡Entendido!</button>
+        </div>
+    </div>
+
+    <button id="admin-panel-button" class="hidden">Panel de Admin</button>
+
+    <div id="admin-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <span class="modal-close-button">×</span>
+            <h2>Panel de Moderación</h2>
+            <div class="admin-tabs">
+                <button class="admin-tab active" data-target="banned-users-panel">Baneados</button>
+                <button class="admin-tab" data-target="muted-users-panel">Silenciados</button>
+                <button class="admin-tab" data-target="activity-monitor-panel">Monitor de Actividad</button>
+            </div>
+
+            <div id="banned-users-panel" class="admin-panel">
+                <h3>Usuarios Baneados</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID de Ban</th><th>Nick</th><th>IP</th><th>Baneado por</th><th>Razón</th><th>Fecha</th><th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="banned-users-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div id="muted-users-panel" class="admin-panel hidden">
+                <h3>Usuarios Silenciados</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Usuario</th>
+                                <th>Rol</th>
+                                <th>VIP</th>
+                                <th>Silenciado por</th>
+                                <th>Última IP</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody id="muted-users-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <div id="activity-monitor-panel" class="admin-panel hidden">
+                <div class="table-container">
+                    <h4>Usuarios Conectados Actualmente</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Nick</th><th>Rol</th><th>IP</th><th>Salas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="online-users-list"></tbody>
+                    </table>
+                </div>
+                <hr style="margin: 20px 0;">
+                <div class="table-container">
+                    <h4>Registro de Actividad Reciente (últimos 100)</h4>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th><th>Evento</th><th>Nick</th><th>Rol</th><th>IP</th><th>Detalles</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activity-logs-list"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="profile-modal" class="modal-overlay hidden">
+        <div class="modal-content" id="profile-modal-content">
+            <span class="modal-close-button">×</span>
+            <h2>Mi Perfil</h2>
+            <div class="profile-content">
+                <img id="profile-avatar-preview" src="image/default-avatar.png" alt="Avatar actual" class="profile-avatar">
+                <p><strong>Nick:</strong> <span id="profile-nick"></span></p>
+                <div class="form-group">
+                    <label for="avatar-file-input">Selecciona una nueva imagen:</label>
+                    <input type="file" id="avatar-file-input" accept="image/png, image/jpeg, image/gif">
+                </div>
+                <button id="save-profile-button" class="action-button">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="avatar-hover-popup" class="hidden">
+        <img src="" alt="Avatar a tamaño completo">
+    </div>
+
+    <!-- POPUP DE ACCIONES DE USUARIO (AÑADIDO) -->
+    <div id="user-action-popup" class="hidden">
+        <div class="user-info">
+            <strong><span id="popup-user-nick"></span></strong>
+            <span id="popup-user-id" class="user-id-display"></span>
+        </div>
+        <div class="action-buttons">
+            <button id="popup-pm-button">Enviar Privado</button>
+            <button id="popup-ignore-button">Ignorar</button>
+            <button id="popup-report-button">Denunciar</button>
+        </div>
+        <div id="popup-arrow"></div>
+    </div>
+
+</body>
+</html>

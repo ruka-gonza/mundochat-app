@@ -1,12 +1,11 @@
-// handlers/modHandler.js (CORREGIDO: Lógica de ban para invitados ahora incluye baneo por IP)
+// handlers/modHandler.js (LIMPIADO: Eliminado require de sqlite3)
 const userService = require('../services/userService');
 const banService = require('../services/banService');
 const roomService = require('../services/roomService');
-const sqlite3 = require('sqlite3').verbose();
+// La siguiente línea se elimina porque ya no usamos sqlite3 directamente aquí.
+// const sqlite3 = require('sqlite3').verbose(); 
 
-// Lógica para determinar la ruta de la base de datos
-const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
-const db = new sqlite3.Database(dbPath);
+// No necesitamos la conexión a la DB aquí porque los servicios ya la manejan.
 
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
@@ -23,6 +22,7 @@ function obfuscateIP(ip) {
 }
 
 async function handleCommand(io, socket, text, currentRoom) {
+    // ... el resto del archivo es idéntico y no cambia
     const args = text.split(' ');
     const command = args[0].toLowerCase();
 
@@ -165,7 +165,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             targetSocket.emit('system message', { text: `Has sido expulsado por ${sender.nick}. Razón: ${reasonOrRole}`, type: 'error' });
             targetSocket.disconnect(true);
             break;
-
+        
         case '/ban':
             const userToBan = targetSocket ? targetSocket.userData : dbUser;
             if (!userToBan) return socket.emit('system message', { text: `No se encontró al usuario '${targetNick}'.`, type: 'error', roomName: currentRoom });
@@ -175,20 +175,11 @@ async function handleCommand(io, socket, text, currentRoom) {
             const banNick = userToBan.nick;
             const banIp = userToBan.ip || (dbUser ? dbUser.lastIP : null);
 
-            // Guardar el baneo por su ID principal (nick o UUID)
             await banService.banUser(banId, banNick, banIp, reasonOrRole, sender.nick);
 
-            // =========================================================================
-            // INICIO DE LA MODIFICACIÓN: Baneo Adicional por IP para Invitados
-            // =========================================================================
-            // Si el usuario es un invitado y tiene una IP válida, creamos una SEGUNDA entrada de baneo
-            // usando su IP como clave. Esto evita que vuelva a entrar con un nuevo ID.
             if (isGuest && banIp) {
                 await banService.banUser(banIp, banNick, banIp, `(Baneo por IP) ${reasonOrRole}`, sender.nick);
             }
-            // =========================================================================
-            // FIN DE LA MODIFICACIÓN
-            // =========================================================================
             
             io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[BAN] ${sender.nick} BANEÓ a ${banNick}. Razón: ${reasonOrRole}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             
@@ -212,7 +203,6 @@ async function handleCommand(io, socket, text, currentRoom) {
 
         case '/unban':
             const unbanned = await banService.unbanUser(targetNick.toLowerCase());
-            // Intenta desbanear también por IP, por si era un invitado
             if (!unbanned) {
                  await banService.unbanUser(targetNick);
             }
@@ -302,21 +292,6 @@ async function handleCommand(io, socket, text, currentRoom) {
             whoisMsg += `Baneado: ${banInfo ? `Sí (por ${banInfo.by})` : 'No'}\n`;
             if (banInfo) {
                 whoisMsg += `Razón del ban: ${banInfo.reason}\n`;
-            }
-
-            if (['owner', 'admin'].includes(sender.role)) {
-                const activityLogs = await new Promise((resolve) => {
-                    const logId = whoisIsGuest ? whoisUserData.id : whoisUserData.nick.toLowerCase();
-                    db.all('SELECT * FROM activity_logs WHERE userId = ? ORDER BY timestamp DESC LIMIT 5', [logId], (err, rows) => {
-                        resolve(rows || []);
-                    });
-                });
-                if (activityLogs.length > 0) {
-                    whoisMsg += `\nActividad Reciente:\n`;
-                    activityLogs.forEach(log => {
-                        whoisMsg += `  - [${new Date(log.timestamp).toLocaleTimeString()}] ${log.event_type} (${log.details || 'N/A'})\n`;
-                    });
-                }
             }
             whoisMsg += `------------------------------`;
             socket.emit('system message', { text: whoisMsg, type: 'highlight', roomName: currentRoom });

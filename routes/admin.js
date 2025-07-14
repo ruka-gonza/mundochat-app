@@ -1,14 +1,10 @@
-// routes/admin.js (CORREGIDO: Ruta de DB dinámica y corrección en /muted)
+// routes/admin.js (MODIFICADO: Ahora muestra baneados y muteados desde DynamoDB)
 const express = require('express');
 const router = express.Router();
 const banService = require('../services/banService');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
-const sqlite3 = require('sqlite3').verbose();
-
-// Lógica para determinar la ruta de la base de datos
-const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
-const db = new sqlite3.Database(dbPath);
+// Ya no necesitamos sqlite3, la línea no debe estar aquí.
 
 const isStaff = (req, res, next) => {
     try {
@@ -37,40 +33,40 @@ function obfuscateIP(ip) {
     return 'IP Inválida';
 }
 
+// =========================================================================
+// INICIO: RUTA /banned AHORA USA getAllBannedUsers
+// =========================================================================
 router.get('/banned', isStaff, async (req, res) => {
     try {
-        db.all('SELECT * FROM banned_users ORDER BY at DESC', [], (err, rows) => {
-            if (err) {
-                console.error("Error al obtener baneados:", err);
-                return res.status(500).json({ error: 'Error del servidor' });
-            }
-            if (req.moderator.role === 'mod') {
-                rows.forEach(user => { user.ip = obfuscateIP(user.ip); });
-            }
-            res.json(rows);
-        });
+        let bannedUsers = await banService.getAllBannedUsers();
+        if (req.moderator.role === 'mod') {
+            bannedUsers.forEach(user => { user.ip = obfuscateIP(user.ip); });
+        }
+        res.json(bannedUsers);
     } catch (error) {
-        res.status(500).json({ error: 'Error del servidor' });
+        console.error("Error al obtener baneados:", error);
+        res.status(500).json({ error: 'Error del servidor al listar baneados.' });
     }
 });
+// =========================================================================
+// FIN: RUTA /banned
+// =========================================================================
 
+// =========================================================================
+// INICIO: RUTA /muted AHORA USA getAllMutedUsers y busca invitados muteados en memoria
+// =========================================================================
 router.get('/muted', isStaff, async (req, res) => {
     const io = req.io;
     try {
-        const dbMutedUsersPromise = new Promise((resolve, reject) => {
-            db.all('SELECT nick, role, isVIP, lastIP, mutedBy FROM users WHERE isMuted = 1', [], (err, rows) => {
-                if (err) return reject(err);
-                resolve(rows);
-            });
-        });
-        
-        let mutedUsers = await dbMutedUsersPromise;
+        // Obtener usuarios muteados registrados de DynamoDB
+        let mutedUsers = await userService.getAllMutedUsers();
         const mutedRegisteredNicks = new Set(mutedUsers.map(u => u.nick.toLowerCase()));
         
+        // Añadir usuarios invitados muteados (que solo existen en memoria)
         const allSockets = await io.fetchSockets();
         for (const socket of allSockets) {
             const userData = socket.userData;
-            if (userData && userData.isMuted && !mutedRegisteredNicks.has(userData.nick.toLowerCase())) {
+            if (userData && userData.isMuted && userData.role === 'guest' && !mutedRegisteredNicks.has(userData.nick.toLowerCase())) {
                 mutedUsers.push({
                     nick: userData.nick,
                     role: 'invitado',
@@ -91,9 +87,12 @@ router.get('/muted', isStaff, async (req, res) => {
 
     } catch (error) {
         console.error("Error al obtener muteados:", error);
-        res.status(500).json({ error: 'Error del servidor' });
+        res.status(500).json({ error: 'Error del servidor al listar silenciados.' });
     }
 });
+// =========================================================================
+// FIN: RUTA /muted
+// =========================================================================
 
 router.get('/online-users', isStaff, async (req, res) => {
     try {
@@ -122,20 +121,10 @@ router.get('/online-users', isStaff, async (req, res) => {
     }
 });
 
+// La tabla de logs de actividad ya no existe en DB, devolvemos una lista vacía.
+// Para esto, se necesitaría una tabla de DynamoDB para logs y un Scan/Query.
 router.get('/activity-logs', isStaff, (req, res) => {
-    const limit = parseInt(req.query.limit) || 100;
-    const offset = (parseInt(req.query.page) || 0) * limit;
-
-    db.all('SELECT * FROM activity_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?', [limit, offset], (err, rows) => {
-        if (err) {
-            console.error("Error al obtener logs de actividad:", err);
-            return res.status(500).json({ error: 'Error del servidor' });
-        }
-        if (req.moderator.role === 'mod') {
-            rows.forEach(log => { log.ip = obfuscateIP(log.ip); });
-        }
-        res.json(rows);
-    });
+    res.json([]);
 });
 
 router.post('/unban', isStaff, async (req, res) => {
@@ -150,6 +139,12 @@ router.post('/unban', isStaff, async (req, res) => {
 
     try {
         const success = await banService.unbanUser(userId.toLowerCase());
+        // También intentar desbanear la IP asociada si existe (para invitados)
+        const user = await userService.findUserByNick(userId); // Buscar usuario para obtener su IP
+        if (user && user.ip) {
+            await banService.unbanUser(user.ip);
+        }
+
         if (success) {
             req.io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${req.moderator.nick} ha desbaneado a '${userId}' desde el panel.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             res.json({ message: `Usuario '${userId}' desbaneado con éxito.` });

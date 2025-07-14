@@ -1,113 +1,149 @@
-// services/userService.js (MODIFICADO: Ruta de DB dinámica y mutedBy)
-const sqlite3 = require('sqlite3').verbose();
+// services/userService.js (MODIFICADO: Añadida función getAllMutedUsers)
+const { docClient } = require('../aws-config');
+const { GetCommand, PutCommand, UpdateCommand, QueryCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb"); // Agregamos ScanCommand
 const bcrypt = require('bcrypt');
 const config = require('../config');
 
-// Lógica para determinar la ruta de la base de datos
-const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
-const db = new sqlite3.Database(dbPath);
+const USERS_TABLE_NAME = process.env.CYCLIC_DB_TABLE_NAME || 'users';
 
-// NOTA: Estas listas ahora servirán como una "caché" inicial,
-// pero la fuente de la verdad será la base de datos.
 let admins = ["Basajaun", "namor"];
 let mods = ["Mod1"];
 
 function getRole(nick) {
     if (nick.toLowerCase() === config.ownerNick.toLowerCase()) return 'owner';
-    // La lógica de roles se simplificará, ya que se leerá de la DB.
-    // Dejamos esto como fallback o para la asignación inicial.
     if (admins.map(a => a.toLowerCase()).includes(nick.toLowerCase())) return 'admin';
     if (mods.map(m => m.toLowerCase()).includes(nick.toLowerCase())) return 'mod';
     return 'user';
 }
 
-function findUserByNick(nick) {
-    return new Promise((resolve, reject) => {
-        // Obtenemos el rol directamente desde la DB para mayor precisión
-        db.get('SELECT *, role as userRole FROM users WHERE lower(nick) = ?', [nick.toLowerCase()], (err, row) => {
-            if (err) return reject(err);
-            if (row) {
-                 // Si el rol en la DB es 'user', comprobamos si es el owner
-                if(row.userRole === 'user' && nick.toLowerCase() === config.ownerNick.toLowerCase()) {
-                    row.role = 'owner';
-                } else {
-                    row.role = row.userRole; // Usamos el rol de la DB
-                }
-            }
-            resolve(row);
-        });
+async function findUserByNick(nick) {
+    const command = new QueryCommand({
+        TableName: USERS_TABLE_NAME,
+        IndexName: 'nick-index',
+        KeyConditionExpression: 'nick = :nick',
+        ExpressionAttributeValues: { ':nick': nick.toLowerCase() }
     });
+    const { Items } = await docClient.send(command);
+    const user = Items && Items.length > 0 ? Items[0] : null;
+
+    if (user) {
+        if(user.role === 'user' && user.nick.toLowerCase() === config.ownerNick.toLowerCase()) {
+            user.role = 'owner';
+        }
+    }
+    return user;
 }
 
 async function createUser(nick, password, ip) {
     const hashedPassword = await bcrypt.hash(password, 10);
-    return new Promise((resolve, reject) => {
-        const initialRole = getRole(nick); // Rol inicial al registrarse
-        const stmt = db.prepare('INSERT INTO users (nick, password, registeredAt, isVIP, role, isMuted, lastIP) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        stmt.run(nick, hashedPassword, new Date().toISOString(), 0, initialRole, 0, ip, function(err) {
-            if (err) return reject(err);
-            resolve({ id: this.lastID, nick });
-        });
-        stmt.finalize();
+    const initialRole = getRole(nick);
+    const user = {
+        id: nick.toLowerCase(),
+        nick: nick,
+        password: hashedPassword,
+        registeredAt: new Date().toISOString(),
+        isVIP: false,
+        role: initialRole,
+        isMuted: false,
+        mutedBy: null,
+        lastIP: ip,
+        avatar_url: 'image/default-avatar.png'
+    };
+
+    const command = new PutCommand({
+        TableName: USERS_TABLE_NAME,
+        Item: user
     });
+
+    await docClient.send(command);
+    return { id: user.id, nick: user.nick };
 }
 
-function updateUserIP(nick, ip) {
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET lastIP = ? WHERE lower(nick) = ?', [ip, nick.toLowerCase()], function(err) {
-            if (err) return reject(err);
-            resolve(this.changes > 0);
-        });
+async function updateUserIP(nick, ip) {
+    const command = new UpdateCommand({
+        TableName: USERS_TABLE_NAME,
+        Key: { id: nick.toLowerCase() },
+        UpdateExpression: 'set lastIP = :ip',
+        ExpressionAttributeValues: { ':ip': ip }
     });
+    await docClient.send(command);
+    return true;
 }
 
 async function verifyPassword(password, hash) {
     return await bcrypt.compare(password, hash);
 }
 
-function setVipStatus(nick, isVIP) {
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET isVIP = ? WHERE lower(nick) = ?', [isVIP ? 1 : 0, nick.toLowerCase()], function(err) {
-            if (err) return reject(err);
-            resolve(this.changes > 0);
-        });
+async function setVipStatus(nick, isVIP) {
+    const command = new UpdateCommand({
+        TableName: USERS_TABLE_NAME,
+        Key: { id: nick.toLowerCase() },
+        UpdateExpression: 'set isVIP = :status',
+        ExpressionAttributeValues: { ':status': isVIP }
     });
+    await docClient.send(command);
+    return true;
 }
 
-function setMuteStatus(nick, isMuted, moderatorNick = null) {
-    return new Promise((resolve, reject) => {
-        // Si se está silenciando, guardamos quién lo hizo. Si se quita el silencio, limpiamos el campo.
-        const mutedBy = isMuted ? moderatorNick : null;
-        const stmt = db.prepare('UPDATE users SET isMuted = ?, mutedBy = ? WHERE lower(nick) = ?');
-        stmt.run(isMuted ? 1 : 0, mutedBy, nick.toLowerCase(), function(err) {
-            if (err) return reject(err);
-            resolve(this.changes > 0);
-        });
-        stmt.finalize();
-    });
-}
-
-function setAvatarUrl(nick, avatarUrl) {
-    return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET avatar_url = ? WHERE lower(nick) = ?', [avatarUrl, nick.toLowerCase()], function(err) {
-            if (err) return reject(err);
-            resolve(this.changes > 0);
-        });
-    });
-}
-
-function setUserRole(nick, role) {
-    return new Promise((resolve, reject) => {
-        const validRoles = ['admin', 'mod', 'user'];
-        if (!validRoles.includes(role)) {
-            return reject(new Error('Rol no válido.'));
+async function setMuteStatus(nick, isMuted, moderatorNick = null) {
+    const mutedBy = isMuted ? moderatorNick : null;
+    const command = new UpdateCommand({
+        TableName: USERS_TABLE_NAME,
+        Key: { id: nick.toLowerCase() },
+        UpdateExpression: 'set isMuted = :isMuted, mutedBy = :mutedBy',
+        ExpressionAttributeValues: {
+            ':isMuted': isMuted,
+            ':mutedBy': mutedBy
         }
-        db.run('UPDATE users SET role = ? WHERE lower(nick) = ?', [role, nick.toLowerCase()], function(err) {
-            if (err) return reject(err);
-            resolve(this.changes > 0);
-        });
     });
+    await docClient.send(command);
+    return true;
 }
+
+async function setAvatarUrl(nick, avatarUrl) {
+    const command = new UpdateCommand({
+        TableName: USERS_TABLE_NAME,
+        Key: { id: nick.toLowerCase() },
+        UpdateExpression: 'set avatar_url = :url',
+        ExpressionAttributeValues: { ':url': avatarUrl }
+    });
+    await docClient.send(command);
+    return true;
+}
+
+async function setUserRole(nick, role) {
+    const validRoles = ['admin', 'mod', 'user'];
+    if (!validRoles.includes(role)) {
+        throw new Error('Rol no válido.');
+    }
+    const command = new UpdateCommand({
+        TableName: USERS_TABLE_NAME,
+        Key: { id: nick.toLowerCase() },
+        UpdateExpression: 'set #r = :role',
+        ExpressionAttributeNames: { '#r': 'role' },
+        ExpressionAttributeValues: { ':role': role }
+    });
+    await docClient.send(command);
+    return true;
+}
+
+// =========================================================================
+// INICIO: NUEVA FUNCIÓN para listar todos los usuarios muteados
+// =========================================================================
+async function getAllMutedUsers() {
+    const command = new ScanCommand({
+        TableName: USERS_TABLE_NAME,
+        FilterExpression: 'isMuted = :true',
+        ExpressionAttributeValues: {
+            ':true': true
+        }
+    });
+    const { Items } = await docClient.send(command);
+    return Items || [];
+}
+// =========================================================================
+// FIN: NUEVA FUNCIÓN
+// =========================================================================
 
 
 module.exports = { 
@@ -119,5 +155,6 @@ module.exports = {
     setMuteStatus,
     updateUserIP,
     setAvatarUrl,
-    setUserRole
+    setUserRole,
+    getAllMutedUsers // Exportamos la nueva función
 };

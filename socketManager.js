@@ -1,4 +1,4 @@
-// socketManager.js (CORREGIDO: Sistema de baneos robusto al inicio de la conexión)
+// socketManager.js (LIMPIADO: Eliminado require de sqlite3 y lógica de DB)
 
 // Services
 const roomService = require('./services/roomService');
@@ -12,66 +12,25 @@ const { handleCommand } = require('./handlers/modHandler');
 
 // Otras dependencias
 const { v4: uuidv4 } = require('uuid');
-const sqlite3 = require('sqlite3').verbose();
+// La siguiente línea se elimina. Ya no interactuamos con la DB desde aquí.
+// const sqlite3 = require('sqlite3').verbose();
 
-// Lógica para determinar la ruta de la base de datos
-const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
-const db = new sqlite3.Database(dbPath);
+// La conexión a la DB se elimina.
+// const dbPath = ...
+// const db = ...
 
-
-// =========================================================================
-// INICIO DE LA FUNCIÓN DE AYUDA (NUEVA)
-// =========================================================================
-// Esta función centraliza la comprobación de baneos por múltiples criterios.
-async function checkBanStatus(socket, idToCheck, ip) {
-    // 1. Comprobar por ID (nick en minúsculas para registrados, UUID para invitados)
-    let banInfo = await banService.isUserBanned(idToCheck);
-    
-    // 2. Si no se encuentra por ID, comprobar por IP (crucial para invitados)
-    if (!banInfo && ip) {
-        banInfo = await banService.isUserBanned(ip);
-    }
-
-    if (banInfo) {
-        // Emitimos el mensaje de error directamente a la pantalla de login/registro.
-        socket.emit('auth_error', { message: `Estás baneado. Razón: ${banInfo.reason}` });
-        // También enviamos un mensaje de sistema por si acaso logra pasar a la vista de chat.
-        socket.emit('system message', { text: `Estás baneado. Razón: ${banInfo.reason}`, type: 'error' });
-        // Desconectamos al usuario.
-        socket.disconnect(true);
-        return true; // Retornamos true para indicar que el usuario está baneado.
-    }
-    
-    return false; // El usuario no está baneado.
-}
-// =========================================================================
-// FIN DE LA FUNCIÓN DE AYUDA
-// =========================================================================
-
-
+// Esta función ahora no tiene una DB para guardar, así que la deshabilitamos temporalmente.
+// En una implementación completa, esta función llamaría a un servicio de logging.
 function logActivity(eventType, userData, details = null) {
     if (!userData || !userData.nick) return;
-
-    const stmt = db.prepare(`
-        INSERT INTO activity_logs (timestamp, event_type, nick, userId, userRole, ip, details) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
-    stmt.run(
-        new Date().toISOString(),
-        eventType,
-        userData.nick,
-        userData.id,
-        userData.role,
-        userData.ip,
-        details
-    );
-    stmt.finalize();
+    console.log(`[LOG] Event: ${eventType}, User: ${userData.nick}, Details: ${details || 'N/A'}`);
     
     if (global.io) {
         global.io.emit('admin panel refresh');
     }
 }
 
+// El historial de chat ahora no se carga desde una DB.
 function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
     if (socket.rooms.has(roomName)) return;
@@ -98,17 +57,9 @@ function handleJoinRoom(io, socket, { roomName }) {
     
     logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
 
-    db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
-        if (err) {
-            console.error("Error al cargar historial:", err);
-            return;
-        }
-        const history = rows.reverse().map(row => ({
-            id: row.id, 
-            text: row.text, nick: row.nick, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt
-        }));
-        socket.emit('load history', { roomName, history });
-    });
+    // Ya no cargamos historial desde la DB.
+    // El cliente recibirá una lista vacía de historial, lo cual es correcto.
+    socket.emit('load history', { roomName, history: [] });
 
     socket.emit('join_success', { user: socket.userData, roomName: roomName, joinedRooms: Array.from(socket.rooms).filter(r => r !== socket.id) });
     socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
@@ -118,6 +69,24 @@ function handleJoinRoom(io, socket, { roomName }) {
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
     roomService.updateRoomData(io);
+}
+
+
+async function checkBanStatus(socket, idToCheck, ip) {
+    let banInfo = await banService.isUserBanned(idToCheck);
+    
+    if (!banInfo && ip) {
+        banInfo = await banService.isUserBanned(ip);
+    }
+
+    if (banInfo) {
+        socket.emit('auth_error', { message: `Estás baneado. Razón: ${banInfo.reason}` });
+        socket.emit('system message', { text: `Estás baneado. Razón: ${banInfo.reason}`, type: 'error' });
+        socket.disconnect(true);
+        return true; 
+    }
+    
+    return false;
 }
 
 function initializeSocket(io) {
@@ -150,9 +119,8 @@ function initializeSocket(io) {
             const persistentId = uuidv4();
             socket.emit('assign id', persistentId);
             
-            // Chequeo de Ban para Invitados (por ID y por IP)
             if (await checkBanStatus(socket, persistentId, userIP)) {
-                return; // La función ya manejó el error y la desconexión.
+                return;
             }
             
             socket.userData = { 
@@ -189,9 +157,8 @@ function initializeSocket(io) {
             const { nick, password, roomName } = data;
             const lowerCaseNick = nick.toLowerCase();
             
-            // Chequeo de Ban para Registrados (por nick y por IP)
             if (await checkBanStatus(socket, lowerCaseNick, userIP)) {
-                return; // La función ya manejó el error y la desconexión.
+                return;
             }
 
             const registeredData = await userService.findUserByNick(lowerCaseNick);
@@ -203,15 +170,14 @@ function initializeSocket(io) {
                 if (roomService.isNickInUse(nick)) return socket.emit('auth_error', { message: `El usuario '${nick}' ya está conectado.` });
                 
                 await userService.updateUserIP(nick, userIP);
-
                 socket.emit('assign id', lowerCaseNick);
                 
                 socket.userData = { 
                     nick: registeredData.nick, 
                     id: lowerCaseNick, 
-                    role: userService.getRole(registeredData.nick), 
-                    isMuted: registeredData.isMuted === 1,
-                    isVIP: registeredData.isVIP === 1,
+                    role: registeredData.role,
+                    isMuted: registeredData.isMuted,
+                    isVIP: registeredData.isVIP,
                     ip: userIP,
                     avatar_url: registeredData.avatar_url || 'image/default-avatar.png'
                 };
@@ -267,31 +233,9 @@ function initializeSocket(io) {
             }
         });
 
+        // Ya no cargamos historial privado desde la DB.
         socket.on('request private history', ({ withNick }) => {
-            const myNick = socket.userData.nick;
-            if (!myNick || !withNick) return;
-
-            const query = `
-                SELECT id, from_nick, to_nick, text, timestamp 
-                FROM private_messages
-                WHERE (from_nick = ? AND to_nick = ?) OR (from_nick = ? AND to_nick = ?)
-                ORDER BY timestamp DESC
-                LIMIT 50
-            `;
-
-            db.all(query, [myNick, withNick, withNick, myNick], (err, rows) => {
-                if (err) {
-                    console.error("Error al cargar historial privado:", err);
-                    return;
-                }
-                const history = rows.reverse().map(row => ({
-                    id: row.id,
-                    text: row.text,
-                    from: row.from_nick,
-                    to: row.to_nick
-                }));
-                socket.emit('load private history', { withNick, history });
-            });
+            socket.emit('load private history', { withNick, history: [] });
         });
 
         socket.on('file-start', (data) => handleFileStart(socket, data));
@@ -327,8 +271,6 @@ function initializeSocket(io) {
             if (!reporter || !targetNick) return;
 
             const reportDetails = `Denuncia de: ${reporter.nick} | Hacia: ${targetNick} | Razón: ${reason}`;
-            console.log(`[DENUNCIA] ${reportDetails}`);
-
             logActivity('USER_REPORT', reporter, reportDetails);
 
             const staffMessage = `[DENUNCIA] 📢 ${reporter.nick} ha denunciado a ${targetNick}. Razón: "${reason}"`;
@@ -354,7 +296,6 @@ function initializeSocket(io) {
             const userNick = userData ? userData.nick : null;
             if (!userNick) return;
 
-            // Notificar a otros usuarios si tenían un chat privado activo con la persona que se va.
             io.fetchSockets().then(allSockets => {
                 allSockets.forEach(otherSocket => {
                     if (otherSocket.id !== socket.id) {
@@ -372,7 +313,7 @@ function initializeSocket(io) {
                     delete roomService.rooms[roomName].users[socket.id];
                     
                     if (socket.disconnected) {
-                        // El mensaje de "expulsado/baneado" ya se envió desde modHandler.
+                        // El mensaje de "expulsado/baneado" ya se envió.
                     } else {
                         io.to(roomName).emit('system message', { text: `${userNick} ha abandonado el chat.`, type: 'leave', roomName });
                     }

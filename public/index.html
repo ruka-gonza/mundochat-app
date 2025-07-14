@@ -1,4 +1,4 @@
-<!-- index.html (MODIFICADO: Añadido popup de acciones de usuario) -->
+<!-- index.html (MODIFICADO: Adaptado para grabación de voz) -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -88,8 +88,17 @@
                 <button type="button" id="emoji-button" class="chat-action-button">😀</button>
                 <label for="image-upload" class="file-label chat-action-button">📷</label>
                 <input type="file" id="image-upload" accept="image/*" style="display: none;">
-                <label for="audio-upload" class="file-label chat-action-button">🎤</label>
-                <input type="file" id="audio-upload" accept="audio/*" style="display: none;">
+                
+                <!-- INICIO DEL CAMBIO -->
+                <button type="button" id="record-audio-button" class="chat-action-button">🎤</button>
+                <div id="audio-recording-controls" class="hidden">
+                    <span id="recording-timer">00:00</span>
+                    <button type="button" id="stop-recording-button">⏹️</button>
+                    <button type="button" id="send-audio-button">▶️</button>
+                    <button type="button" id="cancel-recording-button">✖️</button>
+                </div>
+                <!-- FIN DEL CAMBIO -->
+
                 <button id="send-button">Enviar</button>
                 
                 <div id="command-suggestions" class="hidden"></div>
@@ -217,7 +226,7 @@
         <img src="" alt="Avatar a tamaño completo">
     </div>
 
-    <!-- POPUP DE ACCIONES DE USUARIO (AÑADIDO) -->
+    <!-- POPUP DE ACCIONES DE USUARIO -->
     <div id="user-action-popup" class="hidden">
         <div class="user-info">
             <strong><span id="popup-user-nick"></span></strong>

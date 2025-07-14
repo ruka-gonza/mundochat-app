@@ -1,38 +1,60 @@
-// services/banService.js (MODIFICADO: Ruta de DB dinámica y guardado de nick/ip)
-const sqlite3 = require('sqlite3').verbose();
+// services/banService.js (CORREGIDO: Nombre de tabla BAN)
+const { docClient } = require('../aws-config');
+const { GetCommand, PutCommand, DeleteCommand, ScanCommand } = require("@aws-sdk/lib-dynamodb");
 
-// Lógica para determinar la ruta de la base de datos
-const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
-const db = new sqlite3.Database(dbPath);
+// =========================================================================
+// INICIO: CORRECCIÓN DE NOMBRE DE TABLA
+// =========================================================================
+// Aseguramos que el nombre de la tabla se lea de una variable de entorno de Cyclic,
+// o use un valor por defecto si estamos en local.
+const BANNED_USERS_TABLE_NAME = process.env.CYCLIC_DB_TABLE_NAME_BANNED || 'banned_users';
+// =========================================================================
+// FIN: CORRECCIÓN DE NOMBRE DE TABLA
+// =========================================================================
 
-function isUserBanned(persistentId) {
-    return new Promise((resolve, reject) => {
-        db.get('SELECT * FROM banned_users WHERE id = ?', [persistentId], (err, row) => {
-            if (err) return reject(err);
-            resolve(row);
-        });
+async function isUserBanned(persistentId) {
+    const command = new GetCommand({
+        TableName: BANNED_USERS_TABLE_NAME,
+        Key: { id: persistentId }
     });
+    const { Item } = await docClient.send(command);
+    return Item;
 }
 
-// Modificado para aceptar más datos
-function banUser(persistentId, nick, ip, reason, by) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare('INSERT INTO banned_users (id, nick, ip, reason, by, at) VALUES (?, ?, ?, ?, ?, ?)');
-        stmt.run(persistentId, nick, ip, reason, by, new Date().toISOString(), function(err) {
-            if (err) return reject(err);
-            resolve({ id: persistentId });
-        });
-        stmt.finalize();
+async function banUser(persistentId, nick, ip, reason, by) {
+    const banItem = {
+        id: persistentId,
+        nick: nick,
+        ip: ip,
+        reason: reason,
+        by: by,
+        at: new Date().toISOString()
+    };
+
+    const command = new PutCommand({
+        TableName: BANNED_USERS_TABLE_NAME,
+        Item: banItem
     });
+
+    await docClient.send(command);
+    return { id: persistentId };
 }
 
-function unbanUser(persistentId) {
-    return new Promise((resolve, reject) => {
-        db.run('DELETE FROM banned_users WHERE id = ?', [persistentId], function(err) {
-            if (err) return reject(err);
-            resolve(this.changes > 0);
-        });
+async function unbanUser(persistentId) {
+    const command = new DeleteCommand({
+        TableName: BANNED_USERS_TABLE_NAME,
+        Key: { id: persistentId }
     });
+    const response = await docClient.send(command);
+    return true; 
 }
 
-module.exports = { isUserBanned, banUser, unbanUser };
+async function getAllBannedUsers() {
+    const command = new ScanCommand({
+        TableName: BANNED_USERS_TABLE_NAME
+    });
+    const { Items } = await docClient.send(command);
+    return Items || [];
+}
+
+module.exports = { isUserBanned, banUser, unbanUser, getAllBannedUsers };

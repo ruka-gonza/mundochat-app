@@ -1,202 +1,143 @@
-// routes/user.js (MODIFICADO: Manejo de subida de audio/imagen a S3/local)
 const express = require('express');
-const router = express.Router();
+const router = express.Router(); // <--- ¡LA LÍNEA MÁS IMPORTANTE QUE FALTABA!
 const userService = require('../services/userService');
+const roomService = require('../services/roomService');
+const config = require('../config');
 const multer = require('multer');
-const multerS3 = require('multer-s3');
-const { s3Client, isProduction } = require('../aws-config');
 const path = require('path');
 const fs = require('fs');
 
-let upload;
+const uploadsDir = process.env.RENDER ? path.join(__dirname, '../data/avatars') : path.join(__dirname, '../avatars');
 
-if (isProduction) {
-    // =========================================================================
-    // INICIO: Configuración para subir a S3 en producción (Cyclic)
-    // =========================================================================
-    const s3Bucket = process.env.CYCLIC_BUCKET_NAME; // Nombre del bucket S3 de Cyclic
-
-    upload = multer({
-        storage: multerS3({
-            s3: s3Client,
-            bucket: s3Bucket,
-            contentType: multerS3.AUTO_CONTENT_TYPE, // Detectar tipo de contenido automáticamente
-            acl: 'public-read', // Permiso de lectura pública para las URLs
-            metadata: function (req, file, cb) {
-                cb(null, { fieldName: file.fieldname });
-            },
-            key: function (req, file, cb) {
-                const safeNick = req.body.nick ? req.body.nick.toLowerCase().replace(/[^a-z0-9]/gi, '_') : 'unknown';
-                const fileExtension = path.extname(file.originalname || file.mimetype.split('/')[1]);
-                const uniqueFilename = `${safeNick}-${Date.now()}${fileExtension}`;
-                
-                // Categorizar en carpetas 'avatars' o 'media'
-                let folder = 'media/';
-                if (file.mimetype.startsWith('image/')) {
-                    folder = 'avatars/';
-                } else if (file.mimetype.startsWith('audio/')) {
-                    folder = 'media/'; // Puede ser otra carpeta si quieres diferenciar
-                }
-                
-                cb(null, folder + uniqueFilename);
-            }
-        }),
-        limits: { fileSize: 10 * 1024 * 1024 }, // Límite de 10MB para archivos
-        fileFilter: function (req, file, cb) {
-            const allowedTypes = /jpeg|jpg|png|gif|mp3|wav|webm|ogg/; // Tipos permitidos
-            const mimetype = allowedTypes.test(file.mimetype);
-            if (mimetype) {
-                return cb(null, true);
-            }
-            cb(new Error('Solo se permiten archivos de imagen, audio (mp3, wav, webm, ogg).'));
-        }
-    }).single('file'); // El nombre del campo en el FormData
-    // =========================================================================
-    // FIN: Configuración para subir a S3 en producción (Cyclic)
-    // =========================================================================
-
-} else {
-    // =========================================================================
-    // INICIO: Configuración para guardar en disco local en desarrollo
-    // =========================================================================
-    const uploadsDir = path.join(__dirname, '../public/uploads'); // Nueva carpeta para archivos subidos localmente
-    const avatarsDir = path.join(__dirname, '../public/avatars'); // Avatares siguen separados
-    
-    if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-    if (!fs.existsSync(avatarsDir)) { // Asegurarse que la carpeta de avatares existe
-        fs.mkdirSync(avatarsDir, { recursive: true });
-    }
-
-    upload = multer({
-        storage: multer.diskStorage({
-            destination: function (req, file, cb) {
-                // Decide dónde guardar según el tipo de archivo
-                if (file.mimetype.startsWith('image/')) {
-                    cb(null, avatarsDir);
-                } else { // Para audio y otros archivos
-                    cb(null, uploadsDir);
-                }
-            },
-            filename: function (req, file, cb) {
-                const safeNick = req.body.nick ? req.body.nick.toLowerCase().replace(/[^a-z0-9]/gi, '_') : 'unknown';
-                const uniqueFilename = `${safeNick}-${Date.now()}${path.extname(file.originalname || file.mimetype.split('/')[1])}`;
-                cb(null, uniqueFilename);
-            }
-        }),
-        limits: { fileSize: 10 * 1024 * 1024 },
-        fileFilter: function (req, file, cb) {
-            const allowedTypes = /jpeg|jpg|png|gif|mp3|wav|webm|ogg/;
-            if (allowedTypes.test(file.mimetype)) {
-                return cb(null, true);
-            }
-            cb(new Error('Solo se permiten archivos de imagen, audio (mp3, wav, webm, ogg).'));
-        }
-    }).single('file'); // El nombre del campo en el FormData
-    // =========================================================================
-    // FIN: Configuración para guardar en disco local en desarrollo
-    // =========================================================================
+if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, uploadsDir);
+    },
+    filename: function (req, file, cb) {
+        if (!req.verifiedUser || !req.verifiedUser.nick) {
+            return cb(new Error("Usuario no verificado para subir archivo."));
+        }
+        const safeNick = req.verifiedUser.nick.toLowerCase().replace(/[^a-z0-9]/gi, '_');
+        const uniqueSuffix = Date.now() + '-' + safeNick;
+        cb(null, uniqueSuffix + path.extname(file.originalname));
+    }
+});
+
+const upload = multer({ 
+    storage: storage,
+    limits: { fileSize: 2 * 1024 * 1024 },
+    fileFilter: function (req, file, cb) {
+        const filetypes = /jpeg|jpg|png|gif/;
+        const mimetype = filetypes.test(file.mimetype);
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+        if (mimetype && extname) {
+            return cb(null, true);
+        }
+        cb(new Error('Solo se permiten archivos de imagen (jpeg, jpg, png, gif).'));
+    }
+}).single('avatarFile');
+
 router.post('/avatar', (req, res) => {
-    // Cambiamos el nombre del campo de Multer a 'avatarFile' para la ruta de avatar
-    // Esto es para que la ruta /avatar solo maneje el archivo del avatar y no los mensajes.
-    // Creamos una instancia específica para avatares.
-    const avatarUpload = multer(isProduction ? {
-        storage: multerS3({
-            s3: s3Client,
-            bucket: process.env.CYCLIC_BUCKET_NAME,
-            contentType: multerS3.AUTO_CONTENT_TYPE,
-            acl: 'public-read',
-            metadata: function (req, file, cb) { cb(null, { fieldName: file.fieldname }); },
-            key: function (req, file, cb) {
-                const safeNick = req.body.nick.toLowerCase().replace(/[^a-z0-9]/gi, '_');
-                cb(null, 'avatars/' + Date.now() + '-' + safeNick + path.extname(file.originalname));
-            }
-        }),
-        limits: { fileSize: 2 * 1024 * 1024 },
-        fileFilter: function (req, file, cb) {
-            const filetypes = /jpeg|jpg|png|gif/;
-            const mimetype = filetypes.test(file.mimetype);
-            if (mimetype) { return cb(null, true); }
-            cb(new Error('Solo se permiten archivos de imagen (jpeg, jpg, png, gif).'));
-        }
-    } : {
-        storage: multer.diskStorage({
-            destination: path.join(__dirname, '../public/avatars'),
-            filename: function (req, file, cb) {
-                const safeNick = req.body.nick.toLowerCase().replace(/[^a-z0-9]/gi, '_');
-                cb(null, Date.now() + '-' + safeNick + path.extname(file.originalname));
-            }
-        }),
-        limits: { fileSize: 2 * 1024 * 1024 },
-        fileFilter: function (req, file, cb) {
-            const filetypes = /jpeg|jpg|png|gif/;
-            const mimetype = filetypes.test(file.mimetype);
-            if (mimetype) { return cb(null, true); }
-            cb(new Error('Solo se permiten archivos de imagen (jpeg, jpg, png, gif).'));
-        }
-    }).single('avatarFile'); // <-- Aquí es 'avatarFile'
+    const oldNick = req.verifiedUser.nick;
+    
+    upload(req, res, async function (err) {
+        if (err) return res.status(400).json({ error: err.message });
+        if (!req.file) return res.status(400).json({ error: 'No se ha subido ningún archivo válido.' });
 
-    avatarUpload(req, res, async function (err) {
-        if (err) {
-            console.error('Error subiendo avatar:', err);
-            return res.status(400).json({ error: `Error al subir avatar: ${err.message}` });
-        }
-
-        const { nick } = req.body;
-        if (!req.file || !nick) {
-            return res.status(400).json({ error: 'No se ha subido ningún archivo válido o falta el nick.' });
-        }
-
-        let avatarUrl;
-        if (isProduction) {
-            avatarUrl = req.file.location; // URL de S3
-        } else {
-            avatarUrl = `avatars/${req.file.filename}`; // URL local
-        }
+        const avatarUrl = process.env.RENDER ? `data/avatars/${req.file.filename}` : `avatars/${req.file.filename}`;
 
         try {
-            await userService.setAvatarUrl(nick, avatarUrl);
-            req.io.emit('user_avatar_changed', { nick, newAvatarUrl: avatarUrl });
-            res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
+            const success = await userService.setAvatarUrl(oldNick, avatarUrl);
+            if (success) {
+                const targetSocketId = roomService.findSocketIdByNick(oldNick);
+                if (targetSocketId) {
+                    const targetSocket = req.io.sockets.sockets.get(targetSocketId);
+                    if (targetSocket) {
+                        targetSocket.userData.avatar_url = avatarUrl;
+                        req.io.emit('user_data_updated', { nick: oldNick, avatar_url: avatarUrl });
+                    }
+                }
+                res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
+            } else {
+                res.status(404).json({ error: 'Usuario no encontrado.' });
+            }
         } catch (error) {
-            console.error('Error al actualizar avatar en la DB:', error);
-            res.status(500).json({ error: 'Error interno del servidor.' });
+            res.status(500).json({ error: 'Error interno del servidor al guardar en la base de datos.' });
         }
     });
 });
 
+router.post('/nick', async (req, res) => {
+    const oldNick = req.verifiedUser.nick;
+    const { newNick } = req.body;
+    const io = req.io;
 
-// =========================================================================
-// INICIO: NUEVA RUTA para manejar la subida de mensajes con archivos (audio/imagen)
-// =========================================================================
-router.post('/upload-message-file', (req, res) => {
-    upload(req, res, async function (err) {
-        if (err instanceof multer.MulterError) {
-            return res.status(400).json({ error: `Error al subir archivo: ${err.message}` });
-        } else if (err) {
-            return res.status(400).json({ error: err.message });
-        }
+    if (oldNick.toLowerCase() === config.ownerNick.toLowerCase()) {
+        return res.status(403).json({ error: 'Acción prohibida: El nick del Owner no se puede cambiar desde la aplicación.' });
+    }
 
-        if (!req.file) {
-            return res.status(400).json({ error: 'No se ha subido ningún archivo válido.' });
+    if (!newNick || newNick.trim() === '') return res.status(400).json({ error: 'El nuevo nick no puede estar vacío.' });
+    if (newNick.length < 3 || newNick.length > 15) return res.status(400).json({ error: "El nick debe tener entre 3 y 15 caracteres." });
+    if (!/^[a-zA-Z0-9_-]+$/.test(newNick)) return res.status(400).json({ error: "El nick solo puede contener letras, números, guiones y guiones bajos." });
+    
+    if (newNick.toLowerCase() === oldNick.toLowerCase() && newNick !== oldNick) {
+        // Permitir el cambio si es solo de capitalización
+    } else if (newNick.toLowerCase() === oldNick.toLowerCase()) {
+        return res.status(400).json({ error: 'El nuevo nick es igual al actual.' });
+    }
+
+    try {
+        const existingUser = await userService.findUserByNick(newNick);
+        if (existingUser && existingUser.id !== req.verifiedUser.id) {
+            return res.status(400).json({ error: `El nick '${newNick}' ya está registrado por otro usuario.` });
         }
         
-        let fileUrl;
-        if (isProduction) {
-            fileUrl = req.file.location; // URL de S3
-        } else {
-            fileUrl = `uploads/${req.file.filename}`; // URL local
+        const socketIdInUse = roomService.findSocketIdByNick(newNick);
+        const mySocketId = roomService.findSocketIdByNick(oldNick);
+        if (socketIdInUse && socketIdInUse !== mySocketId) {
+             return res.status(400).json({ error: `El nick '${newNick}' ya está en uso por un usuario conectado.` });
         }
 
-        // Devolvemos la URL y el tipo de archivo al cliente
-        res.json({ success: true, fileUrl, fileType: req.file.mimetype });
-    });
-});
-// =========================================================================
-// FIN: NUEVA RUTA
-// =========================================================================
+        const success = await userService.updateUserNick(oldNick, newNick);
 
+        if (success) {
+            const targetSocketId = roomService.findSocketIdByNick(oldNick);
+            if (targetSocketId) {
+                const targetSocket = io.sockets.sockets.get(targetSocketId);
+                if (targetSocket) {
+                    targetSocket.userData.nick = newNick;
+                    
+                    targetSocket.emit('set session cookie', { 
+                        id: targetSocket.userData.id,
+                        nick: newNick,
+                        role: targetSocket.userData.role
+                    });
+
+                    io.emit('system message', { text: `${oldNick} ahora es conocido como ${newNick}.`, type: 'highlight' });
+                    
+                    io.emit('user_data_updated', {
+                        oldNick: oldNick,
+                        nick: newNick,
+                        role: targetSocket.userData.role,
+                        isVIP: targetSocket.userData.isVIP,
+                        avatar_url: targetSocket.userData.avatar_url,
+                        id: targetSocket.userData.id
+                    });
+                }
+            }
+            res.json({ message: `Tu nick se ha cambiado a '${newNick}' con éxito.` });
+        } else {
+            res.status(500).json({ error: 'No se pudo cambiar el nick en la base de datos.' });
+        }
+    } catch (error) {
+        console.error('Error al cambiar nick:', error);
+        res.status(500).json({ error: 'Error interno del servidor al cambiar el nick.' });
+    }
+});
+
+// La línea que exporta el router para que sea usado en server.js
 module.exports = router;

@@ -1,14 +1,14 @@
-// handlers/chatHandler.js (LIMPIADO: Eliminado require de sqlite3 y lógica de DB)
+// handlers/chatHandler.js (REVISADO: No necesita cambios para audio si ya maneja fileData.type)
 const { handleCommand } = require('./modHandler');
 const roomService = require('../services/roomService');
 const botService = require('../services/botService');
+const sqlite3 = require('sqlite3').verbose();
+
+// Lógica para determinar la ruta de la base de datos
+const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
+const db = new sqlite3.Database(dbPath);
 
 let fileChunks = {}; // In-memory file chunk storage
-
-// NOTA: La lógica para guardar mensajes en la base de datos ha sido removida.
-// En una arquitectura serverless como la de Cyclic, los mensajes no suelen persistir
-// a menos que se guarden en un servicio de DB como DynamoDB, lo cual complica
-// el historial. Por ahora, el historial será solo de sesión.
 
 function handleChatMessage(io, socket, { text, roomName }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
@@ -24,8 +24,11 @@ function handleChatMessage(io, socket, { text, roomName }) {
         return handleCommand(io, socket, text, roomName);
     }
     
+    // INTEGRACIÓN DEL BOT
     const isMessageSafe = botService.checkMessage(socket, text);
     if (!isMessageSafe) {
+        // Si el mensaje no es seguro, el bot ya se encargó del usuario (warn/kick).
+        // Simplemente detenemos el procesamiento de este mensaje.
         return;
     }
 
@@ -34,12 +37,19 @@ function handleChatMessage(io, socket, { text, roomName }) {
         nick: sender.nick,
         role: sender.role,
         isVIP: sender.isVIP,
-        roomName,
-        id: Date.now() // Usamos un ID temporal para el cliente
+        roomName
     };
-    
-    // Simplemente emitimos el mensaje, ya no lo guardamos en la DB desde aquí.
-    io.to(roomName).emit('chat message', messageData);
+
+    const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
+    stmt.run(roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, new Date().toISOString(), function(err) {
+        if(err) {
+            console.error("Error guardando mensaje:", err);
+            return;
+        }
+        messageData.id = this.lastID;
+        io.to(roomName).emit('chat message', messageData);
+    });
+    stmt.finalize();
 }
 
 function handlePrivateMessage(io, socket, { to, text }) {
@@ -53,25 +63,25 @@ function handlePrivateMessage(io, socket, { to, text }) {
     const targetSocketId = roomService.findSocketIdByNick(to);
 
     if (targetSocketId) {
-        const messagePayload = { 
-            text, 
-            from: sender.nick, 
-            to: to, 
-            role: sender.role, 
-            isVIP: sender.isVIP,
-            id: Date.now() // ID temporal
-        };
-        
-        // Emitimos a ambos, ya no guardamos en DB desde aquí.
-        io.to(targetSocketId).emit('private message', messagePayload);
-        socket.emit('private message', messagePayload);
+        const messagePayload = { text, from: sender.nick, to: to, role: sender.role, isVIP: sender.isVIP };
+
+        const stmt = db.prepare('INSERT INTO private_messages (from_nick, to_nick, text, timestamp) VALUES (?, ?, ?, ?)');
+        stmt.run(sender.nick, to, text, new Date().toISOString(), function(err) {
+            if (err) {
+                console.error("Error guardando mensaje privado:", err);
+                return;
+            }
+            messagePayload.id = this.lastID;
+
+            io.to(targetSocketId).emit('private message', messagePayload);
+            socket.emit('private message', messagePayload);
+        });
+        stmt.finalize();
 
     } else {
         socket.emit('system message', { text: `El usuario '${to}' no se encuentra conectado.`, type: 'error' });
     }
 }
-
-// El resto de las funciones de manejo de archivos no necesitan cambios lógicos.
 
 function handleFileStart(socket, data) {
     fileChunks[data.id] = { ...data, chunks: [], receivedSize: 0, owner: socket.id };
@@ -117,17 +127,62 @@ function clearUserFileChunks(socketId) {
     });
 }
 
-// La edición y borrado de mensajes ya no es posible si no se guardan en una DB.
 function handleEditMessage(io, socket, { messageId, newText, roomName }) {
-    socket.emit('system message', {text: "La edición de mensajes no está disponible.", type: "error"});
+    const senderNick = socket.userData.nick;
+    if (!messageId || !newText || !roomName) return;
+
+    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
+        if (err || !row) return;
+
+        if (row.nick.toLowerCase() === senderNick.toLowerCase()) {
+            const stmt = db.prepare('UPDATE messages SET text = ?, editedAt = ? WHERE id = ?');
+            stmt.run(newText, new Date().toISOString(), messageId, function(err) {
+                if (err) return;
+                io.to(roomName).emit('message edited', { messageId, newText, roomName });
+            });
+            stmt.finalize();
+        }
+    });
 }
 
 function handleDeleteMessage(io, socket, { messageId, roomName }) {
-    socket.emit('system message', {text: "El borrado de mensajes no está disponible.", type: "error"});
+    const senderNick = socket.userData.nick;
+    if (!messageId || !roomName) return;
+
+    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
+        if (err || !row) return;
+
+        if (row.nick.toLowerCase() === senderNick.toLowerCase()) {
+            db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
+                if (err) return;
+                io.to(roomName).emit('message deleted', { messageId, roomName });
+            });
+        }
+    });
 }
 
 function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
-    socket.emit('system message', {text: "El borrado de mensajes no está disponible.", type: "error"});
+    const sender = socket.userData;
+    if (!['owner', 'admin'].includes(sender.role)) {
+        return socket.emit('system message', { text: 'No tienes permiso para realizar esta acción.', type: 'error', roomName });
+    }
+
+    if (!messageId || !roomName) return;
+    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
+        if (err || !row) return; 
+
+        const originalAuthor = row.nick;
+        db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
+            if (err) {
+                console.error("Error al borrar mensaje por moderador:", err);
+                return;
+            }
+            io.to(roomName).emit('message deleted', { messageId, roomName });
+
+            const logMessage = `[MOD_DELETE] ${sender.nick} ha borrado un mensaje de ${originalAuthor} en la sala ${roomName}.`;
+            io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+        });
+    });
 }
 
 module.exports = {

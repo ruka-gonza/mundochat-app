@@ -1,5 +1,4 @@
-<!-- index.html (MODIFICADO: Adaptado para grabación de voz) -->
-<!DOCTYPE html>
+
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -31,9 +30,11 @@
                 <label for="login-room-select" class="room-label">Selecciona una sala:</label>
                 <select id="login-room-select"></select>
                 <button id="login-button">Entrar al Chat</button>
+                <p class="forgot-password-link"><a href="#" id="show-forgot-password">¿Olvidaste tu contraseña?</a></p>
             </div>
             <div id="register-form" class="auth-form hidden">
                 <input type="text" id="register-nick-input" placeholder="Elige un Nick (3-15 caracteres)" autocomplete="username" maxlength="15">
+                <input type="text" id="register-email-input" placeholder="Tu Correo Electrónico" autocomplete="email">
                 <input type="password" id="register-password-input" placeholder="Elige una Contraseña" autocomplete="new-password">
                 <input type="password" id="register-password-confirm" placeholder="Confirma la Contraseña" autocomplete="new-password">
                 <button id="register-button">Registrar Nick</button>
@@ -58,6 +59,15 @@
                     <ul id="private-chat-list"></ul>
                 </div>
             </div>
+
+            <div class="theme-switcher-container">
+                <span>Modo Oscuro</span>
+                <label class="theme-switcher">
+                    <input type="checkbox" id="theme-toggle-checkbox">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
             <div id="action-buttons-container">
             </div>
         </div>
@@ -65,11 +75,18 @@
         <div id="chat-area-wrapper">
             <div id="main-chat-area">
                 <div id="room-header-container" class="room-header-container">
+                    <button id="toggle-conversations-btn" class="mobile-nav-button">
+                        ☰
+                        <span id="private-unread-badge" class="hidden"></span>
+                    </button>
                     <h2 id="room-name-header"></h2>
+                    <button id="toggle-users-btn" class="mobile-nav-button">👥</button>
+
                     <div id="room-switcher" class="room-switcher">
                         <ul id="room-switcher-list"></ul>
                     </div>
                 </div>
+
                 <div id="chat-window">
                     <ul id="messages"></ul>
                     <div id="typing-indicator"></div>
@@ -78,33 +95,40 @@
 
             <div id="private-chat-view" class="hidden">
                 <div class="chat-header">
+                    <button id="private-chat-back-button" class="mobile-nav-button">&larr;</button>
                     <h2 id="private-chat-with-user"></h2>
                 </div>
                 <div id="private-chat-window"></div>
+                <div id="private-typing-indicator"></div>
             </div>
             
             <form id="form" action="">
+                <div id="reply-context-bar" class="hidden">
+                    <div class="reply-info">
+                        <span class="reply-label">Respondiendo a <strong></strong></span>
+                        <p class="reply-text-preview"></p>
+                    </div>
+                    <button type="button" id="cancel-reply-button" class="cancel-reply-btn">×</button>
+                </div>
+                
                 <input id="input" autocomplete="off" placeholder="Escribe un mensaje..." />
                 <button type="button" id="emoji-button" class="chat-action-button">😀</button>
                 <label for="image-upload" class="file-label chat-action-button">📷</label>
                 <input type="file" id="image-upload" accept="image/*" style="display: none;">
                 
-                <!-- INICIO DEL CAMBIO -->
-                <button type="button" id="record-audio-button" class="chat-action-button">🎤</button>
-                <div id="audio-recording-controls" class="hidden">
-                    <span id="recording-timer">00:00</span>
-                    <button type="button" id="stop-recording-button">⏹️</button>
-                    <button type="button" id="send-audio-button">▶️</button>
-                    <button type="button" id="cancel-recording-button">✖️</button>
-                </div>
-                <!-- FIN DEL CAMBIO -->
-
-                <button id="send-button">Enviar</button>
+                <button type="button" id="audio-record-button" class="chat-action-button">🎤</button>
+                <button type="button" id="audio-send-button" class="chat-action-button hidden">▶️</button>
+                <button type="button" id="audio-cancel-button" class="chat-action-button hidden">✖️</button>
+                
+                <button type="submit" id="send-icon-button" class="chat-action-button">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg); margin-left: -2px; margin-top: 2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
                 
                 <div id="command-suggestions" class="hidden"></div>
+                <div id="emoji-picker" class="hidden"></div>
             </form>
             
-            <div id="emoji-picker" class="hidden"></div>
+            
         </div>
         
         <div id="user-list-container">
@@ -118,8 +142,7 @@
     </div>
     
     <script src="/socket.io/socket.io.js"></script>
-    <script src="client.js"></script>
-
+    
      <div id="welcome-popup-overlay" class="modal-overlay hidden">
         <div class="modal-content" id="welcome-popup-content">
             <span class="modal-close-button" id="close-welcome-popup">×</span>
@@ -128,12 +151,29 @@
                 <p>Has llegado a un espacio pensado para compartir, conversar y pasar un buen momento.</p>
                 <p>La regla más importante es el <strong>respeto</strong>. No toleramos faltas de educación, acoso, ni comportamientos ofensivos.</p>
                 <p><strong>🌍 Recuerda que estás hablando con personas reales.</strong> Valora las diferencias, sé amable, y usa el chat para construir cosas buenas.</p>
-                <p style="text-align: center; font-weight: bold; margin-top: 20px;">👉 Disfruta del chat y gracias por ser parte de esta comunidad. 💖</p>
+                <p style="text-align: center; font-size: 0.9em; color: #666; margin-top: 20px;"><em>Al hacer clic en "Entendido", activarás las notificaciones de sonido.</em></p>
+                <p style="text-align: center; font-weight: bold; margin-top: 10px;">👉 Disfruta del chat y gracias por ser parte de esta comunidad. 💖</p>
+                <p>
+                <h5 style="text-align: center;">Copyright © -- 2025</h5>
             </div>
             <button class="action-button" id="confirm-welcome-popup" style="margin: 0 auto; display: block; background-color: #1877f2;">¡Entendido!</button>
         </div>
     </div>
 
+    <!-- MODAL DE RECUPERACIÓN DE CONTRASEÑA -->
+    <div id="forgot-password-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <span class="modal-close-button" id="close-forgot-password-modal">×</span>
+            <div id="forgot-password-form">
+                <h2>Recuperar Contraseña</h2>
+                <p>Introduce tu nick o correo electrónico para recibir un enlace de restablecimiento.</p>
+                <input type="text" id="forgot-identifier-input" placeholder="Tu Nick o Correo">
+                <button id="send-reset-link-button">Enviar Enlace</button>
+                <p id="forgot-password-message" class="hidden"></p>
+            </div>
+        </div>
+    </div>
+    
     <button id="admin-panel-button" class="hidden">Panel de Admin</button>
 
     <div id="admin-modal" class="modal-overlay hidden">
@@ -143,6 +183,7 @@
             <div class="admin-tabs">
                 <button class="admin-tab active" data-target="banned-users-panel">Baneados</button>
                 <button class="admin-tab" data-target="muted-users-panel">Silenciados</button>
+                <button class="admin-tab" data-target="reports-panel">Denuncias</button>
                 <button class="admin-tab" data-target="activity-monitor-panel">Monitor de Actividad</button>
             </div>
 
@@ -178,6 +219,23 @@
                 </div>
             </div>
             
+            <div id="reports-panel" class="admin-panel hidden">
+                <h3>Denuncias de Usuarios</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Denunciante</th>
+                                <th>Denunciado</th>
+                                <th>Razón</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reports-list"></tbody>
+                    </table>
+                </div>
+            </div>
+            
             <div id="activity-monitor-panel" class="admin-panel hidden">
                 <div class="table-container">
                     <h4>Usuarios Conectados Actualmente</h4>
@@ -206,27 +264,62 @@
         </div>
     </div>
 
-    <div id="profile-modal" class="modal-overlay hidden">
+     <div id="profile-modal" class="modal-overlay hidden">
         <div class="modal-content" id="profile-modal-content">
             <span class="modal-close-button">×</span>
             <h2>Mi Perfil</h2>
             <div class="profile-content">
-                <img id="profile-avatar-preview" src="image/default-avatar.png" alt="Avatar actual" class="profile-avatar">
-                <p><strong>Nick:</strong> <span id="profile-nick"></span></p>
-                <div class="form-group">
-                    <label for="avatar-file-input">Selecciona una nueva imagen:</label>
-                    <input type="file" id="avatar-file-input" accept="image/png, image/jpeg, image/gif">
+                <div class="profile-avatar-container">
+                    <img id="profile-avatar-preview" src="image/default-avatar.png" alt="Avatar actual" class="profile-avatar">
+                    <label for="avatar-file-input" class="avatar-edit-label" title="Cambiar avatar">✏️</label>
                 </div>
-                <button id="save-profile-button" class="action-button">Guardar Cambios</button>
+                
+                <p class="profile-nick-display"><strong>Nick actual:</strong> <span id="profile-nick"></span></p>
+                
+                <div class="profile-section">
+                    <label for="new-nick-input">Cambiar Nick</label>
+                    <div class="input-group">
+                        <input type="text" id="new-nick-input" placeholder="Nuevo Nick (3-15 caracteres)" maxlength="15">
+                        <button id="change-nick-button" class="action-button">Cambiar</button>
+                    </div>
+                </div>
+
+                <div class="profile-section">
+                    <label for="avatar-file-input">Cambiar Avatar</label>
+                     <input type="file" id="avatar-file-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
+                    <div class="input-group">
+                       <label for="avatar-file-input" class="file-input-label">Seleccionar archivo</label>
+                       <span id="file-name-display">Ningún archivo seleccionado</span>
+                    </div>
+                    <button id="save-profile-button" class="action-button primary">Guardar Avatar</button>
+                </div>
             </div>
         </div>
     </div>
-
+     <div id="sexo-warning-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2>⚠️ Advertencia</h2>
+            <div class="popup-body">
+                <p>El acceso a este chat está <strong>prohibido para menores de 18 años.</strong></p>
+                <p>No se tolera bajo ninguna circunstancia:</p>
+                <ul>
+                    <li>Pedofilia</li>
+                    <li>Envío o difusión de imágenes o material sexual con menores (CP)</li>
+                    <li>Incesto</li>
+                    <li>Zoofilia</li>
+                    <li>Cualquier contenido ilegal o inapropiado</li>
+                </ul>
+                <p class="warning-consequence">
+                    El incumplimiento de estas reglas resultará en <strong>expulsión inmediata y denuncia a las autoridades.</strong>
+                </p>
+            </div>
+            <button id="accept-sexo-warning" class="action-button">Aceptar y Entrar</button>
+        </div>
+    </div>
     <div id="avatar-hover-popup" class="hidden">
         <img src="" alt="Avatar a tamaño completo">
     </div>
 
-    <!-- POPUP DE ACCIONES DE USUARIO -->
     <div id="user-action-popup" class="hidden">
         <div class="user-info">
             <strong><span id="popup-user-nick"></span></strong>
@@ -239,6 +332,31 @@
         </div>
         <div id="popup-arrow"></div>
     </div>
+    
+    <div id="nick-context-menu" class="hidden">
+        <button id="context-pm-button">Mensaje Privado</button>
+        <button id="context-reply-button">Responder</button>
+    </div>
 
+    <div id="self-context-menu" class="hidden">
+        <button id="self-afk-button">Ausentar</button>
+        <!-- === INICIO DE LA MODIFICACIÓN === -->
+        <label for="guest-avatar-input" id="self-avatar-label-guest" class="hidden context-menu-button">
+            Cambiar Avatar
+        </label>
+        <!-- === FIN DE LA MODIFICACIÓN === -->
+    </div>
+
+     <div id="image-modal-overlay" class="modal-overlay hidden">
+        <span id="close-image-modal" class="modal-close-button">&times;</span>
+        <img id="modal-image" src="" alt="Vista a tamaño completo">
+    </div>
+    <div id="mobile-overlay"></div>
+
+    <!-- === INICIO DE LA MODIFICACIÓN === -->
+    <input type="file" id="guest-avatar-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
+    <!-- === FIN DE LA MODIFICACIÓN === -->
+
+    <script type="module" src="js/main.js"></script>
 </body>
 </html>

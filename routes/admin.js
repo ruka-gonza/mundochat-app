@@ -1,21 +1,50 @@
-// routes/admin.js (MODIFICADO: Ahora muestra baneados y muteados desde DynamoDB)
+// routes/admin.js (ACTUALIZADO CON ROL OPERADOR Y PERMISOS DE BAN)
+
 const express = require('express');
 const router = express.Router();
 const banService = require('../services/banService');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
-// Ya no necesitamos sqlite3, la línea no debe estar aquí.
+const db = require('../services/db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
 
-const isStaff = (req, res, next) => {
+const isStaff = async (req, res, next) => {
     try {
-        const adminUser = req.cookies.adminUser ? JSON.parse(req.cookies.adminUser) : null;
-        if (adminUser && ['owner', 'admin', 'mod'].includes(adminUser.role)) {
-            req.moderator = adminUser;
-            return next();
+        const adminUserCookie = req.cookies.adminUser ? JSON.parse(req.cookies.adminUser) : null;
+        if (!adminUserCookie || !adminUserCookie.nick) {
+            return res.status(403).send('Acceso denegado: Cookie de sesión no encontrada.');
         }
-        res.status(403).send('Acceso denegado');
+
+        const user = await userService.findUserByNick(adminUserCookie.nick);
+        if (!user) {
+            return res.status(403).send('Acceso denegado: Usuario no encontrado.');
+        }
+
+        // --- INICIO DE LA MODIFICACIÓN: Añadir 'operator' a la lista de staff ---
+        let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
+        // --- FIN DE LA MODIFICACIÓN ---
+
+        if (!isAnyStaff) {
+            const staffRooms = await new Promise((resolve, reject) => {
+                db.all('SELECT 1 FROM room_staff WHERE userId = ? LIMIT 1', [user.id], (err, rows) => {
+                    if (err) return reject(err);
+                    resolve(rows);
+                });
+            });
+            if (staffRooms.length > 0) {
+                isAnyStaff = true;
+            }
+        }
+        
+        if (!isAnyStaff) {
+            return res.status(403).send('Acceso denegado: No tienes permisos de moderación.');
+        }
+
+        req.moderator = { nick: user.nick, role: user.role };
+        return next();
+
     } catch (e) {
-        res.status(403).send('Acceso denegado. Cookie inválida.');
+        console.error("Error en middleware isStaff:", e);
+        res.status(500).send('Error interno del servidor al verificar permisos.');
     }
 };
 
@@ -33,40 +62,66 @@ function obfuscateIP(ip) {
     return 'IP Inválida';
 }
 
-// =========================================================================
-// INICIO: RUTA /banned AHORA USA getAllBannedUsers
-// =========================================================================
+router.get('/reports', isStaff, (req, res) => {
+    db.all("SELECT timestamp, details FROM activity_logs WHERE event_type = 'USER_REPORT' ORDER BY timestamp DESC", [], (err, rows) => {
+        if (err) {
+            console.error("Error al obtener denuncias:", err);
+            return res.status(500).json({ error: 'Error del servidor' });
+        }
+        
+        const reports = rows.map(log => {
+            const parts = log.details.split(' | ');
+            const reporter = parts[0] ? parts[0].replace('Denuncia de: ', '').trim() : 'Desconocido';
+            const reported = parts[1] ? parts[1].replace('Hacia: ', '').trim() : 'Desconocido';
+            const reason = parts[2] ? parts[2].replace('Razón: ', '').trim() : 'Sin razón';
+            return {
+                timestamp: log.timestamp,
+                reporter,
+                reported,
+                reason
+            };
+        });
+        
+        res.json(reports);
+    });
+});
+
 router.get('/banned', isStaff, async (req, res) => {
     try {
-        let bannedUsers = await banService.getAllBannedUsers();
-        if (req.moderator.role === 'mod') {
-            bannedUsers.forEach(user => { user.ip = obfuscateIP(user.ip); });
-        }
-        res.json(bannedUsers);
+        db.all('SELECT * FROM banned_users ORDER BY at DESC', [], (err, rows) => {
+            if (err) {
+                console.error("Error al obtener baneados:", err);
+                return res.status(500).json({ error: 'Error del servidor' });
+            }
+            // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
+            if (['mod', 'operator'].includes(req.moderator.role)) {
+                rows.forEach(user => { user.ip = obfuscateIP(user.ip); });
+            }
+            // --- FIN DE LA MODIFICACIÓN ---
+            res.json(rows);
+        });
     } catch (error) {
-        console.error("Error al obtener baneados:", error);
-        res.status(500).json({ error: 'Error del servidor al listar baneados.' });
+        res.status(500).json({ error: 'Error del servidor' });
     }
 });
-// =========================================================================
-// FIN: RUTA /banned
-// =========================================================================
 
-// =========================================================================
-// INICIO: RUTA /muted AHORA USA getAllMutedUsers y busca invitados muteados en memoria
-// =========================================================================
 router.get('/muted', isStaff, async (req, res) => {
     const io = req.io;
     try {
-        // Obtener usuarios muteados registrados de DynamoDB
-        let mutedUsers = await userService.getAllMutedUsers();
+        const dbMutedUsersPromise = new Promise((resolve, reject) => {
+            db.all('SELECT nick, role, isVIP, lastIP, mutedBy FROM users WHERE isMuted = 1', [], (err, rows) => {
+                if (err) return reject(err);
+                resolve(rows);
+            });
+        });
+        
+        let mutedUsers = await dbMutedUsersPromise;
         const mutedRegisteredNicks = new Set(mutedUsers.map(u => u.nick.toLowerCase()));
         
-        // Añadir usuarios invitados muteados (que solo existen en memoria)
         const allSockets = await io.fetchSockets();
         for (const socket of allSockets) {
             const userData = socket.userData;
-            if (userData && userData.isMuted && userData.role === 'guest' && !mutedRegisteredNicks.has(userData.nick.toLowerCase())) {
+            if (userData && userData.isMuted && !mutedRegisteredNicks.has(userData.nick.toLowerCase())) {
                 mutedUsers.push({
                     nick: userData.nick,
                     role: 'invitado',
@@ -77,22 +132,21 @@ router.get('/muted', isStaff, async (req, res) => {
             }
         }
         
-        if (req.moderator.role === 'mod') {
+        // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
+        if (['mod', 'operator'].includes(req.moderator.role)) {
             mutedUsers.forEach(user => {
                 user.lastIP = obfuscateIP(user.lastIP);
             });
         }
+        // --- FIN DE LA MODIFICACIÓN ---
 
         res.json(mutedUsers);
 
     } catch (error) {
         console.error("Error al obtener muteados:", error);
-        res.status(500).json({ error: 'Error del servidor al listar silenciados.' });
+        res.status(500).json({ error: 'Error del servidor' });
     }
 });
-// =========================================================================
-// FIN: RUTA /muted
-// =========================================================================
 
 router.get('/online-users', isStaff, async (req, res) => {
     try {
@@ -105,9 +159,11 @@ router.get('/online-users', isStaff, async (req, res) => {
                 if (socket.userData) {
                     const user = { ...socket.userData };
                     user.rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-                    if (req.moderator && req.moderator.role === 'mod') {
+                    // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
+                    if (req.moderator && ['mod', 'operator'].includes(req.moderator.role)) {
                         user.ip = obfuscateIP(user.ip);
                     }
+                    // --- FIN DE LA MODIFICACIÓN ---
                     onlineUsers.push(user);
                 }
             } catch (e) {
@@ -121,10 +177,22 @@ router.get('/online-users', isStaff, async (req, res) => {
     }
 });
 
-// La tabla de logs de actividad ya no existe en DB, devolvemos una lista vacía.
-// Para esto, se necesitaría una tabla de DynamoDB para logs y un Scan/Query.
 router.get('/activity-logs', isStaff, (req, res) => {
-    res.json([]);
+    const limit = parseInt(req.query.limit) || 100;
+    const offset = (parseInt(req.query.page) || 0) * limit;
+
+    db.all('SELECT * FROM activity_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?', [limit, offset], (err, rows) => {
+        if (err) {
+            console.error("Error al obtener logs de actividad:", err);
+            return res.status(500).json({ error: 'Error del servidor' });
+        }
+        // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
+        if (['mod', 'operator'].includes(req.moderator.role)) {
+            rows.forEach(log => { log.ip = obfuscateIP(log.ip); });
+        }
+        // --- FIN DE LA MODIFICACIÓN ---
+        res.json(rows);
+    });
 });
 
 router.post('/unban', isStaff, async (req, res) => {
@@ -133,18 +201,16 @@ router.post('/unban', isStaff, async (req, res) => {
         return res.status(400).json({ error: 'Se requiere el ID del usuario.' });
     }
 
+    // --- INICIO DE LA MODIFICACIÓN: Se elimina el bloqueo para moderadores ---
+    /*
     if (req.moderator.role === 'mod') {
         return res.status(403).json({ error: 'Los moderadores no pueden quitar baneos.' });
     }
+    */
+    // --- FIN DE LA MODIFICACIÓN ---
 
     try {
         const success = await banService.unbanUser(userId.toLowerCase());
-        // También intentar desbanear la IP asociada si existe (para invitados)
-        const user = await userService.findUserByNick(userId); // Buscar usuario para obtener su IP
-        if (user && user.ip) {
-            await banService.unbanUser(user.ip);
-        }
-
         if (success) {
             req.io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${req.moderator.nick} ha desbaneado a '${userId}' desde el panel.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             res.json({ message: `Usuario '${userId}' desbaneado con éxito.` });

@@ -1,8 +1,5 @@
-const sqlite3 = require('sqlite3').verbose();
 const userService = require('./userService');
-
-const dbPath = process.env.RENDER ? './data/chat.db' : './chat.db';
-const db = new sqlite3.Database(dbPath);
+const db = require('./db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
 
 /**
  * Determina el rol efectivo de un usuario en una sala específica.

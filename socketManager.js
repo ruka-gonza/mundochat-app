@@ -1,3 +1,5 @@
+// socketManager.js (VERSIÓN COMPLETA, FINAL Y CORREGIDA)
+
 const roomService = require('./services/roomService');
 const userService = require('./services/userService');
 const banService = require('./services/banService');
@@ -10,6 +12,8 @@ const db = require('./services/db-connection');
 const fs = require('fs');
 
 let fileChunks = {};
+
+// --- FUNCIONES AUXILIARES ---
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
@@ -243,35 +247,46 @@ async function handleJoinRoom(io, socket, { roomName }) {
     });
     socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
     socket.broadcast.to(roomName).emit('update user list', { roomName, users: initialUserList });
-    if (roomService.rooms[roomService.MOD_LOG_ROOM] && roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id]) { roomService.updateUserList(io, roomService.MOD_LOG_ROOM); }
+    if (roomService.rooms[roomService.MOD_LOG_ROOM] && roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id]) { roomService.updateUserList(io, roomName); }
     roomService.updateRoomData(io);
 }
 
+
+// --- FUNCIÓN PRINCIPAL DE SOCKET.IO ---
 function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
-        console.log(`[SocketManager] Nuevo usuario conectado: ${socket.id}`);
+        
+        // --- INICIO DE LA CORRECCIÓN CON LOGS DE DIAGNÓSTICO ---
+        console.log(`[SocketManager] PASO 1: Nuevo usuario conectado: ${socket.id}`);
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
 
         try {
+            console.log("[SocketManager] PASO 2: Intentando obtener la lista de salas...");
+            const roomList = roomService.getActiveRoomsWithUserCount();
+            console.log(`[SocketManager] PASO 3: Lista de salas obtenida (${roomList.length} salas). Enviando al cliente...`);
+            
+            socket.emit('update room data', roomList); 
+            console.log("[SocketManager] PASO 4: Lista de salas enviada al cliente con éxito.");
+
+        } catch (error) {
+            console.error('[ERROR CRÍTICO] Fallo al obtener o enviar la lista de salas:', error);
+            socket.disconnect(true);
+            return;
+        }
+        // --- FIN DE LA CORRECCIÓN ---
+        
+        try {
             const isVpnUser = await vpnCheckService.isVpn(userIP);
             if (isVpnUser) {
-                console.warn(`[ADVERTENCIA DE VPN/PROXY] La IP ${userIP} fue marcada como sospechosa, pero se le ha permitido la conexión.`);
+                console.warn(`[ADVERTENCIA DE VPN/PROXY] La IP ${userIP} fue marcada como sospechosa.`);
             }
         } catch (error) {
             console.error("Error durante la verificación de VPN:", error);
         }
-        
-        try {
-            const roomList = roomService.getActiveRoomsWithUserCount();
-            socket.emit('update room data', roomList); 
-        } catch (error) {
-            console.error('[ERROR CRÍTICO] Fallo al obtener la lista de salas:', error);
-            socket.disconnect(true);
-            return;
-        }
 
+        // --- MANEJADORES DE EVENTOS ---
         socket.on('guest_join', async (data) => {
             const { nick, roomName } = data;
             if (!nick || !roomName) return socket.emit('auth_error', { message: "El nick y la sala son obligatorios." });
@@ -331,7 +346,7 @@ function initializeSocket(io) {
                 socket.userData = { 
                     nick: registeredData.nick, 
                     id: registeredData.id, 
-                    role: registeredData.role, // Rol ya viene de userService
+                    role: registeredData.role,
                     isMuted: registeredData.isMuted === 1, 
                     isVIP: registeredData.isVIP === 1, 
                     ip: userIP, 
@@ -341,7 +356,7 @@ function initializeSocket(io) {
                 };
 
                 await userService.updateUserIP(registeredData.nick, userIP);
-                socket.emit('assign id', registeredData.id); // Usar ID numérico
+                socket.emit('assign id', registeredData.id);
                 socket.emit('set session cookie', { id: socket.userData.id, nick: socket.userData.nick, role: socket.userData.role });
                 logActivity('CONNECT', socket.userData);
                 await handleJoinRoom(io, socket, { roomName });
@@ -356,7 +371,7 @@ function initializeSocket(io) {
         socket.on('leave room', (data) => {
             const { roomName } = data;
             if (!socket.rooms.has(roomName) || !roomService.rooms[roomName]) return;
-            if (roomName === roomService.MOD_LOG_ROOM) return; // No permitir salir de la sala de logs
+            if (roomName === roomService.MOD_LOG_ROOM) return;
             logActivity('LEAVE_ROOM', socket.userData, `Sala: ${roomName}`);
             socket.leave(roomName);
             socket.joinedRooms.delete(roomName);

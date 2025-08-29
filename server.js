@@ -8,9 +8,10 @@ const cookieParser = require('cookie-parser');
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
-const guestRoutes = require('./routes/guest'); // <-- AÑADIR ESTA LÍNEA
+const guestRoutes = require('./routes/guest');
 const path = require('path'); 
 const { isCurrentUser } = require('./middleware/isCurrentUser');
+const roomService = require('./services/roomService'); // <-- AÑADIDO: Importamos roomService
 
 const app = express();
 const server = http.createServer(app);
@@ -26,38 +27,35 @@ app.use((req, res, next) => {
 
 // Middlewares para parsear cookies y cuerpos de petición
 app.use(cookieParser());
-app.use(express.json()); // Para parsear application/json
-app.use(express.urlencoded({ extended: true })); // Para parsear application/x-www-form-urlencoded
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // --- CONFIGURACIÓN DE ARCHIVOS ESTÁTICOS ---
-// Sirve todos los archivos del frontend desde la carpeta 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/avatars', express.static(path.join(__dirname, 'avatars')));
-app.use('/temp_avatars', express.static(path.join(__dirname, 'temp_avatars'))); // <-- AÑADIR ESTA LÍNEA
-// Configuración específica para el hosting de Render (si aplica)
+app.use('/temp_avatars', express.static(path.join(__dirname, 'temp_avatars')));
 if (process.env.RENDER) {
     app.use('/data', express.static('data'));
 }
 
-// --- LÍNEA ELIMINADA ---
-// La siguiente ruta ya no es necesaria porque express.static('public') ya se encarga de servir reset-password.html
-/*
-app.get('/reset-password.html', (req, res) => {
-    res.sendFile(path.join(__dirname, 'reset-password.html'));
-});
-*/
-
 // --- RUTAS DE LA API ---
-// La lógica de rutas permanece igual. El orden es correcto.
 app.use('/api/user', isCurrentUser, userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/auth', authRoutes);
-app.use('/api/guest', guestRoutes); // <-- AÑADIR ESTA LÍNEA
+app.use('/api/guest', guestRoutes);
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('¡Algo salió mal en el servidor!');
 });
+
 // --- INICIALIZACIÓN DE SERVICIOS ---
+
+// --- INICIO DE LA MODIFICACIÓN ---
+// Esta línea carga las salas por defecto en memoria ANTES de que cualquier
+// usuario se conecte, asegurando que la lista de salas nunca esté vacía.
+roomService.initializeDefaultRooms();
+// --- FIN DE LA MODIFICACIÓN ---
+
 initializeSocket(io);
 botService.initialize(io);
 

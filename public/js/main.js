@@ -63,10 +63,12 @@ function initThemeSwitcher() {
 }
 
 
-document.addEventListener('DOMContentLoaded', () => {
-    const socket = io();
+import state from './state.js'; // <-- AÑADE ESTA LÍNEA
 
-    initializeSocketEvents(socket);
+document.addEventListener('DOMContentLoaded', () => {
+    state.socket = io(); // <-- ¡LA CORRECCIÓN MÁGICA!
+
+    initializeSocketEvents(state.socket); // Pasamos el socket del estado
     initAuth();
     initChatInput();
     initConversations();

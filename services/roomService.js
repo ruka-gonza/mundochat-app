@@ -103,3 +103,4 @@ module.exports = {
     updateRoomData,
     initializeDefaultRooms
 };
+console.log('[RoomService] Módulo cargado. Salas iniciales en memoria:', Object.keys(rooms));

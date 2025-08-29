@@ -1,13 +1,13 @@
-const permissionService = require('./services/permissionService');
-const db = require('./services/db-connection');
+const permissionService = require('./permissionService'); 
+// --- FIN DE LA CORRECCIÓN ---
+
+const db = require('./db-connection');
 
 let rooms = {};
 const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Romance", "Chile", "Argentina", "Brasil", "España", "México"];
 const MOD_LOG_ROOM = '#Staff-Logs';
 const guestSocketMap = new Map();
 
-// --- INICIO DE LA MODIFICACIÓN ---
-// Se crea una función explícita para cargar las salas por defecto en memoria.
 function initializeDefaultRooms() {
     console.log("Inicializando salas por defecto en memoria...");
     DEFAULT_ROOMS.forEach(room => {
@@ -20,8 +20,6 @@ function initializeDefaultRooms() {
     }
     console.log("Salas por defecto listas.");
 }
-// --- FIN DE LA MODIFICACIÓN ---
-
 
 async function createRoom(roomName, io) {
     if (rooms[roomName]) {
@@ -103,5 +101,5 @@ module.exports = {
     isNickInUse,
     updateUserList,
     updateRoomData,
-    initializeDefaultRooms // <-- Se exporta la nueva función
+    initializeDefaultRooms
 };

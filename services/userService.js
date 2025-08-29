@@ -1,4 +1,4 @@
-const db = require('./db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
+const db = require('./db-connection');
 const bcrypt = require('bcrypt');
 const config = require('../config');
 
@@ -18,11 +18,7 @@ function findUserByNick(identifier) {
         db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                if (row.nick.toLowerCase() === config.ownerNick.toLowerCase()) {
-                    row.role = 'owner';
-                } else {
-                    row.role = row.role || 'user';
-                }
+                row.role = getRole(row.nick); // Asignamos el rol dinámicamente
             }
             resolve(row);
         });
@@ -34,11 +30,7 @@ function findUserById(id) {
         db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                if (row.nick.toLowerCase() === config.ownerNick.toLowerCase()) {
-                    row.role = 'owner';
-                } else {
-                    row.role = row.role || 'user';
-                }
+                row.role = getRole(row.nick); // Asignamos el rol dinámicamente
             }
             resolve(row);
         });
@@ -101,14 +93,21 @@ function setMuteStatus(nick, isMuted, moderatorNick = null) {
     });
 }
 
-function setAvatarUrl(nick, avatarUrl) {
+// ==========================================================
+// INICIO DE LA CORRECCIÓN CLAVE
+// ==========================================================
+// La función ahora acepta 'userId' en lugar de 'nick' y busca por 'id'.
+function setAvatarUrl(userId, avatarUrl) {
     return new Promise((resolve, reject) => {
-        db.run('UPDATE users SET avatar_url = ? WHERE lower(nick) = ?', [avatarUrl, nick.toLowerCase()], function(err) {
+        db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, userId], function(err) {
             if (err) return reject(err);
             resolve(this.changes > 0);
         });
     });
 }
+// ==========================================================
+// FIN DE LA CORRECCIÓN CLAVE
+// ==========================================================
 
 function setUserRole(nick, role) {
     return new Promise((resolve, reject) => {
@@ -132,7 +131,7 @@ module.exports = {
     setVipStatus,
     setMuteStatus,
     updateUserIP,
-    setAvatarUrl,
+    setAvatarUrl, // <-- La función corregida sigue exportándose
     updateUserNick,
     setUserRole
 };

@@ -1,5 +1,5 @@
 const express = require('express');
-const router = express.Router(); // <--- ¡LA LÍNEA MÁS IMPORTANTE QUE FALTABA!
+const router = express.Router();
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
 const config = require('../config');
@@ -7,7 +7,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
-const uploadsDir = process.env.RENDER ? path.join(__dirname, '../data/avatars') : path.join(__dirname, '../avatars');
+const uploadsDir = path.join(__dirname, '..', 'data', 'avatars');
 
 if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -31,77 +31,78 @@ const upload = multer({
     storage: storage,
     limits: { fileSize: 2 * 1024 * 1024 },
     fileFilter: function (req, file, cb) {
-        const filetypes = /jpeg|jpg|png|gif/;
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-        if (mimetype && extname) {
+        const filetypes = /jpeg|jpg|png|gif|webp/;
+        if (filetypes.test(file.mimetype)) {
             return cb(null, true);
         }
-        cb(new Error('Solo se permiten archivos de imagen (jpeg, jpg, png, gif).'));
+        cb(new Error('Solo se permiten archivos de imagen.'));
     }
 }).single('avatarFile');
 
-router.post('/avatar', (req, res) => {
-    const oldNick = req.verifiedUser.nick;
+
+// --- RUTA DE SUBIDA DE AVATAR ---
+router.post('/avatar', upload, async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No se ha subido ningún archivo válido.' });
+    }
+
+    const { id: userId, nick: userNick } = req.verifiedUser;
     
-    upload(req, res, async function (err) {
-        if (err) return res.status(400).json({ error: err.message });
-        if (!req.file) return res.status(400).json({ error: 'No se ha subido ningún archivo válido.' });
+    // LÍNEA ELIMINADA: Se ha quitado la comprobación estricta 'typeof userId !== "number"'
+    // La base de datos manejará la conversión si es necesario.
+    if (!userId) {
+         return res.status(400).json({ error: 'ID de usuario inválido en la sesión.' });
+    }
 
-        const avatarUrl = process.env.RENDER ? `data/avatars/${req.file.filename}` : `avatars/${req.file.filename}`;
+    const avatarUrl = `data/avatars/${req.file.filename}`;
 
-        try {
-            const success = await userService.setAvatarUrl(oldNick, avatarUrl);
-            if (success) {
-                const targetSocketId = roomService.findSocketIdByNick(oldNick);
-                if (targetSocketId) {
-                    const targetSocket = req.io.sockets.sockets.get(targetSocketId);
-                    if (targetSocket) {
-                        targetSocket.userData.avatar_url = avatarUrl;
-                        req.io.emit('user_data_updated', { nick: oldNick, avatar_url: avatarUrl });
-                    }
+    try {
+        const success = await userService.setAvatarUrl(userId, avatarUrl);
+
+        if (success) {
+            const targetSocketId = roomService.findSocketIdByNick(userNick);
+            if (targetSocketId) {
+                const targetSocket = req.io.sockets.sockets.get(targetSocketId);
+                if (targetSocket) {
+                    targetSocket.userData.avatar_url = avatarUrl;
+                    req.io.emit('user_data_updated', { nick: userNick, avatar_url: avatarUrl });
                 }
-                res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
-            } else {
-                res.status(404).json({ error: 'Usuario no encontrado.' });
             }
-        } catch (error) {
-            res.status(500).json({ error: 'Error interno del servidor al guardar en la base de datos.' });
+            res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
+        } else {
+            res.status(404).json({ error: 'Usuario no encontrado en la base de datos (ID inválido).' });
         }
-    });
+    } catch (error) {
+        console.error('Error al guardar avatar en la DB:', error);
+        res.status(500).json({ error: 'Error interno del servidor.' });
+    }
 });
 
+
+// --- RUTA DE CAMBIO DE NICK (COMPLETADA) ---
 router.post('/nick', async (req, res) => {
     const oldNick = req.verifiedUser.nick;
     const { newNick } = req.body;
     const io = req.io;
 
     if (oldNick.toLowerCase() === config.ownerNick.toLowerCase()) {
-        return res.status(403).json({ error: 'Acción prohibida: El nick del Owner no se puede cambiar desde la aplicación.' });
+        return res.status(403).json({ error: 'Acción prohibida: El nick del Owner no se puede cambiar.' });
     }
 
-    if (!newNick || newNick.trim() === '') return res.status(400).json({ error: 'El nuevo nick no puede estar vacío.' });
-    if (newNick.length < 3 || newNick.length > 15) return res.status(400).json({ error: "El nick debe tener entre 3 y 15 caracteres." });
-    if (!/^[a-zA-Z0-9_-]+$/.test(newNick)) return res.status(400).json({ error: "El nick solo puede contener letras, números, guiones y guiones bajos." });
+    if (!newNick || newNick.trim() === '' || newNick.length < 3 || newNick.length > 15 || !/^[a-zA-Z0-9_-]+$/.test(newNick)) {
+        return res.status(400).json({ error: 'Nick inválido (3-15 caracteres, solo letras, números, _-).' });
+    }
     
-    if (newNick.toLowerCase() === oldNick.toLowerCase() && newNick !== oldNick) {
-        // Permitir el cambio si es solo de capitalización
-    } else if (newNick.toLowerCase() === oldNick.toLowerCase()) {
+    if (newNick.toLowerCase() === oldNick.toLowerCase()) {
         return res.status(400).json({ error: 'El nuevo nick es igual al actual.' });
     }
 
     try {
         const existingUser = await userService.findUserByNick(newNick);
-        if (existingUser && existingUser.id !== req.verifiedUser.id) {
-            return res.status(400).json({ error: `El nick '${newNick}' ya está registrado por otro usuario.` });
+        if (existingUser) {
+            return res.status(400).json({ error: `El nick '${newNick}' ya está registrado.` });
         }
         
-        const socketIdInUse = roomService.findSocketIdByNick(newNick);
-        const mySocketId = roomService.findSocketIdByNick(oldNick);
-        if (socketIdInUse && socketIdInUse !== mySocketId) {
-             return res.status(400).json({ error: `El nick '${newNick}' ya está en uso por un usuario conectado.` });
-        }
-
         const success = await userService.updateUserNick(oldNick, newNick);
 
         if (success) {
@@ -117,15 +118,9 @@ router.post('/nick', async (req, res) => {
                         role: targetSocket.userData.role
                     });
 
-                    io.emit('system message', { text: `${oldNick} ahora es conocido como ${newNick}.`, type: 'highlight' });
-                    
                     io.emit('user_data_updated', {
                         oldNick: oldNick,
-                        nick: newNick,
-                        role: targetSocket.userData.role,
-                        isVIP: targetSocket.userData.isVIP,
-                        avatar_url: targetSocket.userData.avatar_url,
-                        id: targetSocket.userData.id
+                        nick: newNick
                     });
                 }
             }
@@ -135,9 +130,8 @@ router.post('/nick', async (req, res) => {
         }
     } catch (error) {
         console.error('Error al cambiar nick:', error);
-        res.status(500).json({ error: 'Error interno del servidor al cambiar el nick.' });
+        res.status(500).json({ error: 'Error interno del servidor.' });
     }
 });
 
-// La línea que exporta el router para que sea usado en server.js
 module.exports = router;

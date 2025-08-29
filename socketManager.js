@@ -356,16 +356,15 @@ function initializeSocket(io) {
             console.error("Error crítico durante la verificación de VPN:", error);
         }
 
-        // --- INICIO DE LA CORRECCIÓN ---
-        // 1. Preparamos la lista de salas
-        const roomListArray = Object.keys(roomService.rooms).map(roomName => ({
-            name: roomName,
-            userCount: Object.keys(roomService.rooms[roomName].users).length
-        })).sort((a, b) => b.userCount - a.userCount);
+        // ---- INICIO DEL CÓDIGO CORRECTO ----
+    
+        // 1. Obtenemos la lista de salas y sus usuarios usando tu roomService
+        const roomList = roomService.getActiveRoomsWithUserCount();
         
-        // 2. Se la enviamos DIRECTAMENTE al nuevo usuario que acaba de conectar
-        socket.emit('update room data', roomListArray); 
-        // --- FIN DE LA CORRECCIÓN ---
+        // 2. Le enviamos esa lista directamente al usuario que acaba de conectar
+        socket.emit('update room data', roomList); 
+        
+        // ---- FIN DEL CÓDIGO CORRECTO ----
 
         // 3. Mantenemos la línea original para actualizar los contadores para el resto de usuarios
         roomService.updateRoomData(io); 

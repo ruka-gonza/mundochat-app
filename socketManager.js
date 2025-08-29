@@ -7,12 +7,9 @@ const { handleCommand } = require('./handlers/modHandler');
 const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection');
-const fs = require('fs'); // <-- AÑADIR IMPORTACIÓN DE FILE SYSTEM
+const fs = require('fs');
 
 let fileChunks = {};
-
-// ... (Las funciones handleChatMessage, handlePrivateMessage, etc., no cambian)
-// ... (Copiar y pegar desde tu archivo existente hasta llegar a initializeSocket)
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
@@ -30,7 +27,7 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
         return;
     }
     
-    const timestamp = new Date().toISOString(); // Creamos la hora una sola vez
+    const timestamp = new Date().toISOString();
     
     const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId) VALUES (?, ?, ?, ?, ?, ?, ?)');
     
@@ -283,7 +280,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
         return { 
             id: u.id, nick: u.nick, role: effectiveRole, 
             isVIP: u.isVIP, avatar_url: u.avatar_url,
-            isAFK: u.isAFK // Incluir estado AFK en la lista de usuarios
+            isAFK: u.isAFK
         };
     });
     const initialUserList = await Promise.all(userListPromises);
@@ -358,7 +355,20 @@ function initializeSocket(io) {
         } catch (error) {
             console.error("Error crítico durante la verificación de VPN:", error);
         }
-        roomService.updateRoomData(io);
+
+        // --- INICIO DE LA CORRECCIÓN ---
+        // 1. Preparamos la lista de salas
+        const roomListArray = Object.keys(roomService.rooms).map(roomName => ({
+            name: roomName,
+            userCount: Object.keys(roomService.rooms[roomName].users).length
+        })).sort((a, b) => b.userCount - a.userCount);
+        
+        // 2. Se la enviamos DIRECTAMENTE al nuevo usuario que acaba de conectar
+        socket.emit('update room data', roomListArray); 
+        // --- FIN DE LA CORRECCIÓN ---
+
+        // 3. Mantenemos la línea original para actualizar los contadores para el resto de usuarios
+        roomService.updateRoomData(io); 
 
         socket.on('guest_join', async (data) => {
             const { nick, roomName } = data;

@@ -2,7 +2,7 @@ import state from '../state.js';
 import * as dom from '../domElements.js';
 import { getUserIcons, replaceEmoticons } from '../utils.js';
 import { switchToChat, showReplyContextBar } from './chatInput.js';
-import { openImageModal } from './modals.js'; // La importación ahora funcionará
+import { openImageModal } from './modals.js';
 
 function showSelfContextMenu(event) {
     if (event.type === 'contextmenu') {
@@ -46,13 +46,10 @@ async function handleGuestAvatarUpload(event) {
             method: 'POST',
             body: formData
         });
-
         const result = await response.json();
-        
         if (!response.ok) {
             alert(`Error: ${result.error || 'No se pudo subir la imagen.'}`);
         }
-        
     } catch (error) {
         console.error('Error al subir avatar de invitado:', error);
         alert('Hubo un error de conexión al subir el avatar.');
@@ -241,6 +238,22 @@ function closeImageModal() {
     }
 }
 
+function createYoutubeEmbed(youtubeId, targetContainer) {
+    const embedWrapper = document.createElement('div');
+    embedWrapper.className = 'youtube-embed-wrapper';
+    
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1`;
+    iframe.title = "Reproductor de video de YouTube";
+    iframe.frameBorder = "0";
+    iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+    iframe.allowFullscreen = true;
+    
+    embedWrapper.appendChild(iframe);
+    
+    targetContainer.parentNode.replaceChild(embedWrapper, targetContainer);
+}
+
 export function initUserInteractions() {
     dom.userSearchInput.addEventListener('input', renderUserList);
     
@@ -271,7 +284,23 @@ export function initUserInteractions() {
         }
     });
 
+    // LISTENER DE CLICS UNIFICADO Y CORREGIDO
     dom.messagesContainer.addEventListener('click', (e) => {
+        
+        // Prioridad 1: Clic en una tarjeta de previsualización
+        const previewCard = e.target.closest('.link-preview-card');
+        if (previewCard) {
+            e.preventDefault(); // Prevenir la acción por defecto del enlace
+            const type = previewCard.dataset.previewType;
+            if (type === 'image') {
+                openImageModal(previewCard.dataset.imageUrl);
+            } else if (type === 'youtube') {
+                createYoutubeEmbed(previewCard.dataset.youtubeId, previewCard);
+            }
+            return;
+        }
+        
+        // Lógica para mostrar/ocultar botones de acción
         const currentlyVisible = document.querySelector('#messages > li.actions-visible');
         if (currentlyVisible && !e.target.closest('li')) {
             currentlyVisible.classList.remove('actions-visible');
@@ -285,6 +314,7 @@ export function initUserInteractions() {
             messageItem.classList.toggle('actions-visible');
         }
         
+        // Lógica para los botones de acción (editar/borrar)
         const actionButton = e.target.closest('.action-btn');
         if (actionButton) {
             e.stopPropagation();
@@ -309,12 +339,6 @@ export function initUserInteractions() {
             const messageId = nickElement.dataset.messageId;
             if (nick === state.myNick) showSelfContextMenu(e);
             else showNickContextMenu(e, nick, messageId);
-            return;
-        }
-
-        if (e.target.classList.contains('image-thumbnail')) {
-            e.stopPropagation();
-            openImageModal(e.target.src);
             return;
         }
     });

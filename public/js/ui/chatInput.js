@@ -186,22 +186,11 @@ export function switchToChat(contextId, contextType) {
     let view, container;
 
     if (contextType === 'room') {
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
-        // Ahora, en lugar de pedir la lista al servidor, la tomamos de nuestro
-        // "almacén" local, que siempre está sincronizado.
-        if (state.roomUserLists && state.roomUserLists[contextId]) {
-            state.currentRoomUsers = state.roomUserLists[contextId];
-        } else {
-            // Si por alguna razón no la tenemos, la pedimos como respaldo.
-            state.socket.emit('request user list', { roomName: contextId });
-            state.currentRoomUsers = []; // Mostramos una lista vacía mientras llega la respuesta
-        }
-        renderUserList();
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
+        // --- INICIO DE LA CORRECCIÓN ---
+        // Forzamos la petición de la lista de usuarios CADA VEZ que cambiamos a una sala.
+        // Esto asegura que siempre tengamos la información más reciente.
+        state.socket.emit('request user list', { roomName: contextId });
+        // --- FIN DE LA CORRECCIÓN ---
         
         if (!state.publicMessageHistories[contextId]) {
             state.publicMessageHistories[contextId] = [];
@@ -222,6 +211,9 @@ export function switchToChat(contextId, contextType) {
         dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
         dom.mainChatArea.classList.add('hidden');
         view.classList.remove('hidden');
+        
+        // Al estar en un privado, no tocamos la lista de usuarios de la sala,
+        // la dejamos tal cual estaba.
         
         container.innerHTML = '';
         if (!state.privateMessageHistories[contextId]) {

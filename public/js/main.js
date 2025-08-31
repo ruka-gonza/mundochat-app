@@ -1,49 +1,64 @@
+import state from './state.js';
+import * as dom from './domElements.js';
 import { initializeSocketEvents } from './socket.js';
+
+// Importación de módulos de interfaz de usuario (UI)
 import { initAuth } from './ui/auth.js';
 import { initChatInput, switchToChat } from './ui/chatInput.js';
 import { initConversations } from './ui/conversations.js';
 import { initModals } from './ui/modals.js';
 import { initUserInteractions } from './ui/userInteractions.js';
-import * as dom from './domElements.js';
-import state from './state.js';
 
+/**
+ * Configura los manejadores de eventos para la interfaz responsiva en móviles.
+ * Controla la visibilidad de los paneles laterales y la superposición.
+ */
 function initResponsiveHandlers() {
-    const conversationsPanel = document.getElementById('conversations-panel');
-    const usersPanel = document.getElementById('user-list-container');
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // La variable se llama 'mobileOverlay' cuando se importa desde dom.js, no 'overlay'.
+    const { conversationsPanel, userListContainer, mobileOverlay } = dom;
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
     const toggleConversationsBtn = document.getElementById('toggle-conversations-btn');
     const toggleUsersBtn = document.getElementById('toggle-users-btn');
-    const overlay = document.getElementById('mobile-overlay');
     const privateChatBackButton = document.getElementById('private-chat-back-button');
 
     const closePanels = () => {
         conversationsPanel.classList.remove('show');
-        usersPanel.classList.remove('show');
-        overlay.classList.remove('show');
+        userListContainer.classList.remove('show');
+        mobileOverlay.classList.remove('show');
     };
 
     toggleConversationsBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        usersPanel.classList.remove('show'); 
+        userListContainer.classList.remove('show'); 
         conversationsPanel.classList.toggle('show');
-        overlay.classList.toggle('show', conversationsPanel.classList.contains('show'));
+        mobileOverlay.classList.toggle('show', conversationsPanel.classList.contains('show'));
     });
 
     toggleUsersBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         conversationsPanel.classList.remove('show'); 
-        usersPanel.classList.toggle('show');
-        overlay.classList.toggle('show', usersPanel.classList.contains('show'));
+        userListContainer.classList.toggle('show');
+        mobileOverlay.classList.toggle('show', userListContainer.classList.contains('show'));
     });
 
-    overlay.addEventListener('click', closePanels);
+    // Usamos 'mobileOverlay' aquí también.
+    mobileOverlay.addEventListener('click', closePanels);
 
     privateChatBackButton.addEventListener('click', () => {
-        if (state.lastActiveRoom) {
-            switchToChat(state.lastActiveRoom, 'room');
-        }
+        const roomToReturn = state.lastActiveRoom || '#General';
+        switchToChat(roomToReturn, 'room');
     });
 }
 
+/**
+ * Inicializa el selector de tema (claro/oscuro) y aplica el tema guardado.
+ */
 function initThemeSwitcher() {
     const currentTheme = localStorage.getItem('theme');
     if (currentTheme === 'dark') {
@@ -63,20 +78,23 @@ function initThemeSwitcher() {
 }
 
 
-import state from './state.js'; // <-- AÑADE ESTA LÍNEA
-
+/**
+ * Punto de entrada principal de la aplicación del cliente.
+ * Se ejecuta cuando el DOM está completamente cargado.
+ */
 document.addEventListener('DOMContentLoaded', () => {
-    state.socket = io(); // <-- ¡LA CORRECCIÓN MÁGICA!
+    // Inicializa la conexión del socket y la guarda en el estado global
+    state.socket = io();
 
-    initializeSocketEvents(state.socket); // Pasamos el socket del estado
+    // Inicializa todos los módulos de la aplicación
+    initializeSocketEvents(state.socket);
     initAuth();
     initChatInput();
     initConversations();
     initModals();
     initUserInteractions();
-    
     initResponsiveHandlers();
     initThemeSwitcher();
 
-    console.log("Cliente de MundoChat inicializado modularmente.");
+    console.log("Cliente de MundoChat inicializado correctamente.");
 });

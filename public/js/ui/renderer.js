@@ -1,58 +1,53 @@
 import state from '../state.js';
 import { getUserIcons, replaceEmoticons } from '../utils.js';
 
-function createEmbedElement(text) {
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const gifRegex = /(https?:\/\/\S+\.(?:gif))/i;
+/**
+ * Crea una tarjeta interactiva de previsualización para un enlace.
+ * @param {object} preview - El objeto de previsualización enviado por el servidor.
+ * @returns {HTMLElement|null} El elemento de la tarjeta o null si no hay previsualización.
+ */
+function createPreviewCard(preview) {
+    if (!preview || !preview.url) return null;
 
-    const youtubeMatch = text.match(youtubeRegex);
-    const gifMatch = text.match(gifRegex);
+    const card = document.createElement('a');
+    card.href = preview.url;
+    card.target = '_blank';
+    card.rel = 'noopener noreferrer';
+    card.className = 'link-preview-card';
 
-    let embedContainer = null;
-    let embedContent = null;
-
-    if (youtubeMatch && youtubeMatch[1]) {
-        const videoId = youtubeMatch[1];
-        embedContainer = document.createElement('div');
-        embedContainer.className = 'message-embed-container';
-
-        embedContent = document.createElement('iframe');
-        
-        const origin = window.location.origin;
-
-        embedContent.src = `https://www.youtube-nocookie.com/embed/${videoId}?origin=${encodeURIComponent(origin)}`;
-        embedContent.sandbox = 'allow-scripts allow-same-origin allow-presentation allow-popups';
-        embedContent.title = 'Reproductor de video de YouTube';
-        embedContent.frameBorder = '0';
-        embedContent.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-        embedContent.allowFullscreen = true;
-
-    } else if (gifMatch && gifMatch[0]) {
-        const gifUrl = gifMatch[0];
-        embedContainer = document.createElement('div');
-        embedContainer.className = 'message-embed-container';
-
-        embedContent = document.createElement('img');
-        embedContent.src = gifUrl;
-        embedContent.alt = 'GIF animado';
-        embedContent.loading = 'lazy';
+    // Añadir atributos de datos para la interactividad
+    if (preview.type === 'image') {
+        card.dataset.previewType = 'image';
+        card.dataset.imageUrl = preview.image;
+    }
+    if (preview.type === 'youtube') {
+        const videoIdMatch = preview.url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
+        if (videoIdMatch) {
+            card.dataset.previewType = 'youtube';
+            card.dataset.youtubeId = videoIdMatch[1];
+        }
     }
 
-    if (embedContainer && embedContent) {
-        embedContent.className = 'embed-content';
-        embedContainer.appendChild(embedContent);
-
-        const closeButton = document.createElement('button');
-        closeButton.className = 'embed-close-btn';
-        closeButton.textContent = '×';
-        closeButton.title = 'Cerrar vista previa';
-        embedContainer.appendChild(closeButton);
+    let innerHTML = '';
+    if (preview.image) {
+        // Añadimos un onerror para evitar imágenes rotas
+        innerHTML += `<div class="preview-image-container"><img src="${preview.image}" alt="Previsualización" loading="lazy" onerror="this.style.display='none'; this.parentElement.style.display='none';"></div>`;
     }
+    innerHTML += '<div class="preview-info">';
+    if (preview.title) {
+        innerHTML += `<strong class="preview-title">${preview.title}</strong>`;
+    }
+    if (preview.description) {
+        innerHTML += `<p class="preview-description">${preview.description}</p>`;
+    }
+    innerHTML += '</div>';
 
-    return embedContainer;
+    card.innerHTML = innerHTML;
+    return card;
 }
 
 export function createMessageElement(msg, isPrivate = false) {
+    // Manejo de mensajes de sistema
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
         item.className = `system-message ${msg.type || ''}`;
@@ -60,16 +55,19 @@ export function createMessageElement(msg, isPrivate = false) {
         return item;
     }
 
+    // Ignorar usuarios
     const senderNick = isPrivate ? msg.from : msg.nick;
     if (state.ignoredNicks.has(senderNick.toLowerCase())) {
         return document.createDocumentFragment();
     }
 
+    // Creación de elementos base
     const item = document.createElement('li');
     item.id = `message-${msg.id}`;
     const isSent = msg.from === state.myNick || msg.nick === state.myNick;
     const senderData = state.allUsersData[senderNick.toLowerCase()] || {};
     const avatarUrl = (isSent && state.myUserData.avatar_url) ? state.myUserData.avatar_url : (senderData.avatar_url || 'image/default-avatar.png');
+    
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = 'message-avatar';
@@ -81,6 +79,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
+    // Renderizado de respuesta (si existe)
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
@@ -94,9 +93,14 @@ export function createMessageElement(msg, isPrivate = false) {
         contentDiv.appendChild(quoteDiv);
     }
     
+    // =========================================================================
+    // ===                    INICIO DE LA MODIFICACIÓN                    ===
+    // =========================================================================
+    // Lógica unificada para renderizar el contenido del mensaje
+    
     const icons = getUserIcons(senderData);
     const displayName = isPrivate ? (isSent ? 'Yo' : msg.from) : msg.nick;
-    
+
     const nickElement = document.createElement('span');
     nickElement.className = 'message-nick';
     nickElement.innerHTML = `${icons} <strong>${displayName}</strong>: `;
@@ -106,48 +110,38 @@ export function createMessageElement(msg, isPrivate = false) {
         nickElement.dataset.messageId = msg.id;
     }
 
-    if (msg.text) {
-        const textSpan = document.createElement('span');
-        textSpan.className = 'message-text';
-        textSpan.appendChild(nickElement);
+    const textSpan = document.createElement('span');
+    textSpan.className = 'message-text';
+    textSpan.appendChild(nickElement);
+
+    // Si el mensaje tiene una previsualización de tipo 'image', el texto es un placeholder
+    // y no queremos mostrarlo, solo la tarjeta. Si es de YouTube, sí mostramos el texto (la URL).
+    if (!msg.preview || msg.preview.type !== 'image') {
         textSpan.append(replaceEmoticons(msg.text));
-        contentDiv.appendChild(textSpan);
     }
 
-    if (msg.file) {
-        let fileElement;
-        
-        if (!msg.text) {
-             contentDiv.appendChild(nickElement);
-        }
+    contentDiv.appendChild(textSpan);
 
-        if (msg.type.startsWith('image/')) {
-            fileElement = document.createElement('img');
-            fileElement.src = msg.file;
-            fileElement.className = 'image-thumbnail';
-            fileElement.alt = `Imagen de ${displayName}`;
-            fileElement.style.marginTop = '5px';
-        } else if (msg.type.startsWith('audio/')) {
-            fileElement = document.createElement('audio');
-            fileElement.src = msg.file;
-            fileElement.controls = true;
-            fileElement.style.marginTop = '5px';
-        }
-
-        if (fileElement) {
-            contentDiv.appendChild(fileElement);
+    // Si el mensaje tiene CUALQUIER tipo de previsualización, la renderizamos como una tarjeta.
+    // Esto ahora funciona tanto para enlaces externos como para imágenes subidas.
+    if (msg.preview) {
+        const previewCard = createPreviewCard(msg.preview);
+        if (previewCard) {
+            contentDiv.appendChild(previewCard);
         }
     }
+    
+    // =========================================================================
+    // ===                     FIN DE LA MODIFICACIÓN                    ===
+    // =========================================================================
 
-    // --- INICIO DE LA CORRECCIÓN ---
-    // AÑADIMOS UNA COMPROBACIÓN PARA EVITAR ERRORES CON MENSAJES ANTIGUOS
+    // Renderizado de timestamp y estado de edición
     if (msg.timestamp) {
         const timestampSpan = document.createElement('span');
         timestampSpan.className = 'message-timestamp';
         timestampSpan.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         contentDiv.appendChild(timestampSpan);
     }
-    // --- FIN DE LA CORRECCIÓN ---
 
     if (msg.editedAt) {
         const editedSpan = document.createElement('span');
@@ -158,19 +152,13 @@ export function createMessageElement(msg, isPrivate = false) {
 
     mainContentWrapper.appendChild(contentDiv);
 
-    if (msg.text) {
-        const embedElement = createEmbedElement(msg.text);
-        if (embedElement) {
-            mainContentWrapper.appendChild(embedElement);
-        }
-    }
-
+    // Renderizado de botones de acción
     const iAmModerator = ['owner', 'admin'].includes(state.myUserData.role);
     if (!isPrivate) {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
-        if (isSent && msg.text) {
+        if (isSent && msg.text && (!msg.preview || msg.preview.type !== 'image')) { // Solo se pueden editar mensajes de texto
             const editBtn = document.createElement('button');
             editBtn.textContent = '✏️';
             editBtn.title = 'Editar mensaje';
@@ -198,6 +186,7 @@ export function createMessageElement(msg, isPrivate = false) {
 
     item.appendChild(mainContentWrapper);
 
+    // Aplicar clases de estilo finales
     if (isPrivate) {
         item.classList.add(isSent ? 'sent' : 'received');
     } else {

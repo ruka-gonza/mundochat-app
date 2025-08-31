@@ -5,7 +5,7 @@ import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
 
-// --- INICIO DE LA MODIFICACIÓN: Funciones para manejar la barra de respuesta ---
+// --- Funciones para manejar la barra de respuesta ---
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
     const { nick, text } = state.replyingTo;
@@ -20,7 +20,8 @@ export function hideReplyContextBar() {
     state.replyingTo = null;
     dom.replyContextBar.classList.add('hidden');
 }
-// --- FIN DE LA MODIFICACIÓN ---
+
+// --- Resto de funciones auxiliares (sin cambios) ---
 
 function handleTypingIndicator() {
     if (state.currentChatContext.type === 'none') return;
@@ -123,22 +124,18 @@ export function sendMessage() {
     }
     const { type, with: contextWith } = state.currentChatContext;
     if (type === 'room') {
-        // --- INICIO DE LA MODIFICACIÓN: Enviar el ID de la respuesta ---
         const payload = { 
             text, 
             roomName: contextWith,
             replyToId: state.replyingTo ? state.replyingTo.id : null
         };
         state.socket.emit('chat message', payload);
-        // --- FIN DE LA MODIFICACIÓN ---
     } else if (type === 'private') {
         state.socket.emit('private message', { to: contextWith, text: text });
     }
     dom.input.value = '';
     dom.emojiPicker.classList.add('hidden');
-    // --- INICIO DE LA MODIFICACIÓN: Ocultar la barra de respuesta al enviar ---
     hideReplyContextBar();
-    // --- FIN DE LA MODIFICACIÓN ---
 }
 
 export function handleFileUpload(file) {
@@ -169,6 +166,10 @@ export function handleFileUpload(file) {
     };
     readSlice(0);
 };
+
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {
@@ -212,8 +213,14 @@ export function switchToChat(contextId, contextType) {
         dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
         dom.mainChatArea.classList.add('hidden');
         view.classList.remove('hidden');
-        state.currentRoomUsers = [];
-        renderUserList();
+        
+        // --- ESTAS SON LAS LÍNEAS CORREGIDAS ---
+        // Se comentan para que la lista de usuarios de la sala no se borre
+        // al cambiar a un chat privado.
+        // state.currentRoomUsers = [];
+        // renderUserList();
+        // --- FIN DE LA CORRECCIÓN ---
+
         container.innerHTML = '';
         if (!state.privateMessageHistories[contextId]) {
             state.socket.emit('request private history', { withNick: contextId });
@@ -227,6 +234,9 @@ export function switchToChat(contextId, contextType) {
         }
     }
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 export function updateTypingIndicator() {
     dom.typingIndicator.textContent = '';
@@ -376,7 +386,5 @@ export function initChatInput() {
         state.socket.emit('system message', { text: 'Grabación de audio cancelada.', type: 'warning' });
     });
 
-    // --- INICIO DE LA MODIFICACIÓN: Listener para cancelar respuesta ---
     dom.cancelReplyButton.addEventListener('click', hideReplyContextBar);
-    // --- FIN DE LA MODIFICACIÓN ---
 }

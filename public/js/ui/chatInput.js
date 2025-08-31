@@ -186,11 +186,7 @@ export function switchToChat(contextId, contextType) {
     let view, container;
 
     if (contextType === 'room') {
-        // --- INICIO DE LA CORRECCIÓN ---
-        // Forzamos la petición de la lista de usuarios CADA VEZ que cambiamos a una sala.
-        // Esto asegura que siempre tengamos la información más reciente.
         state.socket.emit('request user list', { roomName: contextId });
-        // --- FIN DE LA CORRECCIÓN ---
         
         if (!state.publicMessageHistories[contextId]) {
             state.publicMessageHistories[contextId] = [];
@@ -212,8 +208,16 @@ export function switchToChat(contextId, contextType) {
         dom.mainChatArea.classList.add('hidden');
         view.classList.remove('hidden');
         
-        // Al estar en un privado, no tocamos la lista de usuarios de la sala,
-        // la dejamos tal cual estaba.
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        // ESTAS SON LAS LÍNEAS QUE CAUSABAN EL ERROR. LAS HEMOS ELIMINADO.
+        // state.currentRoomUsers = []; 
+        // renderUserList();
+        // Al no tocar la lista, el panel de la derecha se mantendrá como estaba.
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         
         container.innerHTML = '';
         if (!state.privateMessageHistories[contextId]) {

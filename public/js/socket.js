@@ -71,16 +71,10 @@ export function initializeSocketEvents(socket) {
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
     socket.on('set session cookie', (data) => { document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Lax`; });
     
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     socket.on('update user list', ({ roomName, users }) => {
-        // PASO 1: Guardamos la lista de usuarios de la sala correspondiente en un objeto global.
-        // Esto asegura que siempre tengamos la lista más reciente, incluso si no estamos viendo esa sala.
         if (!state.roomUserLists) state.roomUserLists = {};
         state.roomUserLists[roomName] = users;
 
-        // PASO 2: Actualizamos el estado y la UI SOLO si estamos viendo la sala afectada.
         if (state.currentChatContext.type === 'room' && state.currentChatContext.with === roomName) {
             state.currentRoomUsers = users;
             users.forEach(user => {
@@ -91,9 +85,6 @@ export function initializeSocketEvents(socket) {
             renderUserList();
         }
     });
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     socket.on('user_data_updated', (data) => {
         const lowerOldNick = (data.oldNick || data.nick).toLowerCase();
@@ -113,7 +104,6 @@ export function initializeSocketEvents(socket) {
             dom.newNickInput.value = state.myNick;
         }
     
-        // Actualiza el usuario en todas las listas de sala donde pueda estar
         Object.values(state.roomUserLists || {}).forEach(list => {
             const userInList = list.find(u => u.nick.toLowerCase() === lowerOldNick);
             if (userInList) {
@@ -124,7 +114,6 @@ export function initializeSocketEvents(socket) {
             }
         });
 
-        // Si estamos viendo una sala, volvemos a renderizar la lista de usuarios
         if (state.currentChatContext.type === 'room') {
             renderUserList();
         }
@@ -324,24 +313,42 @@ export function initializeSocketEvents(socket) {
     });
 
     socket.on('message edited', ({ messageId, newText, roomName }) => {
-        if (state.currentChatContext.with !== roomName) return;
-        const messageElement = document.getElementById(`message-${messageId}`);
-        if (messageElement) {
-            const textSpan = messageElement.querySelector('.message-text');
-            if (textSpan) textSpan.textContent = newText;
-            let editedIndicator = messageElement.querySelector('.edited-indicator');
-            if (!editedIndicator) {
-                editedIndicator = document.createElement('span');
-                editedIndicator.className = 'edited-indicator';
-                editedIndicator.textContent = ' (editado)';
-                messageElement.querySelector('.message-content').appendChild(editedIndicator);
+        if (state.publicMessageHistories[roomName]) {
+            const message = state.publicMessageHistories[roomName].find(m => m.id === messageId);
+            if (message) {
+                message.text = newText;
+                message.editedAt = new Date().toISOString();
+            }
+        }
+        if (state.currentChatContext.with === roomName) {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+                const textSpan = messageElement.querySelector('.message-text');
+                if (textSpan) {
+                    const nickElement = textSpan.querySelector('.message-nick');
+                    textSpan.innerHTML = '';
+                    textSpan.appendChild(nickElement);
+                    textSpan.append(replaceEmoticons(newText));
+                }
+                let editedIndicator = messageElement.querySelector('.edited-indicator');
+                if (!editedIndicator) {
+                    editedIndicator = document.createElement('span');
+                    editedIndicator.className = 'edited-indicator';
+                    editedIndicator.textContent = ' (editado)';
+                    messageElement.querySelector('.message-content').appendChild(editedIndicator);
+                }
             }
         }
     });
-
+    
+    // CORRECCIÓN PARA EL BORRADO DE MENSAJES
     socket.on('message deleted', ({ messageId, roomName }) => {
-        if (state.currentChatContext.with !== roomName) return;
-        document.getElementById(`message-${messageId}`)?.remove();
+        if (state.publicMessageHistories[roomName]) {
+            state.publicMessageHistories[roomName] = state.publicMessageHistories[roomName].filter(m => m.id !== messageId);
+        }
+        if (state.currentChatContext.with === roomName) {
+            document.getElementById(`message-${messageId}`)?.remove();
+        }
     });
 
     socket.on('admin panel refresh', () => {

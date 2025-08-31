@@ -14,15 +14,7 @@ import { initUserInteractions } from './ui/userInteractions.js';
  * Controla la visibilidad de los paneles laterales y la superposición.
  */
 function initResponsiveHandlers() {
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    // La variable se llama 'mobileOverlay' cuando se importa desde dom.js, no 'overlay'.
     const { conversationsPanel, userListContainer, mobileOverlay } = dom;
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-
     const toggleConversationsBtn = document.getElementById('toggle-conversations-btn');
     const toggleUsersBtn = document.getElementById('toggle-users-btn');
     const privateChatBackButton = document.getElementById('private-chat-back-button');
@@ -47,7 +39,6 @@ function initResponsiveHandlers() {
         mobileOverlay.classList.toggle('show', userListContainer.classList.contains('show'));
     });
 
-    // Usamos 'mobileOverlay' aquí también.
     mobileOverlay.addEventListener('click', closePanels);
 
     privateChatBackButton.addEventListener('click', () => {

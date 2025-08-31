@@ -8,11 +8,11 @@ const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection');
 const fs = require('fs');
-const fetch = require('node-fetch'); // <-- MÓDULO NECESARIO PARA PREVISUALIZACIONES
+const fetch = require('node-fetch');
 
 let fileChunks = {};
 
-// --- NUEVA FUNCIÓN PARA GENERAR PREVISUALIZACIONES ---
+// --- FUNCIONES AUXILIARES PARA PREVISUALIZACIÓN DE ENLACES ---
 async function generateLinkPreview(text) {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/;
@@ -21,7 +21,6 @@ async function generateLinkPreview(text) {
 
     const url = match[0];
 
-    // Caso 1: Enlace directo a una imagen o GIF
     const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
     if (imageRegex.test(url)) {
         return {
@@ -33,13 +32,11 @@ async function generateLinkPreview(text) {
         };
     }
 
-    // Caso 2: Enlace de YouTube
     const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
     const youtubeMatch = url.match(youtubeRegex);
     if (youtubeMatch && youtubeMatch[1]) {
         try {
             const videoId = youtubeMatch[1];
-            // Usamos la API oEmbed oficial de YouTube, es segura y eficiente
             const response = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
             if (!response.ok) return null;
             
@@ -56,10 +53,10 @@ async function generateLinkPreview(text) {
             return null;
         }
     }
-
-    return null; // No es un enlace que soportemos por ahora
+    return null;
 }
 
+// --- FUNCIONES PARA MANEJO DE MENSAJES Y ARCHIVOS ---
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
@@ -72,15 +69,18 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (text.startsWith('/')) {
         return handleCommand(io, socket, text, roomName);
     }
+    
+    const MAX_MESSAGE_LENGTH = 2000;
+    if (text.length > MAX_MESSAGE_LENGTH) {
+        return socket.emit('system message', { text: 'Error: Tu mensaje es demasiado largo.', type: 'error', roomName });
+    }
+    
     const isMessageSafe = botService.checkMessage(socket, text);
     if (!isMessageSafe) return;
     
-    // Generamos la previsualización ANTES de guardar en la DB
     const previewData = await generateLinkPreview(text);
-
     const timestamp = new Date().toISOString();
     
-    // Guardamos el mensaje y los datos de la previsualización en la DB
     const stmt = db.prepare(`
         INSERT INTO messages 
         (roomName, nick, text, role, isVIP, timestamp, replyToId, preview_type, preview_url, preview_title, preview_description, preview_image) 
@@ -90,11 +90,8 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     const lastId = await new Promise((resolve, reject) => {
         stmt.run(
             roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null,
-            previewData?.type || null,
-            previewData?.url || null,
-            previewData?.title || null,
-            previewData?.description || null,
-            previewData?.image || null,
+            previewData?.type || null, previewData?.url || null, previewData?.title || null,
+            previewData?.description || null, previewData?.image || null,
             function(err) {
                 if (err) return reject(err);
                 resolve(this.lastID);
@@ -108,17 +105,9 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
         return;
     }
 
-    // Preparamos el payload para enviar a los clientes
     const messagePayload = {
-        id: lastId,
-        text,
-        nick: sender.nick,
-        role: sender.role,
-        isVIP: sender.isVIP,
-        roomName,
-        timestamp,
-        replyToId,
-        preview: previewData // Adjuntamos la previsualización
+        id: lastId, text, nick: sender.nick, role: sender.role, isVIP: sender.isVIP,
+        roomName, timestamp, replyToId, preview: previewData
     };
 
     if (replyToId) {
@@ -129,10 +118,7 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
             });
         });
         if (originalMessage) {
-            messagePayload.replyTo = {
-                nick: originalMessage.nick,
-                text: originalMessage.text
-            };
+            messagePayload.replyTo = { nick: originalMessage.nick, text: originalMessage.text };
         }
     }
     
@@ -165,7 +151,60 @@ function handlePrivateMessage(io, socket, { to, text }) {
 function handleFileStart(socket, data) { fileChunks[data.id] = { ...data, chunks: [], receivedSize: 0, owner: socket.id }; }
 function handlePrivateFileStart(socket, data) { fileChunks[data.id] = { ...data, toNick: data.to, chunks: [], receivedSize: 0, owner: socket.id }; }
 
+async function handleFileChunk(io, socket, data) {
+    const fileData = fileChunks[data.id];
+    if (!fileData || fileData.owner !== socket.id) return;
+    fileData.chunks.push(data.data);
+    fileData.receivedSize += data.data.byteLength;
+    if (fileData.receivedSize >= fileData.size) {
+        const fullFileBuffer = Buffer.concat(fileData.chunks);
+        const base64File = `data:${fileData.type};base64,${fullFileBuffer.toString('base64')}`;
+        const sender = socket.userData;
+        const timestamp = new Date().toISOString();
 
+        if (fileData.roomName) {
+            const previewData = {
+                type: 'image',
+                url: base64File,
+                title: fileData.name,
+                image: base64File,
+                description: 'Imagen subida por el usuario'
+            };
+
+            const stmt = db.prepare(`
+                INSERT INTO messages 
+                (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            
+            const lastId = await new Promise((resolve, reject) => {
+                stmt.run(
+                    fileData.roomName, sender.nick, `[Imagen: ${fileData.name}]`, sender.role, sender.isVIP ? 1 : 0, timestamp,
+                    previewData.type, previewData.url, previewData.title, previewData.description, previewData.image,
+                    function(err) {
+                        if (err) return reject(err);
+                        resolve(this.lastID);
+                    }
+                );
+                stmt.finalize();
+            });
+
+            if (lastId) {
+                const fileMessagePayload = {
+                    id: lastId, text: `[Imagen: ${fileData.name}]`, nick: sender.nick, role: sender.role,
+                    isVIP: sender.isVIP, roomName: fileData.roomName, timestamp: timestamp, preview: previewData
+                };
+                io.to(fileData.roomName).emit('chat message', fileMessagePayload);
+            }
+        } else if (fileData.toNick) {
+            const fileMessagePayload = { file: base64File, type: fileData.type, from: sender.nick, to: fileData.toNick, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
+            const targetSocketId = roomService.findSocketIdByNick(fileData.toNick);
+            if (targetSocketId) { io.to(targetSocketId).emit('private file message', fileMessagePayload); }
+            socket.emit('private file message', fileMessagePayload);
+        }
+        delete fileChunks[data.id];
+    }
+}
 
 function clearUserFileChunks(socketId) { Object.keys(fileChunks).forEach(fileId => { if (fileChunks[fileId].owner === socketId) { delete fileChunks[fileId]; } }); }
 
@@ -264,7 +303,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     }
     logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
     
-    // Al unirse, cargamos el historial y luego actualizamos la lista de usuarios
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
         if (err) { console.error("Error al cargar historial:", err); return; }
         const history = rows.reverse().map(row => ({
@@ -281,7 +319,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
             roomName: roomName, 
             joinedRooms: Array.from(socket.joinedRooms)
         });
-        // Actualizamos la lista para todos DESPUÉS de que el usuario se ha unido y cargado el historial.
         roomService.updateUserList(io, roomName);
     });
 
@@ -295,16 +332,13 @@ function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
         
-        console.log(`[SocketManager] PASO 1: Nuevo usuario conectado: ${socket.id}`);
+        console.log(`[SocketManager] Usuario conectado: ${socket.id}`);
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
 
         try {
-            console.log("[SocketManager] PASO 2: Intentando obtener la lista de salas...");
             const roomList = roomService.getActiveRoomsWithUserCount();
-            console.log(`[SocketManager] PASO 3: Lista de salas obtenida (${roomList.length} salas). Enviando al cliente...`);
             socket.emit('update room data', roomList); 
-            console.log("[SocketManager] PASO 4: Lista de salas enviada al cliente con éxito.");
         } catch (error) {
             console.error('[ERROR CRÍTICO] Fallo al obtener o enviar la lista de salas:', error);
             socket.disconnect(true);

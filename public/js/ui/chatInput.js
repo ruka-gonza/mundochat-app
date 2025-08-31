@@ -5,7 +5,7 @@ import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
 
-// --- INICIO DE LA MODIFICACIÓN: Funciones para manejar la barra de respuesta ---
+// --- Funciones para manejar la barra de respuesta ---
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
     const { nick, text } = state.replyingTo;
@@ -20,7 +20,6 @@ export function hideReplyContextBar() {
     state.replyingTo = null;
     dom.replyContextBar.classList.add('hidden');
 }
-// --- FIN DE LA MODIFICACIÓN ---
 
 function handleTypingIndicator() {
     if (state.currentChatContext.type === 'none') return;
@@ -123,22 +122,18 @@ export function sendMessage() {
     }
     const { type, with: contextWith } = state.currentChatContext;
     if (type === 'room') {
-        // --- INICIO DE LA MODIFICACIÓN: Enviar el ID de la respuesta ---
         const payload = { 
             text, 
             roomName: contextWith,
             replyToId: state.replyingTo ? state.replyingTo.id : null
         };
         state.socket.emit('chat message', payload);
-        // --- FIN DE LA MODIFICACIÓN ---
     } else if (type === 'private') {
         state.socket.emit('private message', { to: contextWith, text: text });
     }
     dom.input.value = '';
     dom.emojiPicker.classList.add('hidden');
-    // --- INICIO DE LA MODIFICACIÓN: Ocultar la barra de respuesta al enviar ---
     hideReplyContextBar();
-    // --- FIN DE LA MODIFICACIÓN ---
 }
 
 export function handleFileUpload(file) {
@@ -191,6 +186,8 @@ export function switchToChat(contextId, contextType) {
     let view, container;
 
     if (contextType === 'room') {
+        state.socket.emit('request user list', { roomName: contextId });
+        
         if (!state.publicMessageHistories[contextId]) {
             state.publicMessageHistories[contextId] = [];
         }
@@ -201,8 +198,6 @@ export function switchToChat(contextId, contextType) {
         dom.privateChatView.classList.add('hidden');
         view.classList.remove('hidden');
         
-        state.socket.emit('request user list', { roomName: contextId });
-        
         container.innerHTML = '';
         history.forEach(msg => container.appendChild(createMessageElement(msg, false)));
         container.scrollTop = container.scrollHeight;
@@ -212,8 +207,18 @@ export function switchToChat(contextId, contextType) {
         dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
         dom.mainChatArea.classList.add('hidden');
         view.classList.remove('hidden');
-        state.currentRoomUsers = [];
-        renderUserList();
+        
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        // ESTAS SON LAS LÍNEAS QUE CAUSABAN EL ERROR. LAS HEMOS ELIMINADO.
+        // state.currentRoomUsers = []; 
+        // renderUserList();
+        // Al no tocar la lista, el panel de la derecha se mantendrá como estaba.
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        
         container.innerHTML = '';
         if (!state.privateMessageHistories[contextId]) {
             state.socket.emit('request private history', { withNick: contextId });
@@ -294,13 +299,9 @@ export function initChatInput() {
     });
     
      const emojis = [
-        // Caras y emociones
         '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', 
-        // Personas y gestos
         '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝',
-        // Comida y objetos
         '❤️', '💔', '🔥', '✨', '⭐', '🎉', '🎈', '🎁', '🎂', '🍕', '🍔', '🍟', '🍿', '☕', '🍺', '🍷',
-        // Símbolos y otros
         '💯', '✅', '❌', '⚠️', '❓', '❗', '💀', '💩', '🤡', '👻', '👽', '👾', '🤖'
     ];
     dom.emojiPicker.innerHTML = '';
@@ -376,7 +377,5 @@ export function initChatInput() {
         state.socket.emit('system message', { text: 'Grabación de audio cancelada.', type: 'warning' });
     });
 
-    // --- INICIO DE LA MODIFICACIÓN: Listener para cancelar respuesta ---
     dom.cancelReplyButton.addEventListener('click', hideReplyContextBar);
-    // --- FIN DE LA MODIFICACIÓN ---
 }

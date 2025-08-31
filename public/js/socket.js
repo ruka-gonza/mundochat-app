@@ -7,7 +7,6 @@ import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
 
-
 export function updateUnreadCounts() {
     let privateUnreadCount = 0;
     for (const id of state.usersWithUnreadMessages) {
@@ -314,7 +313,8 @@ export function initializeSocketEvents(socket) {
 
     socket.on('message edited', ({ messageId, newText, roomName }) => {
         if (state.publicMessageHistories[roomName]) {
-            const message = state.publicMessageHistories[roomName].find(m => m.id === messageId);
+            // <-- CORRECCIÓN CLAVE: Comparar como números
+            const message = state.publicMessageHistories[roomName].find(m => Number(m.id) === Number(messageId));
             if (message) {
                 message.text = newText;
                 message.editedAt = new Date().toISOString();
@@ -327,7 +327,7 @@ export function initializeSocketEvents(socket) {
                 if (textSpan) {
                     const nickElement = textSpan.querySelector('.message-nick');
                     textSpan.innerHTML = '';
-                    textSpan.appendChild(nickElement);
+                    if (nickElement) textSpan.appendChild(nickElement);
                     textSpan.append(replaceEmoticons(newText));
                 }
                 let editedIndicator = messageElement.querySelector('.edited-indicator');
@@ -341,10 +341,10 @@ export function initializeSocketEvents(socket) {
         }
     });
     
-    // CORRECCIÓN PARA EL BORRADO DE MENSAJES
     socket.on('message deleted', ({ messageId, roomName }) => {
         if (state.publicMessageHistories[roomName]) {
-            state.publicMessageHistories[roomName] = state.publicMessageHistories[roomName].filter(m => m.id !== messageId);
+            // <-- CORRECCIÓN CLAVE: Comparar como números
+            state.publicMessageHistories[roomName] = state.publicMessageHistories[roomName].filter(m => Number(m.id) !== Number(messageId));
         }
         if (state.currentChatContext.with === roomName) {
             document.getElementById(`message-${messageId}`)?.remove();

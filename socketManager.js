@@ -1,5 +1,3 @@
-// socketManager.js (VERSIÓN COMPLETA, FINAL Y CORREGIDA)
-
 const roomService = require('./services/roomService');
 const userService = require('./services/userService');
 const banService = require('./services/banService');
@@ -10,10 +8,58 @@ const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection');
 const fs = require('fs');
+const fetch = require('node-fetch'); // <-- MÓDULO NECESARIO PARA PREVISUALIZACIONES
 
 let fileChunks = {};
 
-// --- FUNCIONES AUXILIARES ---
+// --- NUEVA FUNCIÓN PARA GENERAR PREVISUALIZACIONES ---
+async function generateLinkPreview(text) {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const match = text.match(urlRegex);
+    if (!match) return null;
+
+    const url = match[0];
+
+    // Caso 1: Enlace directo a una imagen o GIF
+    const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
+    if (imageRegex.test(url)) {
+        return {
+            type: 'image',
+            url: url,
+            title: url.split('/').pop(),
+            image: url,
+            description: 'Imagen compartida en el chat'
+        };
+    }
+
+    // Caso 2: Enlace de YouTube
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const youtubeMatch = url.match(youtubeRegex);
+    if (youtubeMatch && youtubeMatch[1]) {
+        try {
+            const videoId = youtubeMatch[1];
+            // Usamos la API oEmbed oficial de YouTube, es segura y eficiente
+            const response = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (!response.ok) return null;
+            
+            const data = await response.json();
+            return {
+                type: 'youtube',
+                url: url,
+                title: data.title,
+                image: data.thumbnail_url,
+                description: `Video de YouTube por ${data.author_name}`
+            };
+        } catch (error) {
+            console.error("Error al obtener datos de YouTube oEmbed:", error);
+            return null;
+        }
+    }
+
+    return null; // No es un enlace que soportemos por ahora
+}
+
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
@@ -27,19 +73,33 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
         return handleCommand(io, socket, text, roomName);
     }
     const isMessageSafe = botService.checkMessage(socket, text);
-    if (!isMessageSafe) {
-        return;
-    }
+    if (!isMessageSafe) return;
     
+    // Generamos la previsualización ANTES de guardar en la DB
+    const previewData = await generateLinkPreview(text);
+
     const timestamp = new Date().toISOString();
     
-    const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    // Guardamos el mensaje y los datos de la previsualización en la DB
+    const stmt = db.prepare(`
+        INSERT INTO messages 
+        (roomName, nick, text, role, isVIP, timestamp, replyToId, preview_type, preview_url, preview_title, preview_description, preview_image) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
     
     const lastId = await new Promise((resolve, reject) => {
-        stmt.run(roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null, function(err) {
-            if (err) return reject(err);
-            resolve(this.lastID);
-        });
+        stmt.run(
+            roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null,
+            previewData?.type || null,
+            previewData?.url || null,
+            previewData?.title || null,
+            previewData?.description || null,
+            previewData?.image || null,
+            function(err) {
+                if (err) return reject(err);
+                resolve(this.lastID);
+            }
+        );
         stmt.finalize();
     });
 
@@ -48,7 +108,18 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
         return;
     }
 
-    const messageData = { id: lastId, text, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName, timestamp: timestamp };
+    // Preparamos el payload para enviar a los clientes
+    const messagePayload = {
+        id: lastId,
+        text,
+        nick: sender.nick,
+        role: sender.role,
+        isVIP: sender.isVIP,
+        roomName,
+        timestamp,
+        replyToId,
+        preview: previewData // Adjuntamos la previsualización
+    };
 
     if (replyToId) {
         const originalMessage = await new Promise((resolve, reject) => {
@@ -58,14 +129,14 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
             });
         });
         if (originalMessage) {
-            messageData.replyTo = {
+            messagePayload.replyTo = {
                 nick: originalMessage.nick,
                 text: originalMessage.text
             };
         }
     }
     
-    io.to(roomName).emit('chat message', messageData);
+    io.to(roomName).emit('chat message', messagePayload);
 }
 
 function handlePrivateMessage(io, socket, { to, text }) {
@@ -222,32 +293,29 @@ async function handleJoinRoom(io, socket, { roomName }) {
         }
     }
     logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
-    const usersInRoom = Object.values(roomService.rooms[roomName].users);
-    const userListPromises = usersInRoom.map(async (u) => {
-        const effectiveRole = await permissionService.getUserEffectiveRole(u.id, roomName);
-        return { id: u.id, nick: u.nick, role: effectiveRole, isVIP: u.isVIP, avatar_url: u.avatar_url, isAFK: u.isAFK };
-    });
-    const initialUserList = await Promise.all(userListPromises);
-    const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
-    initialUserList.sort((a, b) => {
-        const roleA = roleOrder[a.role] ?? 99;
-        const roleB = roleOrder[b.role] ?? 99;
-        if (roleA < roleB) return -1; if (roleA > roleB) return 1;
-        return a.nick.localeCompare(b.nick);
-    });
+    
+    // Al unirse, cargamos el historial y luego actualizamos la lista de usuarios
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
         if (err) { console.error("Error al cargar historial:", err); return; }
-        const history = rows.reverse().map(row => {
-            const baseMessage = { id: row.id, nick: row.nick, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId };
-            if (row.text.startsWith('data:')) { return { ...baseMessage, file: row.text, type: row.text.substring(5, row.text.indexOf(';')), text: null }; }
-            return { ...baseMessage, text: row.text };
-        });
+        const history = rows.reverse().map(row => ({
+            id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1,
+            roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId,
+            preview: row.preview_type ? {
+                type: row.preview_type, url: row.preview_url, title: row.preview_title,
+                description: row.preview_description, image: row.preview_image
+            } : null
+        }));
         socket.emit('load history', { roomName, history });
-        socket.emit('join_success', { user: socket.userData, roomName: roomName, joinedRooms: Array.from(socket.joinedRooms), users: initialUserList });
+        socket.emit('join_success', { 
+            user: socket.userData, 
+            roomName: roomName, 
+            joinedRooms: Array.from(socket.joinedRooms)
+        });
+        // Actualizamos la lista para todos DESPUÉS de que el usuario se ha unido y cargado el historial.
+        roomService.updateUserList(io, roomName);
     });
+
     socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
-    socket.broadcast.to(roomName).emit('update user list', { roomName, users: initialUserList });
-    if (roomService.rooms[roomService.MOD_LOG_ROOM] && roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id]) { roomService.updateUserList(io, roomName); }
     roomService.updateRoomData(io);
 }
 
@@ -257,7 +325,6 @@ function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
         
-        // --- INICIO DE LA CORRECCIÓN CON LOGS DE DIAGNÓSTICO ---
         console.log(`[SocketManager] PASO 1: Nuevo usuario conectado: ${socket.id}`);
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
@@ -266,16 +333,13 @@ function initializeSocket(io) {
             console.log("[SocketManager] PASO 2: Intentando obtener la lista de salas...");
             const roomList = roomService.getActiveRoomsWithUserCount();
             console.log(`[SocketManager] PASO 3: Lista de salas obtenida (${roomList.length} salas). Enviando al cliente...`);
-            
             socket.emit('update room data', roomList); 
             console.log("[SocketManager] PASO 4: Lista de salas enviada al cliente con éxito.");
-
         } catch (error) {
             console.error('[ERROR CRÍTICO] Fallo al obtener o enviar la lista de salas:', error);
             socket.disconnect(true);
             return;
         }
-        // --- FIN DE LA CORRECCIÓN ---
         
         try {
             const isVpnUser = await vpnCheckService.isVpn(userIP);
@@ -319,7 +383,7 @@ function initializeSocket(io) {
             const existingUserByNick = await userService.findUserByNick(nick);
             if (existingUserByNick) { return socket.emit('auth_error', { message: "Ese nick ya está registrado." }); }
             
-            const existingUserByEmail = await userService.findUserByNick(email);
+            const existingUserByEmail = await userService.findUserByEmail(email);
             if (existingUserByEmail) { return socket.emit('auth_error', { message: "Ese correo electrónico ya está registrado." }); }
             
             try {
@@ -468,9 +532,8 @@ function initializeSocket(io) {
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
             socket.userData.isAFK = !socket.userData.isAFK;
-            const { nick, isAFK } = socket.userData;
-            io.emit('user_data_updated', { nick, isAFK });
-            const statusMessage = isAFK ? `${nick} ahora está ausente.` : `${nick} ha vuelto.`;
+            io.emit('user_data_updated', { nick: socket.userData.nick, isAFK: socket.userData.isAFK });
+            const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
             socket.joinedRooms.forEach(room => { if (room !== socket.id) { io.to(room).emit('system message', { text: statusMessage, type: 'join', roomName: room }); } });
         });
 

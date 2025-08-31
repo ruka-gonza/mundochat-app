@@ -70,6 +70,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const isSent = msg.from === state.myNick || msg.nick === state.myNick;
     const senderData = state.allUsersData[senderNick.toLowerCase()] || {};
     const avatarUrl = (isSent && state.myUserData.avatar_url) ? state.myUserData.avatar_url : (senderData.avatar_url || 'image/default-avatar.png');
+    
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = 'message-avatar';
@@ -111,12 +112,17 @@ export function createMessageElement(msg, isPrivate = false) {
         textSpan.className = 'message-text';
         textSpan.appendChild(nickElement);
         textSpan.append(replaceEmoticons(msg.text));
+        
+        const embedElement = createEmbedElement(msg.text);
+        if (embedElement) {
+            textSpan.appendChild(embedElement);
+        }
+        
         contentDiv.appendChild(textSpan);
     }
 
     if (msg.file) {
         let fileElement;
-        
         if (!msg.text) {
              contentDiv.appendChild(nickElement);
         }
@@ -139,15 +145,12 @@ export function createMessageElement(msg, isPrivate = false) {
         }
     }
 
-    // --- INICIO DE LA CORRECCIÓN ---
-    // AÑADIMOS UNA COMPROBACIÓN PARA EVITAR ERRORES CON MENSAJES ANTIGUOS
     if (msg.timestamp) {
         const timestampSpan = document.createElement('span');
         timestampSpan.className = 'message-timestamp';
         timestampSpan.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         contentDiv.appendChild(timestampSpan);
     }
-    // --- FIN DE LA CORRECCIÓN ---
 
     if (msg.editedAt) {
         const editedSpan = document.createElement('span');
@@ -157,13 +160,6 @@ export function createMessageElement(msg, isPrivate = false) {
     }
 
     mainContentWrapper.appendChild(contentDiv);
-
-    if (msg.text) {
-        const embedElement = createEmbedElement(msg.text);
-        if (embedElement) {
-            mainContentWrapper.appendChild(embedElement);
-        }
-    }
 
     const iAmModerator = ['owner', 'admin'].includes(state.myUserData.role);
     if (!isPrivate) {

@@ -385,7 +385,15 @@ function initializeSocket(io) {
             const existingUserByNick = await userService.findUserByNick(nick);
             if (existingUserByNick) { return socket.emit('auth_error', { message: "Ese nick ya está registrado." }); }
             
+            // =========================================================================
+            // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
+            // Usamos la misma función 'findUserByNick' porque también busca por email.
             const existingUserByEmail = await userService.findUserByNick(email);
+            // =========================================================================
+            // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
+            
             if (existingUserByEmail) { return socket.emit('auth_error', { message: "Ese correo electrónico ya está registrado." }); }
             
             try {

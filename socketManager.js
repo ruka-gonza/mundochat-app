@@ -161,7 +161,6 @@ async function handleFileChunk(io, socket, data) {
 
         if (fileData.roomName) {
             const isAudio = fileData.type.startsWith('audio/');
-            
             const previewData = {
                 type: isAudio ? 'audio' : 'image',
                 url: base64File,
@@ -169,15 +168,12 @@ async function handleFileChunk(io, socket, data) {
                 image: isAudio ? null : base64File,
                 description: isAudio ? 'Audio subido por el usuario' : 'Imagen subida por el usuario'
             };
-
             const textPlaceholder = isAudio ? `[Audio: ${fileData.name}]` : `[Imagen: ${fileData.name}]`;
-
             const stmt = db.prepare(`
                 INSERT INTO messages 
                 (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) 
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            
             const lastId = await new Promise((resolve, reject) => {
                 stmt.run(
                     fileData.roomName, sender.nick, textPlaceholder, sender.role, sender.isVIP ? 1 : 0, timestamp,
@@ -189,7 +185,6 @@ async function handleFileChunk(io, socket, data) {
                 );
                 stmt.finalize();
             });
-
             if (lastId) {
                 const fileMessagePayload = {
                     id: lastId, text: textPlaceholder, nick: sender.nick, role: sender.role,
@@ -277,35 +272,59 @@ function logActivity(eventType, userData, details = null) {
 
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
-    if (socket.rooms.has(roomName)) return;
-    if (!roomService.rooms[roomName]) { roomService.rooms[roomName] = { users: {} }; }
+    
+    if (socket.rooms.has(roomName)) {
+        socket.leave(roomName);
+    }
+    
+    if (!roomService.rooms[roomName]) {
+        roomService.rooms[roomName] = { users: {} };
+    }
+
     socket.join(roomName);
     socket.joinedRooms.add(roomName);
+    
     let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(socket.userData.role);
     if (!isAnyStaff && socket.userData.id) {
-        const staffRooms = await new Promise((resolve, reject) => {
+        const staffRooms = await new Promise((resolve) => {
             db.all('SELECT 1 FROM room_staff WHERE userId = ? LIMIT 1', [socket.userData.id], (err, rows) => {
-                if (err) return reject(err);
+                if (err) resolve([]);
                 resolve(rows);
             });
         });
-        if (staffRooms.length > 0) { isAnyStaff = true; }
+        if (staffRooms.length > 0) isAnyStaff = true;
     }
     socket.userData.isStaff = isAnyStaff;
     roomService.rooms[roomName].users[socket.id] = socket.userData;
+
     if (socket.userData.isStaff) {
         socket.emit('set admin cookie', { nick: socket.userData.nick, role: socket.userData.role });
         if (!socket.rooms.has(roomService.MOD_LOG_ROOM)) {
             socket.join(roomService.MOD_LOG_ROOM);
             socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
-            if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
+            if (!roomService.rooms[roomService.MOD_LOG_ROOM]) {
+                roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
+            }
             roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = socket.userData;
         }
     }
     logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
     
+    socket.emit('join_success', { 
+        user: socket.userData, 
+        roomName: roomName, 
+        joinedRooms: Array.from(socket.joinedRooms)
+    });
+
+    socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
+    
+    roomService.updateUserList(io, roomName);
+
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
-        if (err) { console.error("Error al cargar historial:", err); return; }
+        if (err) {
+            console.error("Error al cargar historial:", err);
+            return;
+        }
         const history = rows.reverse().map(row => ({
             id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1,
             roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId,
@@ -315,15 +334,8 @@ async function handleJoinRoom(io, socket, { roomName }) {
             } : null
         }));
         socket.emit('load history', { roomName, history });
-        socket.emit('join_success', { 
-            user: socket.userData, 
-            roomName: roomName, 
-            joinedRooms: Array.from(socket.joinedRooms)
-        });
-        roomService.updateUserList(io, roomName);
     });
 
-    socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
     roomService.updateRoomData(io);
 }
 
@@ -385,15 +397,7 @@ function initializeSocket(io) {
             const existingUserByNick = await userService.findUserByNick(nick);
             if (existingUserByNick) { return socket.emit('auth_error', { message: "Ese nick ya está registrado." }); }
             
-            // =========================================================================
-            // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-            // =========================================================================
-            // Usamos la misma función 'findUserByNick' porque también busca por email.
             const existingUserByEmail = await userService.findUserByNick(email);
-            // =========================================================================
-            // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-            // =========================================================================
-            
             if (existingUserByEmail) { return socket.emit('auth_error', { message: "Ese correo electrónico ya está registrado." }); }
             
             try {

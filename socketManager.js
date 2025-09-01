@@ -1,5 +1,3 @@
-// socketManager.js (VERSIÓN COMPLETA, FINAL Y CORREGIDA)
-
 const roomService = require('./services/roomService');
 const userService = require('./services/userService');
 const banService = require('./services/banService');
@@ -10,10 +8,52 @@ const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection');
 const fs = require('fs');
+const fetch = require('node-fetch');
 
 let fileChunks = {};
 
-// --- FUNCIONES AUXILIARES ---
+async function generateLinkPreview(text) {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const match = text.match(urlRegex);
+    if (!match) return null;
+
+    const url = match[0];
+
+    const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
+    if (imageRegex.test(url)) {
+        return {
+            type: 'image',
+            url: url,
+            title: url.split('/').pop(),
+            image: url,
+            description: 'Imagen compartida en el chat'
+        };
+    }
+
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const youtubeMatch = url.match(youtubeRegex);
+    if (youtubeMatch && youtubeMatch[1]) {
+        try {
+            const videoId = youtubeMatch[1];
+            const response = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (!response.ok) return null;
+            
+            const data = await response.json();
+            return {
+                type: 'youtube',
+                url: url,
+                title: data.title,
+                image: data.thumbnail_url,
+                description: `Video de YouTube por ${data.author_name}`
+            };
+        } catch (error) {
+            console.error("Error al obtener datos de YouTube oEmbed:", error);
+            return null;
+        }
+    }
+    return null;
+}
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
@@ -26,20 +66,34 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (text.startsWith('/')) {
         return handleCommand(io, socket, text, roomName);
     }
-    const isMessageSafe = botService.checkMessage(socket, text);
-    if (!isMessageSafe) {
-        return;
+    
+    const MAX_MESSAGE_LENGTH = 2000;
+    if (text.length > MAX_MESSAGE_LENGTH) {
+        return socket.emit('system message', { text: 'Error: Tu mensaje es demasiado largo.', type: 'error', roomName });
     }
     
+    const isMessageSafe = botService.checkMessage(socket, text);
+    if (!isMessageSafe) return;
+    
+    const previewData = await generateLinkPreview(text);
     const timestamp = new Date().toISOString();
     
-    const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId) VALUES (?, ?, ?, ?, ?, ?, ?)');
+    const stmt = db.prepare(`
+        INSERT INTO messages 
+        (roomName, nick, text, role, isVIP, timestamp, replyToId, preview_type, preview_url, preview_title, preview_description, preview_image) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
     
     const lastId = await new Promise((resolve, reject) => {
-        stmt.run(roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null, function(err) {
-            if (err) return reject(err);
-            resolve(this.lastID);
-        });
+        stmt.run(
+            roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null,
+            previewData?.type || null, previewData?.url || null, previewData?.title || null,
+            previewData?.description || null, previewData?.image || null,
+            function(err) {
+                if (err) return reject(err);
+                resolve(this.lastID);
+            }
+        );
         stmt.finalize();
     });
 
@@ -48,7 +102,10 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
         return;
     }
 
-    const messageData = { id: lastId, text, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName, timestamp: timestamp };
+    const messagePayload = {
+        id: lastId, text, nick: sender.nick, role: sender.role, isVIP: sender.isVIP,
+        roomName, timestamp, replyToId, preview: previewData
+    };
 
     if (replyToId) {
         const originalMessage = await new Promise((resolve, reject) => {
@@ -58,14 +115,11 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
             });
         });
         if (originalMessage) {
-            messageData.replyTo = {
-                nick: originalMessage.nick,
-                text: originalMessage.text
-            };
+            messagePayload.replyTo = { nick: originalMessage.nick, text: originalMessage.text };
         }
     }
     
-    io.to(roomName).emit('chat message', messageData);
+    io.to(roomName).emit('chat message', messagePayload);
 }
 
 function handlePrivateMessage(io, socket, { to, text }) {
@@ -104,20 +158,47 @@ async function handleFileChunk(io, socket, data) {
         const base64File = `data:${fileData.type};base64,${fullFileBuffer.toString('base64')}`;
         const sender = socket.userData;
         const timestamp = new Date().toISOString();
-        const fileMessagePayload = { file: base64File, type: fileData.type, nick: sender.nick, from: sender.nick, to: fileData.toNick, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
+
         if (fileData.roomName) {
-            fileMessagePayload.roomName = fileData.roomName;
-            const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
+            const isAudio = fileData.type.startsWith('audio/');
+            
+            const previewData = {
+                type: isAudio ? 'audio' : 'image',
+                url: base64File,
+                title: fileData.name,
+                image: isAudio ? null : base64File,
+                description: isAudio ? 'Audio subido por el usuario' : 'Imagen subida por el usuario'
+            };
+
+            const textPlaceholder = isAudio ? `[Audio: ${fileData.name}]` : `[Imagen: ${fileData.name}]`;
+
+            const stmt = db.prepare(`
+                INSERT INTO messages 
+                (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            
             const lastId = await new Promise((resolve, reject) => {
-                stmt.run(fileData.roomName, sender.nick, base64File, sender.role, sender.isVIP ? 1 : 0, timestamp, function(err) {
-                    if (err) return reject(err);
-                    resolve(this.lastID);
-                });
+                stmt.run(
+                    fileData.roomName, sender.nick, textPlaceholder, sender.role, sender.isVIP ? 1 : 0, timestamp,
+                    previewData.type, previewData.url, previewData.title, previewData.description, previewData.image,
+                    function(err) {
+                        if (err) return reject(err);
+                        resolve(this.lastID);
+                    }
+                );
                 stmt.finalize();
             });
-            if (lastId) { fileMessagePayload.id = lastId; }
-            io.to(fileData.roomName).emit('file message', fileMessagePayload);
+
+            if (lastId) {
+                const fileMessagePayload = {
+                    id: lastId, text: textPlaceholder, nick: sender.nick, role: sender.role,
+                    isVIP: sender.isVIP, roomName: fileData.roomName, timestamp: timestamp, preview: previewData
+                };
+                io.to(fileData.roomName).emit('chat message', fileMessagePayload);
+            }
         } else if (fileData.toNick) {
+            const fileMessagePayload = { file: base64File, type: fileData.type, from: sender.nick, to: fileData.toNick, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
             const targetSocketId = roomService.findSocketIdByNick(fileData.toNick);
             if (targetSocketId) { io.to(targetSocketId).emit('private file message', fileMessagePayload); }
             socket.emit('private file message', fileMessagePayload);
@@ -222,60 +303,46 @@ async function handleJoinRoom(io, socket, { roomName }) {
         }
     }
     logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
-    const usersInRoom = Object.values(roomService.rooms[roomName].users);
-    const userListPromises = usersInRoom.map(async (u) => {
-        const effectiveRole = await permissionService.getUserEffectiveRole(u.id, roomName);
-        return { id: u.id, nick: u.nick, role: effectiveRole, isVIP: u.isVIP, avatar_url: u.avatar_url, isAFK: u.isAFK };
-    });
-    const initialUserList = await Promise.all(userListPromises);
-    const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
-    initialUserList.sort((a, b) => {
-        const roleA = roleOrder[a.role] ?? 99;
-        const roleB = roleOrder[b.role] ?? 99;
-        if (roleA < roleB) return -1; if (roleA > roleB) return 1;
-        return a.nick.localeCompare(b.nick);
-    });
+    
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
         if (err) { console.error("Error al cargar historial:", err); return; }
-        const history = rows.reverse().map(row => {
-            const baseMessage = { id: row.id, nick: row.nick, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId };
-            if (row.text.startsWith('data:')) { return { ...baseMessage, file: row.text, type: row.text.substring(5, row.text.indexOf(';')), text: null }; }
-            return { ...baseMessage, text: row.text };
-        });
+        const history = rows.reverse().map(row => ({
+            id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1,
+            roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId,
+            preview: row.preview_type ? {
+                type: row.preview_type, url: row.preview_url, title: row.preview_title,
+                description: row.preview_description, image: row.preview_image
+            } : null
+        }));
         socket.emit('load history', { roomName, history });
-        socket.emit('join_success', { user: socket.userData, roomName: roomName, joinedRooms: Array.from(socket.joinedRooms), users: initialUserList });
+        socket.emit('join_success', { 
+            user: socket.userData, 
+            roomName: roomName, 
+            joinedRooms: Array.from(socket.joinedRooms)
+        });
+        roomService.updateUserList(io, roomName);
     });
+
     socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
-    socket.broadcast.to(roomName).emit('update user list', { roomName, users: initialUserList });
-    if (roomService.rooms[roomService.MOD_LOG_ROOM] && roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id]) { roomService.updateUserList(io, roomName); }
     roomService.updateRoomData(io);
 }
 
-
-// --- FUNCIÓN PRINCIPAL DE SOCKET.IO ---
 function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
         
-        // --- INICIO DE LA CORRECCIÓN CON LOGS DE DIAGNÓSTICO ---
-        console.log(`[SocketManager] PASO 1: Nuevo usuario conectado: ${socket.id}`);
+        console.log(`[SocketManager] Usuario conectado: ${socket.id}`);
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
 
         try {
-            console.log("[SocketManager] PASO 2: Intentando obtener la lista de salas...");
             const roomList = roomService.getActiveRoomsWithUserCount();
-            console.log(`[SocketManager] PASO 3: Lista de salas obtenida (${roomList.length} salas). Enviando al cliente...`);
-            
             socket.emit('update room data', roomList); 
-            console.log("[SocketManager] PASO 4: Lista de salas enviada al cliente con éxito.");
-
         } catch (error) {
             console.error('[ERROR CRÍTICO] Fallo al obtener o enviar la lista de salas:', error);
             socket.disconnect(true);
             return;
         }
-        // --- FIN DE LA CORRECCIÓN ---
         
         try {
             const isVpnUser = await vpnCheckService.isVpn(userIP);
@@ -286,7 +353,6 @@ function initializeSocket(io) {
             console.error("Error durante la verificación de VPN:", error);
         }
 
-        // --- MANEJADORES DE EVENTOS ---
         socket.on('guest_join', async (data) => {
             const { nick, roomName } = data;
             if (!nick || !roomName) return socket.emit('auth_error', { message: "El nick y la sala son obligatorios." });
@@ -468,9 +534,8 @@ function initializeSocket(io) {
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
             socket.userData.isAFK = !socket.userData.isAFK;
-            const { nick, isAFK } = socket.userData;
-            io.emit('user_data_updated', { nick, isAFK });
-            const statusMessage = isAFK ? `${nick} ahora está ausente.` : `${nick} ha vuelto.`;
+            io.emit('user_data_updated', { nick: socket.userData.nick, isAFK: socket.userData.isAFK });
+            const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
             socket.joinedRooms.forEach(room => { if (room !== socket.id) { io.to(room).emit('system message', { text: statusMessage, type: 'join', roomName: room }); } });
         });
 

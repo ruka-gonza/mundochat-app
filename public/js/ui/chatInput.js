@@ -5,7 +5,79 @@ import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
 
-// --- INICIO DE LA MODIFICACIÓN: Funciones para manejar la barra de respuesta ---
+// --- Lógica de Grabación de Audio ---
+let recordingStartTime;
+let recordingInterval;
+
+async function startRecording() {
+    if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
+        state.socket.emit('system message', { text: 'Selecciona una sala o chat privado para enviar notas de voz.', type: 'error' });
+        return;
+    }
+    
+    try {
+        state.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const options = { mimeType: 'audio/webm; codecs=opus' };
+        state.mediaRecorder = new MediaRecorder(state.audioStream, options);
+        state.audioChunks = [];
+
+        state.mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                state.audioChunks.push(event.data);
+            }
+        };
+
+        state.mediaRecorder.onstop = () => {
+            state.audioBlob = new Blob(state.audioChunks, { type: options.mimeType });
+            dom.audioSendButton.classList.remove('hidden');
+            document.getElementById('stop-recording-button').classList.add('hidden');
+        };
+
+        state.mediaRecorder.start();
+        recordingStartTime = Date.now();
+        dom.form.classList.add('is-recording');
+        document.getElementById('audio-recording-controls').classList.remove('hidden');
+        document.getElementById('stop-recording-button').classList.remove('hidden');
+        dom.audioSendButton.classList.add('hidden');
+        document.getElementById('recording-timer').textContent = '00:00';
+        recordingInterval = setInterval(updateRecordingTimer, 1000);
+
+    } catch (err) {
+        console.error('Error al acceder al micrófono:', err);
+        state.socket.emit('system message', { text: 'No se pudo acceder al micrófono. Asegúrate de dar permiso.', type: 'error' });
+        resetAudioUI();
+    }
+}
+
+function stopRecording() {
+    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+        state.mediaRecorder.stop();
+        clearInterval(recordingInterval);
+    }
+}
+
+function resetAudioUI() {
+    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+        state.mediaRecorder.stop();
+    }
+    if (state.audioStream) {
+        state.audioStream.getTracks().forEach(track => track.stop());
+    }
+    clearInterval(recordingInterval);
+    dom.form.classList.remove('is-recording');
+    document.getElementById('audio-recording-controls').classList.add('hidden');
+    state.audioChunks = [];
+    state.audioBlob = null;
+}
+
+function updateRecordingTimer() {
+    const elapsed = Date.now() - recordingStartTime;
+    const seconds = String(Math.floor(elapsed / 1000) % 60).padStart(2, '0');
+    const minutes = String(Math.floor(elapsed / (1000 * 60))).padStart(2, '0');
+    document.getElementById('recording-timer').textContent = `${minutes}:${seconds}`;
+}
+
+// --- Funciones de chat existentes ---
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
     const { nick, text } = state.replyingTo;
@@ -20,7 +92,6 @@ export function hideReplyContextBar() {
     state.replyingTo = null;
     dom.replyContextBar.classList.add('hidden');
 }
-// --- FIN DE LA MODIFICACIÓN ---
 
 function handleTypingIndicator() {
     if (state.currentChatContext.type === 'none') return;
@@ -123,22 +194,18 @@ export function sendMessage() {
     }
     const { type, with: contextWith } = state.currentChatContext;
     if (type === 'room') {
-        // --- INICIO DE LA MODIFICACIÓN: Enviar el ID de la respuesta ---
         const payload = { 
             text, 
             roomName: contextWith,
             replyToId: state.replyingTo ? state.replyingTo.id : null
         };
         state.socket.emit('chat message', payload);
-        // --- FIN DE LA MODIFICACIÓN ---
     } else if (type === 'private') {
         state.socket.emit('private message', { to: contextWith, text: text });
     }
     dom.input.value = '';
     dom.emojiPicker.classList.add('hidden');
-    // --- INICIO DE LA MODIFICACIÓN: Ocultar la barra de respuesta al enviar ---
     hideReplyContextBar();
-    // --- FIN DE LA MODIFICACIÓN ---
 }
 
 export function handleFileUpload(file) {
@@ -191,6 +258,8 @@ export function switchToChat(contextId, contextType) {
     let view, container;
 
     if (contextType === 'room') {
+        state.socket.emit('request user list', { roomName: contextId });
+        
         if (!state.publicMessageHistories[contextId]) {
             state.publicMessageHistories[contextId] = [];
         }
@@ -201,8 +270,6 @@ export function switchToChat(contextId, contextType) {
         dom.privateChatView.classList.add('hidden');
         view.classList.remove('hidden');
         
-        state.socket.emit('request user list', { roomName: contextId });
-        
         container.innerHTML = '';
         history.forEach(msg => container.appendChild(createMessageElement(msg, false)));
         container.scrollTop = container.scrollHeight;
@@ -212,8 +279,18 @@ export function switchToChat(contextId, contextType) {
         dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
         dom.mainChatArea.classList.add('hidden');
         view.classList.remove('hidden');
-        state.currentRoomUsers = [];
-        renderUserList();
+        
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        // ESTAS SON LAS LÍNEAS QUE CAUSABAN EL ERROR. LAS HEMOS ELIMINADO.
+        // state.currentRoomUsers = []; 
+        // renderUserList();
+        // Al no tocar la lista, el panel de la derecha se mantendrá como estaba.
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        
         container.innerHTML = '';
         if (!state.privateMessageHistories[contextId]) {
             state.socket.emit('request private history', { withNick: contextId });
@@ -294,13 +371,9 @@ export function initChatInput() {
     });
     
      const emojis = [
-        // Caras y emociones
         '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', 
-        // Personas y gestos
         '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝',
-        // Comida y objetos
         '❤️', '💔', '🔥', '✨', '⭐', '🎉', '🎈', '🎁', '🎂', '🍕', '🍔', '🍟', '🍿', '☕', '🍺', '🍷',
-        // Símbolos y otros
         '💯', '✅', '❌', '⚠️', '❓', '❗', '💀', '💩', '🤡', '👻', '👽', '👾', '🤖'
     ];
     dom.emojiPicker.innerHTML = '';
@@ -376,7 +449,5 @@ export function initChatInput() {
         state.socket.emit('system message', { text: 'Grabación de audio cancelada.', type: 'warning' });
     });
 
-    // --- INICIO DE LA MODIFICACIÓN: Listener para cancelar respuesta ---
     dom.cancelReplyButton.addEventListener('click', hideReplyContextBar);
-    // --- FIN DE LA MODIFICACIÓN ---
 }

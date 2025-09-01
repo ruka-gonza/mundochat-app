@@ -7,6 +7,46 @@ import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
 
+/**
+ * Renderiza el historial de mensajes en pequeños lotes para no bloquear el navegador.
+ * @param {Array} history - El array de mensajes a renderizar.
+ * @param {boolean} isPrivate - True si es un chat privado.
+ */
+function renderHistoryInBatches(history, isPrivate) {
+    const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (isPrivate && !container.querySelector('ul')) {
+        container.appendChild(document.createElement('ul'));
+    }
+    const listElement = isPrivate ? container.querySelector('ul') : container;
+
+    let index = 0;
+    const batchSize = 5;
+
+    function renderBatch() {
+        const fragment = document.createDocumentFragment();
+        const batchEnd = Math.min(index + batchSize, history.length);
+
+        for (let i = index; i < batchEnd; i++) {
+            fragment.appendChild(createMessageElement(history[i], isPrivate));
+        }
+
+        listElement.appendChild(fragment);
+        index = batchEnd;
+
+        if (index < history.length) {
+            requestAnimationFrame(renderBatch);
+        } else {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    renderBatch();
+}
+
 export function updateUnreadCounts() {
     let privateUnreadCount = 0;
     for (const id of state.usersWithUnreadMessages) {
@@ -266,31 +306,17 @@ export function initializeSocketEvents(socket) {
     socket.on('typing', ({ nick, context }) => { if (context.type === state.currentChatContext.type && context.with === state.currentChatContext.with) { state.usersTyping.add(nick); updateTypingIndicator(); } });
     socket.on('stop typing', ({ nick, context }) => { if (context.type === state.currentChatContext.type && context.with === state.currentChatContext.with) { state.usersTyping.delete(nick); updateTypingIndicator(); } });
     
-    // --- OPTIMIZACIÓN: Carga de historial con DocumentFragment ---
     socket.on('load history', ({ roomName, history }) => {
         state.publicMessageHistories[roomName] = history;
         if (state.currentChatContext.type === 'room' && state.currentChatContext.with === roomName) {
-            
-            const fragment = document.createDocumentFragment();
-            history.forEach(msg => {
-                fragment.appendChild(createMessageElement(msg, false));
-            });
-
-            dom.messagesContainer.innerHTML = '';
-            dom.messagesContainer.appendChild(fragment);
-
-            dom.messagesContainer.scrollTop = dom.messagesContainer.scrollHeight;
+            renderHistoryInBatches(history, false);
         }
     });
 
     socket.on('load private history', ({ withNick, history }) => {
         state.privateMessageHistories[withNick] = history;
         if (state.currentChatContext.type === 'private' && state.currentChatContext.with === withNick) {
-            dom.privateChatWindow.innerHTML = '';
-            const ul = document.createElement('ul');
-            history.forEach(msg => { ul.appendChild(createMessageElement(msg, true)); });
-            dom.privateChatWindow.appendChild(ul);
-            ul.scrollTop = ul.scrollHeight;
+            renderHistoryInBatches(history, true);
         }
     });
 

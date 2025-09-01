@@ -1,18 +1,12 @@
 import state from './state.js';
 import * as dom from './domElements.js';
 import { initializeSocketEvents } from './socket.js';
-
-// Importación de módulos de interfaz de usuario (UI)
 import { initAuth } from './ui/auth.js';
 import { initChatInput, switchToChat } from './ui/chatInput.js';
 import { initConversations } from './ui/conversations.js';
 import { initModals } from './ui/modals.js';
 import { initUserInteractions } from './ui/userInteractions.js';
 
-/**
- * Configura los manejadores de eventos para la interfaz responsiva en móviles.
- * Controla la visibilidad de los paneles laterales y la superposición.
- */
 function initResponsiveHandlers() {
     const { conversationsPanel, userListContainer, mobileOverlay } = dom;
     const toggleConversationsBtn = document.getElementById('toggle-conversations-btn');
@@ -42,9 +36,6 @@ function initResponsiveHandlers() {
     });
 }
 
-/**
- * Inicializa el selector de tema (claro/oscuro) y aplica el tema guardado.
- */
 function initThemeSwitcher() {
     const currentTheme = localStorage.getItem('theme');
     if (currentTheme === 'dark') {

@@ -95,29 +95,6 @@ function autocompleteNick(nick) {
     dom.input.setSelectionRange(newCursorPosition, newCursorPosition);
 }
 
-function resetAudioRecorderUI() {
-    const recordButton = document.getElementById('record-audio-button');
-    const sendButton = document.getElementById('send-audio-button');
-    const cancelButton = document.getElementById('cancel-recording-button');
-    const recordingControls = document.getElementById('audio-recording-controls');
-
-    if (recordButton) recordButton.classList.remove('hidden');
-    if (recordingControls) recordingControls.classList.add('hidden');
-    dom.input.classList.remove('hidden');
-
-    state.audioChunks = [];
-    state.audioBlob = null;
-    if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
-        state.mediaRecorder.stop();
-    }
-    if (state.audioStream) {
-        state.audioStream.getTracks().forEach(track => track.stop());
-        state.audioStream = null;
-    }
-    state.mediaRecorder = null;
-    clearInterval(recordingInterval);
-}
-
 export function sendMessage() {
     const text = dom.input.value.trim();
     if (!text) return;
@@ -234,7 +211,7 @@ export function updateTypingIndicator() {
     const targetIndicator = state.currentChatContext.type === 'room'
         ? dom.typingIndicator
         : dom.privateTypingIndicator;
-
+    
     if (!targetIndicator) return;
     
     if (state.usersTyping.size === 0) {
@@ -258,64 +235,29 @@ export function updateTypingIndicator() {
 }
 
 export function initChatInput() {
-    dom.input.addEventListener('input', () => {
-        handleTypingIndicator();
-        handleNickSuggestions();
-    });
-
-    dom.form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        sendMessage();
-    });
-
-    dom.input.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            dom.commandSuggestions.classList.add('hidden');
-            state.suggestionState.list = [];
-        }
-        if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
-            e.preventDefault();
-            autocompleteNick(state.suggestionState.list[0].nick);
-        }
-    });
-
-    dom.imageUpload.addEventListener('change', (e) => {
-        handleFileUpload(e.target.files[0]);
-        e.target.value = '';
-    });
-    
-    // --- INICIO DE LA CORRECCIÓN: Carga perezosa de emojis ---
-    let emojisInitialized = false;
-    dom.emojiButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!emojisInitialized) {
-            const emojis = [
-                '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', 
-                '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝',
-                '❤️', '💔', '🔥', '✨', '⭐', '🎉', '🎈', '🎁', '🎂', '🍕', '🍔', '🍟', '🍿', '☕', '🍺', '🍷',
-                '💯', '✅', '❌', '⚠️', '❓', '❗', '💀', '💩', '🤡', '👻', '👽', '👾', '🤖'
-            ];
-            dom.emojiPicker.innerHTML = '';
-            emojis.forEach(emoji => {
-                const span = document.createElement('span');
-                span.textContent = emoji;
-                span.addEventListener('click', () => { dom.input.value += emoji; dom.input.focus(); });
-                dom.emojiPicker.appendChild(span);
-            });
-            emojisInitialized = true;
-        }
-        dom.emojiPicker.classList.toggle('hidden');
-    });
-    document.addEventListener('click', (e) => { 
-        if (dom.emojiPicker && !dom.emojiPicker.contains(e.target) && e.target !== dom.emojiButton) {
-            dom.emojiPicker.classList.add('hidden');
-        }
-    }, true);
-    // --- FIN DE LA CORRECCIÓN DE EMOJIS ---
-
-    // --- INICIO DE LA CORRECCIÓN: Lógica de audio ---
+    // --- LÓGICA DE GRABACIÓN DE AUDIO ---
     let recordingStartTime;
     let recordingInterval;
+
+    function resetAudioRecorderUI() {
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            state.mediaRecorder.stop();
+        }
+        if (state.audioStream) {
+            state.audioStream.getTracks().forEach(track => track.stop());
+        }
+        clearInterval(recordingInterval);
+        
+        // CORRECCIÓN: Usamos la clase en el formulario para controlar la visibilidad
+        dom.form.classList.remove('is-recording');
+        const recordingControls = document.getElementById('audio-recording-controls');
+        if (recordingControls) recordingControls.classList.add('hidden');
+
+        state.audioChunks = [];
+        state.audioBlob = null;
+        state.mediaRecorder = null;
+        state.audioStream = null;
+    }
 
     async function startRecording() {
         if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
@@ -339,7 +281,10 @@ export function initChatInput() {
             };
             state.mediaRecorder.start();
             recordingStartTime = Date.now();
+
+            // CORRECCIÓN: Usamos la clase en el formulario para ocultar/mostrar elementos
             dom.form.classList.add('is-recording');
+            
             const recordingControls = document.getElementById('audio-recording-controls');
             const stopBtn = document.getElementById('stop-recording-button');
             const sendBtn = document.getElementById('send-audio-button');
@@ -385,7 +330,63 @@ export function initChatInput() {
             resetAudioRecorderUI();
         }
     });
-    // --- FIN DE LA CORRECCIÓN DE AUDIO ---
+
+    // --- FIN LÓGICA DE AUDIO ---
+
+    dom.input.addEventListener('input', () => {
+        handleTypingIndicator();
+        handleNickSuggestions();
+    });
+
+    dom.form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        sendMessage();
+    });
+
+    dom.input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            dom.commandSuggestions.classList.add('hidden');
+            state.suggestionState.list = [];
+        }
+        if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
+            e.preventDefault();
+            autocompleteNick(state.suggestionState.list[0].nick);
+        }
+    });
+
+    dom.imageUpload.addEventListener('change', (e) => {
+        handleFileUpload(e.target.files[0]);
+        e.target.value = '';
+    });
+    
+    // --- Carga perezosa del panel de emojis ---
+    let emojisInitialized = false;
+    dom.emojiButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!emojisInitialized) {
+            const emojis = [
+                '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', 
+                '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝',
+                '❤️', '💔', '🔥', '✨', '⭐', '🎉', '🎈', '🎁', '🎂', '🍕', '🍔', '🍟', '🍿', '☕', '🍺', '🍷',
+                '💯', '✅', '❌', '⚠️', '❓', '❗', '💀', '💩', '🤡', '👻', '👽', '👾', '🤖'
+            ];
+            dom.emojiPicker.innerHTML = '';
+            emojis.forEach(emoji => {
+                const span = document.createElement('span');
+                span.textContent = emoji;
+                span.addEventListener('click', () => { dom.input.value += emoji; dom.input.focus(); });
+                dom.emojiPicker.appendChild(span);
+            });
+            emojisInitialized = true;
+        }
+        dom.emojiPicker.classList.toggle('hidden');
+    });
+    
+    document.addEventListener('click', (e) => { 
+        if (dom.emojiPicker && !dom.emojiPicker.contains(e.target) && e.target !== dom.emojiButton) {
+            dom.emojiPicker.classList.add('hidden');
+        }
+    }, true);
 
     dom.cancelReplyButton.addEventListener('click', hideReplyContextBar);
 }

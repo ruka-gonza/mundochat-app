@@ -62,6 +62,7 @@ function createPreviewCard(preview) {
 }
 
 export function createMessageElement(msg, isPrivate = false) {
+    // Manejo de mensajes de sistema
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
         item.className = `system-message ${msg.type || ''}`;
@@ -69,11 +70,13 @@ export function createMessageElement(msg, isPrivate = false) {
         return item;
     }
 
+    // Ignorar usuarios
     const senderNick = isPrivate ? msg.from : msg.nick;
     if (state.ignoredNicks.has(senderNick.toLowerCase())) {
         return document.createDocumentFragment();
     }
 
+    // Creación de elementos base
     const item = document.createElement('li');
     item.id = `message-${msg.id}`;
     const isSent = msg.from === state.myNick || msg.nick === state.myNick;
@@ -91,6 +94,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     
+    // Renderizado de respuesta (si existe)
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
@@ -104,9 +108,14 @@ export function createMessageElement(msg, isPrivate = false) {
         contentDiv.appendChild(quoteDiv);
     }
     
+    // =========================================================================
+    // ===                    INICIO DE LA MODIFICACIÓN                    ===
+    // =========================================================================
+    // Lógica unificada para renderizar el contenido del mensaje
+    
     const icons = getUserIcons(senderData);
     const displayName = isPrivate ? (isSent ? 'Yo' : msg.from) : msg.nick;
-    
+
     const nickElement = document.createElement('span');
     nickElement.className = 'message-nick';
     nickElement.innerHTML = `${icons} <strong>${displayName}</strong>: `;
@@ -182,6 +191,7 @@ export function createMessageElement(msg, isPrivate = false) {
 
     item.appendChild(mainContentWrapper);
 
+    // Aplicar clases de estilo finales
     if (isPrivate) {
         item.classList.add(isSent ? 'sent' : 'received');
     } else {

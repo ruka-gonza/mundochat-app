@@ -136,6 +136,18 @@ db.serialize(async () => {
     await addColumn('messages', 'preview_description', 'TEXT');
     await addColumn('messages', 'preview_image', 'TEXT');
     await addColumn('messages', 'replyToId', 'INTEGER DEFAULT NULL');
+
+     await new Promise(resolve => {
+        db.run(`
+            CREATE INDEX IF NOT EXISTS idx_messages_room_timestamp 
+            ON messages (roomName, timestamp DESC)
+        `, (err) => {
+            if (err) console.error("Error creando índice para messages:", err.message);
+            else console.log("Índice 'idx_messages_room_timestamp' creado o ya existente.");
+            resolve();
+        });
+    });
+  
     
     // --- Tabla 'private_messages' ---
     await new Promise(resolve => {

@@ -280,7 +280,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     }
     socket.join(roomName);
     socket.joinedRooms.add(roomName);
-    
     let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(socket.userData.role);
     if (!isAnyStaff && socket.userData.id) {
         const staffRooms = await new Promise((resolve) => {
@@ -293,7 +292,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     }
     socket.userData.isStaff = isAnyStaff;
     roomService.rooms[roomName].users[socket.id] = socket.userData;
-
     if (socket.userData.isStaff) {
         socket.emit('set admin cookie', { nick: socket.userData.nick, role: socket.userData.role });
         if (!socket.rooms.has(roomService.MOD_LOG_ROOM)) {
@@ -311,7 +309,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
         roomName: roomName, 
         joinedRooms: Array.from(socket.joinedRooms)
     });
-
     socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
     roomService.updateUserList(io, roomName);
 

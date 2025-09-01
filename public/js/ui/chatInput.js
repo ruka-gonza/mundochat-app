@@ -38,6 +38,7 @@ async function startRecording() {
         state.mediaRecorder.start();
         recordingStartTime = Date.now();
         dom.form.classList.add('is-recording');
+        
         const recordingControls = document.getElementById('audio-recording-controls');
         const stopButton = document.getElementById('stop-recording-button');
         const sendButton = document.getElementById('send-audio-button');
@@ -292,19 +293,37 @@ export function switchToChat(contextId, contextType) {
 }
 
 export function updateTypingIndicator() {
-    // ... tu código sin cambios ...
+    const targetIndicator = state.currentChatContext.type === 'room'
+        ? dom.typingIndicator
+        : dom.privateTypingIndicator;
+    
+    if (!targetIndicator) return;
+
+    if (state.usersTyping.size === 0) {
+        targetIndicator.textContent = '';
+        targetIndicator.classList.add('hidden');
+        return;
+    }
+
+    const users = Array.from(state.usersTyping);
+    let text;
+    if (users.length === 1) {
+        text = `${users[0]} está escribiendo...`;
+    } else if (users.length === 2) {
+        text = `${users[0]} y ${users[1]} están escribiendo...`;
+    } else {
+        text = `Varios usuarios están escribiendo...`;
+    }
+
+    targetIndicator.textContent = text;
+    targetIndicator.classList.remove('hidden');
 }
 
 export function initChatInput() {
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    // Seleccionamos los botones de control de audio de forma segura
     const stopRecordingButton = document.getElementById('stop-recording-button');
     const cancelRecordingButton = document.getElementById('cancel-recording-button');
-    const sendAudioButton = document.getElementById('send-audio-button'); // Este es el que daba el error 'dom.audioSendButton'
+    const sendAudioButton = document.getElementById('send-audio-button');
 
-    // Añadimos los listeners solo si los botones existen en el DOM
     if (dom.audioRecordButton) {
         dom.audioRecordButton.addEventListener('click', startRecording);
     }
@@ -323,11 +342,7 @@ export function initChatInput() {
             }
         });
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
-    // --- Listeners existentes (sin cambios) ---
     dom.input.addEventListener('input', () => {
         handleTypingIndicator();
         handleNickSuggestions();
@@ -345,7 +360,7 @@ export function initChatInput() {
         }
         if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
             e.preventDefault();
-            // ... (resto de la lógica de Tab)
+            autocompleteNick(state.suggestionState.list[0].nick);
         }
     });
 

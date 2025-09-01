@@ -1,55 +1,64 @@
 import state from '../state.js';
 import { getUserIcons, replaceEmoticons } from '../utils.js';
 
-function createEmbedElement(text) {
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const gifRegex = /(https?:\/\/\S+\.(?:gif))/i;
+function createPreviewCard(preview) {
+    if (!preview || !preview.url) return null;
 
-    const youtubeMatch = text.match(youtubeRegex);
-    const gifMatch = text.match(gifRegex);
-
-    let embedContainer = null;
-    let embedContent = null;
-
-    if (youtubeMatch && youtubeMatch[1]) {
-        const videoId = youtubeMatch[1];
-        embedContainer = document.createElement('div');
-        embedContainer.className = 'message-embed-container';
-
-        embedContent = document.createElement('iframe');
+    // --- INICIO DE LA MODIFICACIÓN ---
+    if (preview.type === 'audio') {
+        const audioCard = document.createElement('div');
+        audioCard.className = 'link-preview-card audio-preview';
         
-        const origin = window.location.origin;
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'preview-info';
+        infoDiv.innerHTML = `<strong class="preview-title">${preview.title || 'Nota de voz'}</strong><p class="preview-description">${preview.description || ''}</p>`;
+        
+        const audioPlayer = document.createElement('audio');
+        audioPlayer.src = preview.url;
+        audioPlayer.controls = true;
+        audioPlayer.preload = 'metadata';
+        
+        audioCard.appendChild(infoDiv);
+        audioCard.appendChild(audioPlayer);
+        
+        return audioCard;
+    }
+    // --- FIN DE LA MODIFICACIÓN ---
 
-        embedContent.src = `https://www.youtube-nocookie.com/embed/${videoId}?origin=${encodeURIComponent(origin)}`;
-        embedContent.sandbox = 'allow-scripts allow-same-origin allow-presentation allow-popups';
-        embedContent.title = 'Reproductor de video de YouTube';
-        embedContent.frameBorder = '0';
-        embedContent.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-        embedContent.allowFullscreen = true;
+    // El resto de la lógica para imágenes y YouTube
+    const linkCard = document.createElement('a');
+    linkCard.href = preview.url;
+    linkCard.target = '_blank';
+    linkCard.rel = 'noopener noreferrer';
+    linkCard.className = 'link-preview-card';
 
-    } else if (gifMatch && gifMatch[0]) {
-        const gifUrl = gifMatch[0];
-        embedContainer = document.createElement('div');
-        embedContainer.className = 'message-embed-container';
-
-        embedContent = document.createElement('img');
-        embedContent.src = gifUrl;
-        embedContent.alt = 'GIF animado';
-        embedContent.loading = 'lazy';
+    if (preview.type === 'image') {
+        linkCard.dataset.previewType = 'image';
+        linkCard.dataset.imageUrl = preview.image;
+    }
+    if (preview.type === 'youtube') {
+        const videoIdMatch = preview.url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
+        if (videoIdMatch) {
+            linkCard.dataset.previewType = 'youtube';
+            linkCard.dataset.youtubeId = videoIdMatch[1];
+        }
     }
 
-    if (embedContainer && embedContent) {
-        embedContent.className = 'embed-content';
-        embedContainer.appendChild(embedContent);
-
-        const closeButton = document.createElement('button');
-        closeButton.className = 'embed-close-btn';
-        closeButton.textContent = '×';
-        closeButton.title = 'Cerrar vista previa';
-        embedContainer.appendChild(closeButton);
+    let innerHTML = '';
+    if (preview.image) {
+        innerHTML += `<div class="preview-image-container"><img src="${preview.image}" alt="Previsualización" loading="lazy" onerror="this.style.display='none'; this.parentElement.style.display='none';"></div>`;
     }
+    innerHTML += '<div class="preview-info">';
+    if (preview.title) {
+        innerHTML += `<strong class="preview-title">${preview.title}</strong>`;
+    }
+    if (preview.description) {
+        innerHTML += `<p class="preview-description">${preview.description}</p>`;
+    }
+    innerHTML += '</div>';
 
-    return embedContainer;
+    linkCard.innerHTML = innerHTML;
+    return linkCard;
 }
 
 export function createMessageElement(msg, isPrivate = false) {
@@ -70,6 +79,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const isSent = msg.from === state.myNick || msg.nick === state.myNick;
     const senderData = state.allUsersData[senderNick.toLowerCase()] || {};
     const avatarUrl = (isSent && state.myUserData.avatar_url) ? state.myUserData.avatar_url : (senderData.avatar_url || 'image/default-avatar.png');
+    
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = 'message-avatar';
@@ -106,48 +116,29 @@ export function createMessageElement(msg, isPrivate = false) {
         nickElement.dataset.messageId = msg.id;
     }
 
-    if (msg.text) {
-        const textSpan = document.createElement('span');
-        textSpan.className = 'message-text';
-        textSpan.appendChild(nickElement);
+    const textSpan = document.createElement('span');
+    textSpan.className = 'message-text';
+    textSpan.appendChild(nickElement);
+
+    if (!msg.preview || msg.preview.type !== 'image' && msg.preview.type !== 'audio') {
         textSpan.append(replaceEmoticons(msg.text));
-        contentDiv.appendChild(textSpan);
     }
 
-    if (msg.file) {
-        let fileElement;
-        
-        if (!msg.text) {
-             contentDiv.appendChild(nickElement);
-        }
+    contentDiv.appendChild(textSpan);
 
-        if (msg.type.startsWith('image/')) {
-            fileElement = document.createElement('img');
-            fileElement.src = msg.file;
-            fileElement.className = 'image-thumbnail';
-            fileElement.alt = `Imagen de ${displayName}`;
-            fileElement.style.marginTop = '5px';
-        } else if (msg.type.startsWith('audio/')) {
-            fileElement = document.createElement('audio');
-            fileElement.src = msg.file;
-            fileElement.controls = true;
-            fileElement.style.marginTop = '5px';
-        }
-
-        if (fileElement) {
-            contentDiv.appendChild(fileElement);
+    if (msg.preview) {
+        const previewCard = createPreviewCard(msg.preview);
+        if (previewCard) {
+            contentDiv.appendChild(previewCard);
         }
     }
-
-    // --- INICIO DE LA CORRECCIÓN ---
-    // AÑADIMOS UNA COMPROBACIÓN PARA EVITAR ERRORES CON MENSAJES ANTIGUOS
+    
     if (msg.timestamp) {
         const timestampSpan = document.createElement('span');
         timestampSpan.className = 'message-timestamp';
         timestampSpan.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         contentDiv.appendChild(timestampSpan);
     }
-    // --- FIN DE LA CORRECCIÓN ---
 
     if (msg.editedAt) {
         const editedSpan = document.createElement('span');
@@ -158,19 +149,12 @@ export function createMessageElement(msg, isPrivate = false) {
 
     mainContentWrapper.appendChild(contentDiv);
 
-    if (msg.text) {
-        const embedElement = createEmbedElement(msg.text);
-        if (embedElement) {
-            mainContentWrapper.appendChild(embedElement);
-        }
-    }
-
     const iAmModerator = ['owner', 'admin'].includes(state.myUserData.role);
     if (!isPrivate) {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
-        if (isSent && msg.text) {
+        if (isSent && msg.text && (!msg.preview || msg.preview.type === 'youtube')) {
             const editBtn = document.createElement('button');
             editBtn.textContent = '✏️';
             editBtn.title = 'Editar mensaje';

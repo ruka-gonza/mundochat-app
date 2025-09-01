@@ -16,46 +16,49 @@ const guestRoutes = require('./routes/guest');
 
 const app = express();
 const server = http.createServer(app);
+
+// =========================================================================
+// ===                    INICIO DE LA MODIFICACIÓN                    ===
+// =========================================================================
+// Configuración del servidor de Socket.IO con "heartbeat" (pings)
 const io = new Server(server, {
-  maxHttpBufferSize: 1e7 // Límite de 10MB para subidas
+  maxHttpBufferSize: 1e7, // Límite de 10MB para subidas
+  
+  // Añadimos la configuración de ping para mantener la conexión viva
+  pingInterval: 20000, // Envía un ping a cada cliente cada 20 segundos
+  pingTimeout: 15000   // Si un cliente no responde en 15 segundos, se desconecta
 });
+// =========================================================================
+// ===                     FIN DE LA MODIFICACIÓN                    ===
+// =========================================================================
 
 
-// ==========================================================
-// CONFIGURACIÓN DE EXPRESS (LA PARTE QUE FALTABA)
-// ==========================================================
+// --- CONFIGURACIÓN DE EXPRESS ---
 
-// LÍNEA CLAVE 1: Servir archivos estáticos desde la carpeta 'public'
-// Esto resuelve el error "Cannot GET /" al servir tu index.html
+// Servir archivos estáticos desde la carpeta 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 
-// LÍNEAS ADICIONALES para servir avatares de las carpetas 'data'
-// Esto es importante para que las imágenes de perfil se vean
+// Servir avatares de las carpetas 'data'
 app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
 app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
 
 
-// LÍNEA CLAVE 2: Middlewares para procesar datos de formularios y JSON
+// Middlewares para procesar datos de formularios y JSON
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// LÍNEA CLAVE 3: Pasar la instancia 'io' a las rutas
+// Pasar la instancia 'io' a las rutas
 app.use((req, res, next) => {
     req.io = io;
     next();
 });
 
-// LÍNEA CLAVE 4: Configurar las rutas de la API
+// Configurar las rutas de la API
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/guest', guestRoutes);
-
-
-// ==========================================================
-// FIN DE LA CONFIGURACIÓN
-// ==========================================================
 
 
 // --- INICIALIZACIÓN DE SERVICIOS ---

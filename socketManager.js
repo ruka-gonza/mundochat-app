@@ -582,6 +582,26 @@ function initializeSocket(io) {
             socket.emit('system message', { text: `Tu denuncia contra ${targetNick} ha sido enviada al staff. Gracias.`, type: 'highlight' });
             io.emit('admin panel refresh');
         });
+
+        socket.on('reauthenticate', async (cookieData) => {
+            console.log(`Intento de re-autenticación para el nick: ${cookieData.nick}`);
+            const userInDb = await userService.findUserById(cookieData.id);
+            if (userInDb && userInDb.nick.toLowerCase() === cookieData.nick.toLowerCase() && !roomService.isNickInUse(userInDb.nick)) {
+                socket.userData = { 
+                    nick: userInDb.nick, id: userInDb.id, role: userInDb.role,
+                    isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, 
+                    ip: socket.handshake.address,
+                    avatar_url: userInDb.avatar_url || 'image/default-avatar.png', 
+                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), 
+                    isAFK: false 
+                };
+                console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
+                socket.emit('reauth_success');
+            } else {
+                console.warn(`Fallo en la re-autenticación para ${cookieData.nick}.`);
+                socket.emit('reauth_failed');
+            }
+        });
     });
 }
 

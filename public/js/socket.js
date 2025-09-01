@@ -266,6 +266,7 @@ export function initializeSocketEvents(socket) {
     socket.on('typing', ({ nick, context }) => { if (context.type === state.currentChatContext.type && context.with === state.currentChatContext.with) { state.usersTyping.add(nick); updateTypingIndicator(); } });
     socket.on('stop typing', ({ nick, context }) => { if (context.type === state.currentChatContext.type && context.with === state.currentChatContext.with) { state.usersTyping.delete(nick); updateTypingIndicator(); } });
     
+    // --- OPTIMIZACIÓN: Carga de historial con DocumentFragment ---
     socket.on('load history', ({ roomName, history }) => {
         state.publicMessageHistories[roomName] = history;
         if (state.currentChatContext.type === 'room' && state.currentChatContext.with === roomName) {

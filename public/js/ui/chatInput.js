@@ -5,98 +5,13 @@ import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
 
-// --- Lógica de Grabación de Audio ---
-let recordingStartTime;
-let recordingInterval;
-
-async function startRecording() {
-    if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
-        state.socket.emit('system message', { text: 'Selecciona una sala o chat privado para enviar notas de voz.', type: 'error' });
-        return;
-    }
-    
-    try {
-        state.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const options = { mimeType: 'audio/webm; codecs=opus' };
-        state.mediaRecorder = new MediaRecorder(state.audioStream, options);
-        state.audioChunks = [];
-
-        state.mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                state.audioChunks.push(event.data);
-            }
-        };
-
-        state.mediaRecorder.onstop = () => {
-            state.audioBlob = new Blob(state.audioChunks, { type: options.mimeType });
-            const sendButton = document.getElementById('send-audio-button');
-            const stopButton = document.getElementById('stop-recording-button');
-            if (sendButton) sendButton.classList.remove('hidden');
-            if (stopButton) stopButton.classList.add('hidden');
-        };
-
-        state.mediaRecorder.start();
-        recordingStartTime = Date.now();
-        dom.form.classList.add('is-recording');
-        
-        const recordingControls = document.getElementById('audio-recording-controls');
-        const stopButton = document.getElementById('stop-recording-button');
-        const sendButton = document.getElementById('send-audio-button');
-        const timer = document.getElementById('recording-timer');
-
-        if (recordingControls) recordingControls.classList.remove('hidden');
-        if (stopButton) stopButton.classList.remove('hidden');
-        if (sendButton) sendButton.classList.add('hidden');
-        if (timer) timer.textContent = '00:00';
-        
-        recordingInterval = setInterval(updateRecordingTimer, 1000);
-
-    } catch (err) {
-        console.error('Error al acceder al micrófono:', err);
-        state.socket.emit('system message', { text: 'No se pudo acceder al micrófono. Asegúrate de dar permiso.', type: 'error' });
-        resetAudioUI();
-    }
-}
-
-function stopRecording() {
-    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-        state.mediaRecorder.stop();
-        clearInterval(recordingInterval);
-    }
-}
-
-function resetAudioUI() {
-    if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-        state.mediaRecorder.stop();
-    }
-    if (state.audioStream) {
-        state.audioStream.getTracks().forEach(track => track.stop());
-    }
-    clearInterval(recordingInterval);
-    dom.form.classList.remove('is-recording');
-    const recordingControls = document.getElementById('audio-recording-controls');
-    if (recordingControls) recordingControls.classList.add('hidden');
-    state.audioChunks = [];
-    state.audioBlob = null;
-}
-
-function updateRecordingTimer() {
-    const timer = document.getElementById('recording-timer');
-    if (!timer) return;
-    const elapsed = Date.now() - recordingStartTime;
-    const seconds = String(Math.floor(elapsed / 1000) % 60).padStart(2, '0');
-    const minutes = String(Math.floor(elapsed / (1000 * 60))).padStart(2, '0');
-    timer.textContent = `${minutes}:${seconds}`;
-}
-
-// --- Funciones de chat existentes ---
+// --- Funciones para manejar la barra de respuesta ---
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
     const { nick, text } = state.replyingTo;
-    const strongEl = dom.replyContextBar.querySelector('strong');
-    const previewEl = dom.replyContextBar.querySelector('.reply-text-preview');
-    if (strongEl) strongEl.textContent = nick;
-    if (previewEl) previewEl.textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
+    dom.replyContextBar.querySelector('strong').textContent = nick;
+    const preview = dom.replyContextBar.querySelector('.reply-text-preview');
+    preview.textContent = text.length > 50 ? text.substring(0, 50) + '...' : text;
     dom.replyContextBar.classList.remove('hidden');
     dom.input.focus();
 }
@@ -180,6 +95,29 @@ function autocompleteNick(nick) {
     dom.input.setSelectionRange(newCursorPosition, newCursorPosition);
 }
 
+function resetAudioRecorderUI() {
+    const recordButton = document.getElementById('record-audio-button');
+    const sendButton = document.getElementById('send-audio-button');
+    const cancelButton = document.getElementById('cancel-recording-button');
+    const recordingControls = document.getElementById('audio-recording-controls');
+
+    if (recordButton) recordButton.classList.remove('hidden');
+    if (recordingControls) recordingControls.classList.add('hidden');
+    dom.input.classList.remove('hidden');
+
+    state.audioChunks = [];
+    state.audioBlob = null;
+    if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') {
+        state.mediaRecorder.stop();
+    }
+    if (state.audioStream) {
+        state.audioStream.getTracks().forEach(track => track.stop());
+        state.audioStream = null;
+    }
+    state.mediaRecorder = null;
+    clearInterval(recordingInterval);
+}
+
 export function sendMessage() {
     const text = dom.input.value.trim();
     if (!text) return;
@@ -233,7 +171,7 @@ export function handleFileUpload(file) {
         reader.readAsArrayBuffer(slice);
     };
     readSlice(0);
-}
+};
 
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {
@@ -320,12 +258,16 @@ export function updateTypingIndicator() {
 }
 
 export function initChatInput() {
+    // --- INICIO DE LA CORRECCIÓN ---
+    // Seleccionamos los botones de control de audio de forma segura
+    const recordButton = document.getElementById('record-audio-button');
     const stopRecordingButton = document.getElementById('stop-recording-button');
     const cancelRecordingButton = document.getElementById('cancel-recording-button');
     const sendAudioButton = document.getElementById('send-audio-button');
 
-    if (dom.audioRecordButton) {
-        dom.audioRecordButton.addEventListener('click', startRecording);
+    // Añadimos los listeners solo si los botones existen en el DOM
+    if (recordButton) {
+        recordButton.addEventListener('click', startRecording);
     }
     if (stopRecordingButton) {
         stopRecordingButton.addEventListener('click', stopRecording);
@@ -342,6 +284,7 @@ export function initChatInput() {
             }
         });
     }
+    // --- FIN DE LA CORRECCIÓN ---
 
     dom.input.addEventListener('input', () => {
         handleTypingIndicator();

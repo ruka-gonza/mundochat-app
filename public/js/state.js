@@ -12,6 +12,12 @@ const state = {
     disconnectedPrivateChats: new Set(),
     currentRoomUsers: [],
     allUsersData: {},
+    
+    // --- MODIFICACIÓN ---
+    // Objeto para almacenar la lista de usuarios de cada sala por separado.
+    roomUserLists: {}, 
+    // --- FIN DE MODIFICACIÓN ---
+    
     selectedAvatarFile: null,
     ignoredNicks: new Set(),
     isFirstLogin: true,

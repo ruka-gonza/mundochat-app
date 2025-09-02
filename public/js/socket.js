@@ -7,11 +7,6 @@ import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
 
-/**
- * Renderiza el historial de mensajes en pequeños lotes para no bloquear el navegador.
- * @param {Array} history - El array de mensajes a renderizar.
- * @param {boolean} isPrivate - True si es un chat privado.
- */
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
     if (!container) return;
@@ -97,7 +92,17 @@ export function initializeSocketEvents(socket) {
     });
 
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
-    socket.on('set session cookie', (data) => { document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Lax`; });
+
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Al no especificar Max-Age, el navegador la trata como una cookie de sesión.
+    socket.on('set session cookie', (data) => {
+        document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; SameSite=Lax`;
+    });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     
     socket.on('update user list', ({ roomName, users }) => {
         if (!state.roomUserLists) state.roomUserLists = {};
@@ -387,26 +392,17 @@ export function initializeSocketEvents(socket) {
         }
     });
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     socket.on('reauth_success', () => {
         console.log("Re-autenticación exitosa. Re-uniéndose a la última sala activa...");
-        // Usamos la variable de estado `lastActiveRoom` para volver a donde estábamos.
         if (state.lastActiveRoom) {
             socket.emit('join room', { roomName: state.lastActiveRoom });
         } else {
-             // Como fallback, si por alguna razón no hay sala guardada, nos unimos a General.
             socket.emit('join room', { roomName: '#General' });
         }
     });
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     socket.on('reauth_failed', () => {
         console.error("La re-autenticación falló. Forzando recarga de página.");
-        // Borramos la cookie para evitar un bucle de re-autenticación fallida
         document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
         location.reload();
     });

@@ -57,10 +57,15 @@ function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
+            // Borra la cookie de sesión del navegador.
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            
+            // Notifica al servidor para una limpieza inmediata.
             if (state.socket) {
                 state.socket.emit('logout');
             }
+
+            // Recarga la página para volver a la pantalla de bienvenida.
             setTimeout(() => {
                 location.reload();
             }, 100); 
@@ -95,35 +100,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // =========================================================================
     // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
-    let disconnectTimer;
-
-    state.socket.on('disconnect', (reason) => {
-        console.warn(`Desconectado del servidor. Razón: ${reason}`);
-        // Inicia un temporizador. Si la desconexión es muy corta, no mostraremos el banner.
-        disconnectTimer = setTimeout(() => {
-            connectionOverlay.innerHTML = '🔴 Desconectado. Intentando reconectar...';
-            connectionOverlay.style.display = 'block';
-        }, 2000); // Muestra el banner solo si la desconexión dura más de 2 segundos.
-    });
+    // Esta bandera nos ayuda a saber si es la primera conexión o una reconexión.
+    let isConnectedBefore = false;
 
     state.socket.on('connect', () => {
-        // Si nos conectamos, cancelamos el temporizador para que el banner no aparezca.
-        clearTimeout(disconnectTimer);
-        console.log("¡Conectado de nuevo al servidor!");
+        // Oculta el banner inmediatamente al conectar.
         connectionOverlay.style.display = 'none';
         
+        // Si ya estábamos conectados antes, esto es una reconexión.
+        if (isConnectedBefore) {
+            console.log("Reconnected to server. Attempting to re-authenticate...");
+        } else {
+            console.log("Successfully connected to server for the first time.");
+        }
+        isConnectedBefore = true; // Marcamos que ya hemos tenido una conexión exitosa.
+        
+        // La lógica de re-autenticación se mantiene igual.
         const authCookie = document.cookie.split('; ').find(row => row.startsWith('user_auth='));
         if (authCookie) {
             try {
                 const userData = JSON.parse(decodeURIComponent(authCookie.split('=')[1]));
                 if (userData && userData.id && userData.nick) {
-                    console.log("Intentando re-autenticar con:", userData);
                     state.socket.emit('reauthenticate', userData);
                 }
             } catch (e) {
-                console.error("Error al parsear cookie de autenticación:", e);
+                console.error("Error parsing auth cookie:", e);
             }
         }
+    });
+
+    state.socket.on('disconnect', (reason) => {
+        console.warn(`Disconnected from server. Reason: ${reason}`);
+        // Muestra el banner inmediatamente para informar al usuario.
+        connectionOverlay.innerHTML = '🔴 Desconectado. Intentando reconectar...';
+        connectionOverlay.style.display = 'block';
     });
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===

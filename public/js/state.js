@@ -3,7 +3,8 @@ const state = {
     myNick: '',
     myUserData: {},
     currentChatContext: { type: 'none', with: null },
-    lastActiveRoom: '#General', // <-- NUEVA LÍNEA: Para recordar la última sala visitada
+    lastActiveRoom: '#General', 
+    pendingRoomJoin: null, // <-- NUEVA LÍNEA: Para recordar a qué sala intentábamos unirnos
     privateMessageHistories: {},
     publicMessageHistories: {},
     joinedRooms: new Set(),
@@ -12,9 +13,7 @@ const state = {
     disconnectedPrivateChats: new Set(),
     currentRoomUsers: [],
     allUsersData: {},
-    
     roomUserLists: {}, 
-    
     selectedAvatarFile: null,
     ignoredNicks: new Set(),
     isFirstLogin: true,

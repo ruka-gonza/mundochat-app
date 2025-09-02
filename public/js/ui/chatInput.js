@@ -5,7 +5,8 @@ import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
 
-// --- Funciones para manejar la barra de respuesta ---
+// ... (todas las funciones auxiliares como showReplyContextBar, sendMessage, etc., se mantienen igual) ...
+
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
     const { nick, text } = state.replyingTo;
@@ -156,17 +157,26 @@ export function handleFileUpload(file) {
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {
         addPrivateChat(contextId); 
-        // Si estábamos en una sala antes de abrir el privado, la guardamos.
         if (state.currentChatContext.type === 'room') {
             state.lastActiveRoom = state.currentChatContext.with;
         }
     } else if (contextType === 'room') {
-        // Cada vez que cambiamos a una sala, la recordamos.
         state.lastActiveRoom = contextId;
+        // Si no estamos ya en esa sala, registramos la intención de unirnos.
+        if (!state.joinedRooms.has(contextId)) {
+            state.pendingRoomJoin = contextId;
+        }
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
+    
+    // Si la conexión no está activa, no hacemos nada más.
+    // La lógica de 'reauth_success' se encargará cuando la conexión vuelva.
+    if (!state.socket.connected) {
+        console.warn(`Socket desconectado. Intento de unirse a '${contextId}' pendiente.`);
+        return;
+    }
+    
+    // Si ya estamos conectados, limpiamos la intención pendiente y procedemos.
+    state.pendingRoomJoin = null;
 
     state.usersTyping.clear();
     updateTypingIndicator();
@@ -178,45 +188,39 @@ export function switchToChat(contextId, contextType) {
     updateUnreadCounts();
     
     dom.userSearchInput.value = '';
-    let history = [];
-    let view, container;
 
-    if (contextType === 'room') {
-        state.socket.emit('request user list', { roomName: contextId });
-        
-        if (!state.publicMessageHistories[contextId]) {
-            state.publicMessageHistories[contextId] = [];
-        }
-        history = state.publicMessageHistories[contextId];
-        view = dom.mainChatArea;
-        container = dom.messagesContainer;
-        dom.roomNameHeader.textContent = `Sala: ${contextId}`;
-        dom.privateChatView.classList.add('hidden');
-        view.classList.remove('hidden');
-        
-        container.innerHTML = '';
-        history.forEach(msg => container.appendChild(createMessageElement(msg, false)));
-        container.scrollTop = container.scrollHeight;
+    if (contextType === 'room' && !state.joinedRooms.has(contextId)) {
+        state.socket.emit('join room', { roomName: contextId });
     } else {
-        view = dom.privateChatView;
-        container = dom.privateChatWindow;
-        dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
-        dom.mainChatArea.classList.add('hidden');
-        view.classList.remove('hidden');
-        
-        container.innerHTML = '';
-        if (!state.privateMessageHistories[contextId]) {
-            state.socket.emit('request private history', { withNick: contextId });
-        } else {
+        // Lógica para mostrar el contenido si ya estamos en la sala
+        if (contextType === 'room') {
+            dom.mainChatArea.classList.remove('hidden');
+            dom.privateChatView.classList.add('hidden');
+            dom.roomNameHeader.textContent = `Sala: ${contextId}`;
+            dom.messagesContainer.innerHTML = '';
+            const history = state.publicMessageHistories[contextId] || [];
+            history.forEach(msg => dom.messagesContainer.appendChild(createMessageElement(msg, false)));
+            dom.messagesContainer.scrollTop = dom.messagesContainer.scrollHeight;
+            renderUserList();
+        } else { // Chat privado
+            dom.mainChatArea.classList.add('hidden');
+            dom.privateChatView.classList.remove('hidden');
+            dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
+            dom.privateChatWindow.innerHTML = '';
             const ul = document.createElement('ul');
-            state.privateMessageHistories[contextId].forEach(msg => {
-                ul.appendChild(createMessageElement(msg, true));
-            });
-            container.appendChild(ul);
+            const history = state.privateMessageHistories[contextId] || [];
+            history.forEach(msg => ul.appendChild(createMessageElement(msg, true)));
+            dom.privateChatWindow.appendChild(ul);
             ul.scrollTop = ul.scrollHeight;
+            if (!state.privateMessageHistories[contextId]) {
+                state.socket.emit('request private history', { withNick: contextId });
+            }
         }
     }
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 export function updateTypingIndicator() {
     const targetIndicator = state.currentChatContext.type === 'room'
@@ -246,7 +250,6 @@ export function updateTypingIndicator() {
 }
 
 export function initChatInput() {
-    // --- LÓGICA DE GRABACIÓN DE AUDIO ---
     let recordingStartTime;
     let recordingInterval;
 

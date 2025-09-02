@@ -18,10 +18,7 @@ const guestRoutes = require('./routes/guest');
 const app = express();
 const server = http.createServer(app);
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
-// 1. Definimos las opciones de CORS una sola vez para reutilizarlas
+// --- 1. Definimos la configuración de CORS una sola vez ---
 const allowedOrigins = [
     'https://mundochat.me',
     'http://localhost:3000',
@@ -39,19 +36,15 @@ const corsOptions = {
     credentials: true,
 };
 
-// 2. Inicializamos el servidor de Socket.IO CON las opciones de CORS
+// --- 2. Inicializamos Socket.IO con la configuración CORS ---
 const io = new Server(server, {
-  cors: corsOptions, // <-- ¡ESTA ES LA LÍNEA AÑADIDA!
+  cors: corsOptions,
   maxHttpBufferSize: 1e7,
   pingInterval: 10000,
   pingTimeout: 5000
 });
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
-
-// 3. Aplicamos las mismas opciones de CORS a Express
+// --- 3. Aplicamos CORS a todas las rutas de Express ---
 app.use(cors(corsOptions));
 
 // --- CONFIGURACIÓN DE EXPRESS ---
@@ -68,6 +61,8 @@ app.use((req, res, next) => {
     next();
 });
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 // Ruta para mantener la sesión viva (keep-alive)
 app.post('/api/auth/keep-alive', (req, res) => {
     const userAuthCookie = req.cookies.user_auth;
@@ -76,7 +71,7 @@ app.post('/api/auth/keep-alive', (req, res) => {
             res.cookie('user_auth', userAuthCookie, {
                 httpOnly: false,
                 sameSite: 'none',
-                secure: true,
+                secure: isProduction, // Condicional para que funcione en local (http) y producción (https)
                 maxAge: 3600 * 1000 // 1 hora
             });
             return res.status(200).json({ message: 'Session extended.' });

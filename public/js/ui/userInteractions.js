@@ -60,7 +60,13 @@ async function handleGuestAvatarUpload(event) {
         alert('No se pudo procesar el archivo seleccionado.');
     };
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 export function renderUserList() {
     const searchTerm = dom.userSearchInput.value.toLowerCase().trim();
     
@@ -113,6 +119,9 @@ export function renderUserList() {
         dom.userList.appendChild(item);
     });
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 function showUserActionPopup(targetElement, user) {
     document.getElementById('popup-user-nick').textContent = user.nick;

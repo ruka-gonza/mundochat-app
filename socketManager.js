@@ -289,7 +289,7 @@ function initializeSocket(io) {
         socket.on('reauthenticate', async (cookieData) => {
             console.log(`Intento de re-autenticación para el nick: ${cookieData.nick}`);
             const userInDb = await userService.findUserById(cookieData.id);
-            
+
             // 1. Validar que el usuario de la cookie exista y coincida con la base de datos.
             if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
                 console.warn(`Fallo en la re-autenticación para ${cookieData.nick} (datos no coinciden).`);
@@ -364,7 +364,7 @@ function initializeSocket(io) {
                 if (!match) return socket.emit('auth_error', { message: "Contraseña incorrecta." });
                 
                 // =========================================================================
-                // ===             INICIO DE LA CORRECCIÓN (YA PRESENTE Y CORRECTA)          ===
+                // ===             INICIO DE LA CORRECCIÓN CLAVE (ya presente)          ===
                 // =========================================================================
                 const oldSocketId = roomService.findSocketIdByNick(registeredData.nick);
                 if (oldSocketId) {
@@ -375,7 +375,7 @@ function initializeSocket(io) {
                     }
                 }
                 // =========================================================================
-                // ===              FIN DE LA CORRECCIÓN (YA PRESENTE Y CORRECTA)          ===
+                // ===              FIN DE LA CORRECCIÓN CLAVE (ya presente)          ===
                 // =========================================================================
 
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };

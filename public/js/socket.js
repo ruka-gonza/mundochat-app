@@ -1,5 +1,3 @@
-// public/js/socket.js (VERSIÓN CORREGIDA Y FINAL PARA AFK)
-
 import state from './state.js';
 import * as dom from './domElements.js';
 import { showNotification } from './utils.js';
@@ -9,6 +7,45 @@ import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
 
+/**
+ * Renderiza el historial de mensajes en pequeños lotes para no bloquear el navegador.
+ * @param {Array} history - El array de mensajes a renderizar.
+ * @param {boolean} isPrivate - True si es un chat privado.
+ */
+function renderHistoryInBatches(history, isPrivate) {
+    const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
+    if (!container) return;
+
+    container.innerHTML = '';
+
+    if (isPrivate && !container.querySelector('ul')) {
+        container.appendChild(document.createElement('ul'));
+    }
+    const listElement = isPrivate ? container.querySelector('ul') : container;
+
+    let index = 0;
+    const batchSize = 5;
+
+    function renderBatch() {
+        const fragment = document.createDocumentFragment();
+        const batchEnd = Math.min(index + batchSize, history.length);
+
+        for (let i = index; i < batchEnd; i++) {
+            fragment.appendChild(createMessageElement(history[i], isPrivate));
+        }
+
+        listElement.appendChild(fragment);
+        index = batchEnd;
+
+        if (index < history.length) {
+            requestAnimationFrame(renderBatch);
+        } else {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
+    renderBatch();
+}
 
 export function updateUnreadCounts() {
     let privateUnreadCount = 0;
@@ -25,36 +62,25 @@ export function updateUnreadCounts() {
     }
 }
 
-function handlePrivateMessageReception(msg) {
-    const partnerNick = msg.from === state.myNick ? msg.to : msg.from;
-    if (!state.privateMessageHistories[partnerNick]) {
-        state.privateMessageHistories[partnerNick] = [];
-    }
-    state.privateMessageHistories[partnerNick].push(msg);
-    if (state.currentChatContext.type === 'private' && state.currentChatContext.with === partnerNick) {
-        appendMessageToView(msg, true);
-    } else {
-        if (msg.from !== state.myNick) {
-            addPrivateChat(partnerNick);
-            state.usersWithUnreadMessages.add(partnerNick);
-            updateConversationList();
-            updateUnreadCounts();
-            const notificationBody = msg.file ? `Te ha enviado un archivo.` : msg.text;
-            showNotification(`Nuevo mensaje de ${msg.from}`, notificationBody, true);
-        }
-    }
-}
+function handlePrivateMessageReception(msg) { 
+    const partnerNick = msg.from === state.myNick ? msg.to : msg.from; 
+    if (!state.privateMessageHistories[partnerNick]) { state.privateMessageHistories[partnerNick] = []; } 
+    state.privateMessageHistories[partnerNick].push(msg); 
+    if (state.currentChatContext.type === 'private' && state.currentChatContext.with === partnerNick) { appendMessageToView(msg, true); } else { if (msg.from !== state.myNick) { addPrivateChat(partnerNick); state.usersWithUnreadMessages.add(partnerNick); updateConversationList(); updateUnreadCounts(); const notificationBody = msg.file ? `Te ha enviado un archivo.` : msg.text; showNotification(`Nuevo mensaje de ${msg.from}`, notificationBody, true); } } }
 
 function handlePublicMessage(msg) {
     if (!state.publicMessageHistories[msg.roomName]) {
         state.publicMessageHistories[msg.roomName] = [];
     }
+
     const isMention = state.myNick && msg.nick && msg.text && msg.nick !== state.myNick && msg.text.toLowerCase().includes(state.myNick.toLowerCase());
     if (isMention) {
         msg.isMention = true;
         showNotification(`Nueva mención de ${msg.nick}`, msg.text);
     }
+    
     state.publicMessageHistories[msg.roomName].push(msg);
+
     if (state.currentChatContext.type === 'room' && state.currentChatContext.with === msg.roomName) {
         appendMessageToView(msg, false);
     } else {
@@ -74,13 +100,14 @@ export function initializeSocketEvents(socket) {
     socket.on('set session cookie', (data) => { document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; Max-Age=${24 * 60 * 60}; SameSite=Lax`; });
     
     socket.on('update user list', ({ roomName, users }) => {
+        if (!state.roomUserLists) state.roomUserLists = {};
+        state.roomUserLists[roomName] = users;
+
         if (state.currentChatContext.type === 'room' && state.currentChatContext.with === roomName) {
             state.currentRoomUsers = users;
             users.forEach(user => {
                 const lowerNick = user.nick.toLowerCase();
-                if (!state.allUsersData[lowerNick]) {
-                    state.allUsersData[lowerNick] = {};
-                }
+                if (!state.allUsersData[lowerNick]) state.allUsersData[lowerNick] = {};
                 state.allUsersData[lowerNick] = { ...state.allUsersData[lowerNick], ...user };
             });
             renderUserList();
@@ -91,32 +118,34 @@ export function initializeSocketEvents(socket) {
         const lowerOldNick = (data.oldNick || data.nick).toLowerCase();
         const lowerNewNick = data.nick.toLowerCase();
     
-        // Actualiza el "almacén" global de datos de usuarios
         if (data.oldNick && lowerOldNick !== lowerNewNick) {
             state.allUsersData[lowerNewNick] = state.allUsersData[lowerOldNick] || {};
             delete state.allUsersData[lowerOldNick];
         }
         state.allUsersData[lowerNewNick] = { ...state.allUsersData[lowerNewNick], ...data };
         
-        // Si la actualización es para mí
         if (state.myNick.toLowerCase() === lowerOldNick) {
             state.myNick = data.nick;
             state.myUserData = { ...state.myUserData, ...data };
-            if (data.isAFK !== undefined) {
-                state.isAFK = data.isAFK;
+            if (data.isAFK !== undefined) state.isAFK = data.isAFK;
+            if (dom.profileNickSpan) dom.profileNickSpan.textContent = state.myNick;
+            if (dom.newNickInput) dom.newNickInput.value = state.myNick;
+        }
+    
+        Object.values(state.roomUserLists || {}).forEach(list => {
+            const userInList = list.find(u => u.nick.toLowerCase() === lowerOldNick);
+            if (userInList) {
+                Object.assign(userInList, data);
+                if (data.oldNick) {
+                  userInList.nick = data.nick;
+                }
             }
-            dom.profileNickSpan.textContent = state.myNick;
-            dom.newNickInput.value = state.myNick;
+        });
+
+        if (state.currentChatContext.type === 'room') {
+            renderUserList();
         }
     
-        // Actualiza el estado del usuario en la lista de la sala actual
-        const userInRoom = state.currentRoomUsers.find(u => u.nick.toLowerCase() === lowerOldNick);
-        if (userInRoom) {
-            // Se actualizan solo las propiedades que vienen en `data` para no perder las existentes
-            Object.assign(userInRoom, data);
-        }
-    
-        // Lógica para cambiar de nick
         if (data.oldNick && lowerOldNick !== lowerNewNick) {
             if (state.activePrivateChats.has(data.oldNick)) {
                 state.activePrivateChats.delete(data.oldNick);
@@ -136,8 +165,6 @@ export function initializeSocketEvents(socket) {
             }
         }
     
-        // Finalmente, redibuja la lista de usuarios y conversaciones con los datos actualizados
-        renderUserList();
         updateConversationList();
     });
 
@@ -152,9 +179,7 @@ export function initializeSocketEvents(socket) {
 
     socket.on('system message', (msg) => {
         if (msg.roomName) {
-            if (!state.publicMessageHistories[msg.roomName]) {
-                state.publicMessageHistories[msg.roomName] = [];
-            }
+            if (!state.publicMessageHistories[msg.roomName]) state.publicMessageHistories[msg.roomName] = [];
             state.publicMessageHistories[msg.roomName].push(msg);
             if (state.currentChatContext.type === 'room' && state.currentChatContext.with === msg.roomName) {
                 appendMessageToView(msg, false);
@@ -166,11 +191,9 @@ export function initializeSocketEvents(socket) {
             }
         } else {
             let targetList;
-            if (state.currentChatContext.type === 'room') {
-                targetList = dom.messagesContainer;
-            } else if (state.currentChatContext.type === 'private') {
-                targetList = dom.privateChatWindow.querySelector('ul') || dom.privateChatWindow;
-            }
+            if (state.currentChatContext.type === 'room') targetList = dom.messagesContainer;
+            else if (state.currentChatContext.type === 'private') targetList = dom.privateChatWindow.querySelector('ul') || dom.privateChatWindow;
+            
             if (targetList) {
                 const item = document.createElement('li');
                 item.className = `system-message ${msg.type || ''}`;
@@ -207,6 +230,8 @@ export function initializeSocketEvents(socket) {
             dom.adminPanelButton.classList.add('hidden');
         }
         if (users) {
+            if (!state.roomUserLists) state.roomUserLists = {};
+            state.roomUserLists[roomName] = users;
             state.currentRoomUsers = users;
             renderUserList();
         }
@@ -273,20 +298,14 @@ export function initializeSocketEvents(socket) {
     socket.on('load history', ({ roomName, history }) => {
         state.publicMessageHistories[roomName] = history;
         if (state.currentChatContext.type === 'room' && state.currentChatContext.with === roomName) {
-            dom.messagesContainer.innerHTML = '';
-            history.forEach(msg => dom.messagesContainer.appendChild(createMessageElement(msg, false)));
-            dom.messagesContainer.scrollTop = dom.messagesContainer.scrollHeight;
+            renderHistoryInBatches(history, false);
         }
     });
 
     socket.on('load private history', ({ withNick, history }) => {
         state.privateMessageHistories[withNick] = history;
         if (state.currentChatContext.type === 'private' && state.currentChatContext.with === withNick) {
-            dom.privateChatWindow.innerHTML = '';
-            const ul = document.createElement('ul');
-            history.forEach(msg => { ul.appendChild(createMessageElement(msg, true)); });
-            dom.privateChatWindow.appendChild(ul);
-            ul.scrollTop = ul.scrollHeight;
+            renderHistoryInBatches(history, true);
         }
     });
 
@@ -316,24 +335,41 @@ export function initializeSocketEvents(socket) {
     });
 
     socket.on('message edited', ({ messageId, newText, roomName }) => {
-        if (state.currentChatContext.with !== roomName) return;
-        const messageElement = document.getElementById(`message-${messageId}`);
-        if (messageElement) {
-            const textSpan = messageElement.querySelector('.message-text');
-            if (textSpan) textSpan.textContent = newText;
-            let editedIndicator = messageElement.querySelector('.edited-indicator');
-            if (!editedIndicator) {
-                editedIndicator = document.createElement('span');
-                editedIndicator.className = 'edited-indicator';
-                editedIndicator.textContent = ' (editado)';
-                messageElement.querySelector('.message-content').appendChild(editedIndicator);
+        if (state.publicMessageHistories[roomName]) {
+            const message = state.publicMessageHistories[roomName].find(m => Number(m.id) === Number(messageId));
+            if (message) {
+                message.text = newText;
+                message.editedAt = new Date().toISOString();
+            }
+        }
+        if (state.currentChatContext.with === roomName) {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+                const textSpan = messageElement.querySelector('.message-text');
+                if (textSpan) {
+                    const nickElement = textSpan.querySelector('.message-nick');
+                    textSpan.innerHTML = '';
+                    if (nickElement) textSpan.appendChild(nickElement);
+                    textSpan.append(replaceEmoticons(newText));
+                }
+                let editedIndicator = messageElement.querySelector('.edited-indicator');
+                if (!editedIndicator) {
+                    editedIndicator = document.createElement('span');
+                    editedIndicator.className = 'edited-indicator';
+                    editedIndicator.textContent = ' (editado)';
+                    messageElement.querySelector('.message-content').appendChild(editedIndicator);
+                }
             }
         }
     });
-
+    
     socket.on('message deleted', ({ messageId, roomName }) => {
-        if (state.currentChatContext.with !== roomName) return;
-        document.getElementById(`message-${messageId}`)?.remove();
+        if (state.publicMessageHistories[roomName]) {
+            state.publicMessageHistories[roomName] = state.publicMessageHistories[roomName].filter(m => Number(m.id) !== Number(messageId));
+        }
+        if (state.currentChatContext.with === roomName) {
+            document.getElementById(`message-${messageId}`)?.remove();
+        }
     });
 
     socket.on('admin panel refresh', () => {
@@ -349,5 +385,29 @@ export function initializeSocketEvents(socket) {
                 fetchAndShowActivityLogs();
             }
         }
+    });
+
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    socket.on('reauth_success', () => {
+        console.log("Re-autenticación exitosa. Re-uniéndose a la última sala activa...");
+        // Usamos la variable de estado `lastActiveRoom` para volver a donde estábamos.
+        if (state.lastActiveRoom) {
+            socket.emit('join room', { roomName: state.lastActiveRoom });
+        } else {
+             // Como fallback, si por alguna razón no hay sala guardada, nos unimos a General.
+            socket.emit('join room', { roomName: '#General' });
+        }
+    });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
+    socket.on('reauth_failed', () => {
+        console.error("La re-autenticación falló. Forzando recarga de página.");
+        // Borramos la cookie para evitar un bucle de re-autenticación fallida
+        document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        location.reload();
     });
 }

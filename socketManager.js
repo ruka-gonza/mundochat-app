@@ -220,12 +220,28 @@ function logActivity(eventType, userData, details = null) {
     if (global.io) { global.io.emit('admin panel refresh'); }
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
+    
+    // Comprueba si ya existe un usuario con el mismo nick en la sala
+    const existingUserSocketId = Object.keys(roomService.rooms[roomName]?.users || {}).find(
+        sid => roomService.rooms[roomName].users[sid].nick.toLowerCase() === socket.userData.nick.toLowerCase()
+    );
+
+    // Si ya existe, es una reconexión. Eliminamos la entrada antigua.
+    if (existingUserSocketId) {
+        delete roomService.rooms[roomName].users[existingUserSocketId];
+    }
+
     if (socket.rooms.has(roomName)) socket.leave(roomName);
     if (!roomService.rooms[roomName]) roomService.rooms[roomName] = { users: {} };
+    
     socket.join(roomName);
     socket.joinedRooms.add(roomName);
+    
     let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(socket.userData.role);
     if (!isAnyStaff && socket.userData.id) {
         const staffRooms = await new Promise((resolve) => {
@@ -237,7 +253,9 @@ async function handleJoinRoom(io, socket, { roomName }) {
         if (staffRooms.length > 0) isAnyStaff = true;
     }
     socket.userData.isStaff = isAnyStaff;
+    
     roomService.rooms[roomName].users[socket.id] = socket.userData;
+
     if (socket.userData.isStaff) {
         socket.emit('set admin cookie', { nick: socket.userData.nick, role: socket.userData.role });
         if (!socket.rooms.has(roomService.MOD_LOG_ROOM)) {
@@ -247,17 +265,28 @@ async function handleJoinRoom(io, socket, { roomName }) {
             roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = socket.userData;
         }
     }
-    logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
+    
+    // Si no es una reconexión (no había un usuario previo), anunciamos la entrada.
+    if (!existingUserSocketId) {
+        logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
+        socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
+    }
+
     socket.emit('join_success', { user: socket.userData, roomName: roomName, joinedRooms: Array.from(socket.joinedRooms) });
-    socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
+    
     roomService.updateUserList(io, roomName);
+    
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 25', [roomName], (err, rows) => {
         if (err) return console.error("Error al cargar historial:", err);
         const history = rows.reverse().map(row => ({ id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId, preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null }));
         socket.emit('load history', { roomName, history });
     });
+    
     roomService.updateRoomData(io);
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 function initializeSocket(io) {
     global.io = io;
@@ -389,28 +418,20 @@ function initializeSocket(io) {
             roomService.updateRoomData(io);
         });
 
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
         socket.on('disconnect', () => {
             const userData = socket.userData;
             if (!userData || !userData.nick) {
-                return; // No hay datos de usuario, no se puede hacer nada
+                return;
             }
 
-            // Inicia un temporizador para dar un período de gracia a la reconexión
             setTimeout(() => {
-                // Después del temporizador, comprueba si el usuario se ha reconectado con un nuevo socket
                 const newSocketId = roomService.findSocketIdByNick(userData.nick);
 
-                // Si hay un nuevo socket ID, significa que el usuario se reconectó correctamente.
-                // Abortamos el proceso de desconexión para evitar el mensaje de "abandonó el chat".
                 if (newSocketId) {
                     console.log(`[Graceful Disconnect] User ${userData.nick} reconnected quickly. Aborting leave message.`);
                     return;
                 }
 
-                // Si después del período de gracia el usuario no ha vuelto, procesamos la desconexión como definitiva.
                 console.log(`[Definitive Disconnect] User ${userData.nick} did not reconnect in time.`);
                 logActivity('DISCONNECT', userData);
                 io.emit('user disconnected', { nick: userData.nick });
@@ -418,7 +439,6 @@ function initializeSocket(io) {
                 const roomsUserWasIn = Array.from(socket.joinedRooms || []);
                 roomsUserWasIn.forEach(roomName => {
                     if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socket.id]) {
-                        // Aquí ya no necesitamos verificar 'socket.kicked' porque una reconexión rápida ya lo habría evitado.
                         io.to(roomName).emit('system message', { text: `${userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
                         delete roomService.rooms[roomName].users[socket.id];
                         roomService.updateUserList(io, roomName);
@@ -439,11 +459,8 @@ function initializeSocket(io) {
                         });
                     }
                 }
-            }, 2000); // Período de gracia de 2 segundos
+            }, 2000); 
         });
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
 
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
         socket.on('chat message', (data) => handleChatMessage(io, socket, data));

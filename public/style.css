@@ -1092,3 +1092,122 @@ body.dark-mode .message-timestamp {
 .message-main-wrapper {
     max-width: 100%;
 }
+.link-preview-card {
+    display: flex;
+    margin-top: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    text-decoration: none;
+    max-width: 400px;
+    transition: background-color 0.2s;
+}
+
+.link-preview-card:hover {
+    background-color: var(--bg-hover);
+}
+
+.preview-image-container {
+    flex-shrink: 0;
+}
+
+.preview-image-container img {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    display: block;
+    border-right: 1px solid var(--border-color);
+}
+
+.preview-info {
+    padding: 10px 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0; /* Permite que el texto se ajuste */
+}
+
+.preview-title {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-description {
+    font-size: 0.9em;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.youtube-embed-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 480px;
+    padding-bottom: 56.25%; /* Proporción 16:9 */
+    height: 0;
+    margin-top: 8px;
+}
+
+.youtube-embed-wrapper iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: 12px;
+}
+#audio-recording-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bg-hover);
+    padding: 4px 8px;
+    border-radius: 20px;
+}
+
+#recording-timer {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 0.9em;
+}
+
+/* Oculta los botones de texto y emojis durante la grabación */
+#form.is-recording #input,
+#form.is-recording #emoji-button,
+#form.is-recording #image-upload,
+#form.is-recording #send-icon-button,
+#form.is-recording #record-audio-button {
+    display: none;
+}
+.action-button-logout {
+    width: 100%;
+    background-color: #e74c3c; /* Un color rojo para indicar salida */
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background-color 0.2s;
+    margin-top: 10px; /* Espacio para separarlo de otros botones */
+}
+
+.action-button-logout:hover {
+    background-color: #c0392b;
+}
+
+body.dark-mode .action-button-logout {
+    background-color: #a53125;
+}
+
+body.dark-mode .action-button-logout:hover {
+    background-color: #c0392b;
+}

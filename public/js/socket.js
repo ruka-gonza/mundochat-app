@@ -1,11 +1,14 @@
-import state from '../state.js';
-import * as dom from '../domElements.js';
-import { showNotification } from '../utils.js';
+import state from './state.js';
+import * as dom from './domElements.js';
+import { showNotification } from './utils.js';
 import { addPrivateChat, updateConversationList } from './ui/conversations.js'; 
 import { renderUserList } from './ui/userInteractions.js';
 import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
@@ -93,17 +96,9 @@ export function initializeSocketEvents(socket) {
 
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    // Al no especificar Max-Age, el navegador la trata como una cookie de sesión,
-    // que se elimina automáticamente al cerrar el navegador.
     socket.on('set session cookie', (data) => {
         document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; SameSite=Lax`;
     });
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     
     socket.on('update user list', ({ roomName, users }) => {
         if (!state.roomUserLists) state.roomUserLists = {};

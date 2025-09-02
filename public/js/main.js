@@ -6,6 +6,9 @@ import { initChatInput, switchToChat } from './ui/chatInput.js';
 import { initConversations } from './ui/conversations.js';
 import { initModals } from './ui/modals.js';
 import { initUserInteractions } from './ui/userInteractions.js';
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 function initResponsiveHandlers() {
     const { conversationsPanel, userListContainer, mobileOverlay } = dom;
@@ -57,15 +60,10 @@ function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
-            // Borra la cookie de sesión del navegador.
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            
-            // Notifica al servidor para una limpieza inmediata.
             if (state.socket) {
                 state.socket.emit('logout');
             }
-
-            // Recarga la página para volver a la pantalla de bienvenida.
             setTimeout(() => {
                 location.reload();
             }, 100); 
@@ -97,25 +95,18 @@ document.addEventListener('DOMContentLoaded', () => {
     connectionOverlay.style.display = 'none';
     document.body.appendChild(connectionOverlay);
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    // Esta bandera nos ayuda a saber si es la primera conexión o una reconexión.
     let isConnectedBefore = false;
 
     state.socket.on('connect', () => {
-        // Oculta el banner inmediatamente al conectar.
         connectionOverlay.style.display = 'none';
         
-        // Si ya estábamos conectados antes, esto es una reconexión.
         if (isConnectedBefore) {
             console.log("Reconnected to server. Attempting to re-authenticate...");
         } else {
             console.log("Successfully connected to server for the first time.");
         }
-        isConnectedBefore = true; // Marcamos que ya hemos tenido una conexión exitosa.
+        isConnectedBefore = true;
         
-        // La lógica de re-autenticación se mantiene igual.
         const authCookie = document.cookie.split('; ').find(row => row.startsWith('user_auth='));
         if (authCookie) {
             try {
@@ -131,13 +122,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     state.socket.on('disconnect', (reason) => {
         console.warn(`Disconnected from server. Reason: ${reason}`);
-        // Muestra el banner inmediatamente para informar al usuario.
         connectionOverlay.innerHTML = '🔴 Desconectado. Intentando reconectar...';
         connectionOverlay.style.display = 'block';
     });
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     
     state.socket.on('reconnect_failed', () => {
         console.error("Fallo en la reconexión.");

@@ -6,9 +6,6 @@ import { renderUserList } from './ui/userInteractions.js';
 import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
@@ -96,9 +93,19 @@ export function initializeSocketEvents(socket) {
 
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // El servidor ya no emite este evento. La cookie se maneja a través de HTTP.
+    // Sin embargo, lo dejamos aquí (comentado o vacío) por si se necesita en el futuro
+    // y para evitar errores si el servidor lo enviara por alguna razón.
     socket.on('set session cookie', (data) => {
-        document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; SameSite=Lax`;
+        // Esta lógica ahora se maneja en el servidor a través de las rutas de login/guest
+        console.log("Evento 'set session cookie' recibido, pero la gestión ahora es del servidor.");
     });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     
     socket.on('update user list', ({ roomName, users }) => {
         if (!state.roomUserLists) state.roomUserLists = {};

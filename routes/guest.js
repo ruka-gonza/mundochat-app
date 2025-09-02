@@ -20,7 +20,6 @@ const storage = multer.diskStorage({
         cb(null, tempUploadsDir);
     },
     filename: function (req, file, cb) {
-        // Usamos el ID de invitado (UUID) para un nombre de archivo único
         const guestId = req.body.guestId || 'unknown-guest';
         const safeId = guestId.replace(/[^a-z0-9]/gi, '_');
         const uniqueSuffix = Date.now() + '-' + safeId;
@@ -30,7 +29,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 2 * 1024 * 1024 }, // Límite de 2MB
+    limits: { fileSize: 5 * 1024 * 1024 }, // Límite de 5MB
     fileFilter: function (req, file, cb) {
         const filetypes = /jpeg|jpg|png|gif|webp/;
         const mimetype = filetypes.test(file.mimetype);
@@ -60,7 +59,6 @@ router.post('/avatar', (req, res) => {
             return res.status(400).json({ error: 'Falta el ID del invitado.' });
         }
 
-        // Encontrar el socket del invitado a través del mapa
         const socketId = roomService.guestSocketMap.get(guestId);
         const targetSocket = socketId ? io.sockets.sockets.get(socketId) : null;
 
@@ -69,15 +67,20 @@ router.post('/avatar', (req, res) => {
             return res.status(404).json({ error: 'No se encontró la sesión del invitado.' });
         }
 
-        // Si el invitado ya tenía un avatar temporal, borramos el antiguo
         if (targetSocket.userData.temp_avatar_path) {
             fs.unlink(targetSocket.userData.temp_avatar_path, (err) => {
                 if (err) console.error("No se pudo borrar el avatar temporal antiguo:", err);
             });
         }
         
-        const avatarDir = process.env.RENDER ? 'data/temp_avatars' : 'temp_avatars';
-        const avatarUrl = `${avatarDir}/${req.file.filename}`;
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        // La ruta web correcta debe incluir 'data/' al principio.
+        const avatarUrl = `data/temp_avatars/${req.file.filename}`;
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
 
         // Actualizar datos en el socket
         targetSocket.userData.avatar_url = avatarUrl;

@@ -283,20 +283,15 @@ function initializeSocket(io) {
             console.error("Error durante la verificación de VPN:", error);
         }
 
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
         socket.on('reauthenticate', async (cookieData) => {
             console.log(`Intento de re-autenticación para el nick: ${cookieData.nick}`);
             const userInDb = await userService.findUserById(cookieData.id);
-
-            // 1. Validar que el usuario de la cookie exista y coincida con la base de datos.
+            
             if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
                 console.warn(`Fallo en la re-autenticación para ${cookieData.nick} (datos no coinciden).`);
                 return socket.emit('reauth_failed');
             }
 
-            // 2. Lógica "Ghost Session Killer": Buscar y desconectar cualquier sesión antigua.
             const oldSocketId = roomService.findSocketIdByNick(userInDb.nick);
             if (oldSocketId && oldSocketId !== socket.id) {
                 const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -306,14 +301,10 @@ function initializeSocket(io) {
                 }
             }
 
-            // 3. Proceder con la configuración de la nueva sesión.
             socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: socket.handshake.address, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
             console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
             socket.emit('reauth_success');
         });
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
 
         socket.on('guest_join', async (data) => {
             const { nick, roomName } = data;
@@ -362,10 +353,6 @@ function initializeSocket(io) {
             try {
                 const match = await userService.verifyPassword(password, registeredData.password);
                 if (!match) return socket.emit('auth_error', { message: "Contraseña incorrecta." });
-                
-                // =========================================================================
-                // ===             INICIO DE LA CORRECCIÓN CLAVE (ya presente)          ===
-                // =========================================================================
                 const oldSocketId = roomService.findSocketIdByNick(registeredData.nick);
                 if (oldSocketId) {
                     const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -374,10 +361,6 @@ function initializeSocket(io) {
                         oldSocket.disconnect(true);
                     }
                 }
-                // =========================================================================
-                // ===              FIN DE LA CORRECCIÓN CLAVE (ya presente)          ===
-                // =========================================================================
-
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
                 await userService.updateUserIP(registeredData.nick, userIP);
                 socket.emit('assign id', registeredData.id);
@@ -406,28 +389,61 @@ function initializeSocket(io) {
             roomService.updateRoomData(io);
         });
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         socket.on('disconnect', () => {
             const userData = socket.userData;
-            if (!userData || !userData.nick) return;
-            if (userData.role === 'guest') {
-                roomService.guestSocketMap.delete(userData.id);
-                if (userData.temp_avatar_path) fs.unlink(userData.temp_avatar_path, (err) => { if (err) console.error(`Error al borrar avatar temporal de ${userData.nick}:`, err); });
+            if (!userData || !userData.nick) {
+                return; // No hay datos de usuario, no se puede hacer nada
             }
-            logActivity('DISCONNECT', userData);
-            io.emit('user disconnected', { nick: userData.nick });
-            const roomsUserWasIn = Array.from(socket.joinedRooms || []);
-            roomsUserWasIn.forEach(roomName => {
-                if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socket.id]) {
-                    if (!socket.kicked) io.to(roomName).emit('system message', { text: `${userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
-                    delete roomService.rooms[roomName].users[socket.id];
-                    roomService.updateUserList(io, roomName);
-                    if (Object.keys(roomService.rooms[roomName].users).length === 0 && !roomService.DEFAULT_ROOMS.includes(roomName) && roomName !== roomService.MOD_LOG_ROOM) delete roomService.rooms[roomName];
+
+            // Inicia un temporizador para dar un período de gracia a la reconexión
+            setTimeout(() => {
+                // Después del temporizador, comprueba si el usuario se ha reconectado con un nuevo socket
+                const newSocketId = roomService.findSocketIdByNick(userData.nick);
+
+                // Si hay un nuevo socket ID, significa que el usuario se reconectó correctamente.
+                // Abortamos el proceso de desconexión para evitar el mensaje de "abandonó el chat".
+                if (newSocketId) {
+                    console.log(`[Graceful Disconnect] User ${userData.nick} reconnected quickly. Aborting leave message.`);
+                    return;
                 }
-            });
-            clearUserFileChunks(socket.id);
-            roomService.updateRoomData(io);
-            console.log('Un usuario se ha desconectado:', socket.id, userData.nick);
+
+                // Si después del período de gracia el usuario no ha vuelto, procesamos la desconexión como definitiva.
+                console.log(`[Definitive Disconnect] User ${userData.nick} did not reconnect in time.`);
+                logActivity('DISCONNECT', userData);
+                io.emit('user disconnected', { nick: userData.nick });
+                
+                const roomsUserWasIn = Array.from(socket.joinedRooms || []);
+                roomsUserWasIn.forEach(roomName => {
+                    if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socket.id]) {
+                        // Aquí ya no necesitamos verificar 'socket.kicked' porque una reconexión rápida ya lo habría evitado.
+                        io.to(roomName).emit('system message', { text: `${userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
+                        delete roomService.rooms[roomName].users[socket.id];
+                        roomService.updateUserList(io, roomName);
+                        if (Object.keys(roomService.rooms[roomName].users).length === 0 && !roomService.DEFAULT_ROOMS.includes(roomName) && roomName !== roomService.MOD_LOG_ROOM) {
+                            delete roomService.rooms[roomName];
+                        }
+                    }
+                });
+                
+                clearUserFileChunks(socket.id);
+                roomService.updateRoomData(io);
+
+                if (userData.role === 'guest') {
+                    roomService.guestSocketMap.delete(userData.id);
+                    if (userData.temp_avatar_path) {
+                        fs.unlink(userData.temp_avatar_path, (err) => {
+                            if (err) console.error(`Error al borrar avatar temporal de ${userData.nick}:`, err);
+                        });
+                    }
+                }
+            }, 2000); // Período de gracia de 2 segundos
         });
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
 
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
         socket.on('chat message', (data) => handleChatMessage(io, socket, data));

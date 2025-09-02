@@ -220,6 +220,9 @@ function logActivity(eventType, userData, details = null) {
     if (global.io) { global.io.emit('admin panel refresh'); }
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
     
@@ -278,6 +281,9 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.updateRoomData(io);
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 function initializeSocket(io) {
     global.io = io;

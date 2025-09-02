@@ -129,5 +129,5 @@ document.addEventListener('DOMContentLoaded', () => {
     initThemeSwitcher();
     initLogoutButton();
 
-    console.log("Cliente de MundoChat inicializado correctamente.");
+    console.log("Cliente de MundoChat inicializado correctamente...");
 });

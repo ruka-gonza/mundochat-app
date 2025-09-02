@@ -12,7 +12,8 @@ const fetch = require('node-fetch');
 
 let fileChunks = {};
 
-// ... (El resto de las funciones como generateLinkPreview, handleChatMessage, etc., permanecen exactamente iguales) ...
+// ... (todas las demás funciones como generateLinkPreview, handleChatMessage, etc. se mantienen igual) ...
+
 async function generateLinkPreview(text) {
     if (!text) return null;
     const urlRegex = /(https?:\/\/[^\s]+)/;
@@ -221,19 +222,24 @@ function logActivity(eventType, userData, details = null) {
     if (global.io) { global.io.emit('admin panel refresh'); }
 }
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
     
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Comprueba si ya existe un usuario con el mismo nick en la sala
     const existingUserSocketId = Object.keys(roomService.rooms[roomName]?.users || {}).find(
         sid => roomService.rooms[roomName].users[sid].nick.toLowerCase() === socket.userData.nick.toLowerCase()
     );
 
+    // Si ya existe, es una reconexión. Eliminamos la entrada antigua.
     if (existingUserSocketId) {
         delete roomService.rooms[roomName].users[existingUserSocketId];
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
 
     if (socket.rooms.has(roomName)) socket.leave(roomName);
     if (!roomService.rooms[roomName]) roomService.rooms[roomName] = { users: {} };
@@ -265,6 +271,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
         }
     }
     
+    // Si no es una reconexión (no había un usuario previo), anunciamos la entrada.
     if (!existingUserSocketId) {
         logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
         socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
@@ -282,19 +289,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.updateRoomData(io);
 }
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
-
-/**
- * Función centralizada para manejar la limpieza de un usuario al desconectarse.
- * @param {object} io - Instancia de Socket.IO.
- * @param {object} socketData - Un objeto con los datos capturados del socket ({ id, userData, joinedRooms }).
- */
 function handleDefinitiveDisconnect(io, { id, userData, joinedRooms }) {
     if (!userData || !userData.nick) return;
 
@@ -484,7 +479,6 @@ function initializeSocket(io) {
             }, 2000);
         });
         
-        // ... (El resto de los listeners como 'request user list', 'chat message', etc., permanecen iguales) ...
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
         socket.on('chat message', (data) => handleChatMessage(io, socket, data));
         socket.on('edit message', (data) => handleEditMessage(io, socket, data));

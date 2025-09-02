@@ -307,6 +307,7 @@ export function initUserInteractions() {
         }
     });
 
+    // LISTENER DE CLICS UNIFICADO Y CORREGIDO
     dom.messagesContainer.addEventListener('click', (e) => {
         
         const previewCard = e.target.closest('.link-preview-card');

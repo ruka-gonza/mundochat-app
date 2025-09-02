@@ -7,25 +7,62 @@ const bcrypt = require('bcrypt');
 const config = require('../config');
 const db = require('../services/db-connection');
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+// Ya no usamos socket.io para el login, sino una ruta HTTP POST normal.
+router.post('/login', async (req, res) => {
+    const { nick, password } = req.body;
+    
+    try {
+        const user = await userService.findUserByNick(nick);
+        if (!user) {
+            return res.status(401).json({ error: "El nick o email no está registrado." });
+        }
 
-// Ruta para solicitar restablecimiento de contraseña
+        const match = await userService.verifyPassword(password, user.password);
+        if (!match) {
+            return res.status(401).json({ error: "Contraseña incorrecta." });
+        }
+        
+        const sessionData = {
+            id: user.id,
+            nick: user.nick,
+            role: user.role
+        };
+
+        // Establece una cookie HTTP-only que expira en 1 hora.
+        res.cookie('user_auth', JSON.stringify(sessionData), {
+            httpOnly: false, // Permitir que JS la lea para re-autenticación
+            sameSite: 'lax',
+            maxAge: 3600 * 1000 // 1 hora en milisegundos
+        });
+
+        res.status(200).json({ message: "Login successful", userData: sessionData });
+
+    } catch (error) {
+        console.error("Error en la ruta /api/auth/login:", error);
+        res.status(500).json({ error: 'Error interno del servidor.' });
+    }
+});
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+
+
 router.post('/forgot-password', async (req, res) => {
-    const { identifier } = req.body; // Puede ser nick o email
+    const { identifier } = req.body; 
 
     if (!identifier) {
         return res.status(400).json({ error: 'Por favor, introduce tu nick o correo electrónico.' });
     }
 
     try {
-        // Busca al usuario por nick O por email
         const user = await userService.findUserByNick(identifier);
         if (!user) {
-            // Es importante no revelar si el usuario existe o no por razones de seguridad
-            // Devuelve un mensaje genérico incluso si el identificador no existe
             return res.json({ message: 'Si el nick o correo electrónico están registrados, recibirás un enlace para restablecer tu contraseña.' });
         }
 
-        // Si el usuario se encontró pero no tiene email (ej: usuario antiguo sin email al registrarse)
         if (!user.email) {
             return res.status(400).json({ error: 'Tu cuenta no tiene un correo electrónico asociado para la recuperación de contraseña. Contacta a un administrador.' });
         }
@@ -33,7 +70,6 @@ router.post('/forgot-password', async (req, res) => {
         const resetToken = await passwordResetService.createResetToken(user.id);
         const resetLink = `${config.appBaseUrl}/reset-password.html?token=${resetToken}`;
 
-        // Usa el email real del usuario encontrado
         const emailSent = await emailService.sendPasswordResetEmail(user.email, resetLink);
 
         if (emailSent) {
@@ -48,7 +84,6 @@ router.post('/forgot-password', async (req, res) => {
     }
 });
 
-// Ruta para restablecer la contraseña (POST)
 router.post('/reset-password', async (req, res) => {
     const { token, newPassword, confirmPassword } = req.body;
 
@@ -58,7 +93,7 @@ router.post('/reset-password', async (req, res) => {
     if (newPassword !== confirmPassword) {
         return res.status(400).json({ error: 'Las contraseñas no coinciden.' });
     }
-    if (newPassword.length < 6) { // Ejemplo de validación mínima
+    if (newPassword.length < 6) { 
         return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
     }
 
@@ -68,9 +103,9 @@ router.post('/reset-password', async (req, res) => {
             return res.status(400).json({ error: 'Token de restablecimiento inválido o expirado.' });
         }
 
-        const user = await userService.findUserById(tokenData.userId); // userId en tokens es el ID interno
+        const user = await userService.findUserById(tokenData.userId);
         if (!user) {
-            return res.status(404).json({ error: 'Usuario no encontrado.' }); // Esto no debería pasar si el token es válido
+            return res.status(404).json({ error: 'Usuario no encontrado.' });
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -81,7 +116,7 @@ router.post('/reset-password', async (req, res) => {
             });
         });
         
-        await passwordResetService.invalidateResetToken(token); // Invalida el token después de usarlo
+        await passwordResetService.invalidateResetToken(token);
 
         res.json({ message: 'Contraseña restablecida con éxito. Ya puedes iniciar sesión.' });
 

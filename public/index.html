@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -70,6 +70,9 @@
 
             <div id="action-buttons-container">
             </div>
+            
+            <button id="logout-button" class="action-button-logout">Salir del Chat</button>
+
         </div>
         
         <div id="chat-area-wrapper">
@@ -116,10 +119,14 @@
                 <label for="image-upload" class="file-label chat-action-button">📷</label>
                 <input type="file" id="image-upload" accept="image/*" style="display: none;">
                 
-                <button type="button" id="audio-record-button" class="chat-action-button">🎤</button>
-                <button type="button" id="audio-send-button" class="chat-action-button hidden">▶️</button>
-                <button type="button" id="audio-cancel-button" class="chat-action-button hidden">✖️</button>
-                
+                <button type="button" id="record-audio-button" class="chat-action-button">🎤</button>
+                <div id="audio-recording-controls" class="hidden">
+                    <span id="recording-timer">00:00</span>
+                    <button type="button" id="stop-recording-button" class="chat-action-button">⏹️</button>
+                    <button type="button" id="send-audio-button" class="chat-action-button hidden">▶️</button>
+                    <button type="button" id="cancel-recording-button" class="chat-action-button">✖️</button>
+                </div>
+
                 <button type="submit" id="send-icon-button" class="chat-action-button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg); margin-left: -2px; margin-top: 2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
@@ -340,11 +347,9 @@
 
     <div id="self-context-menu" class="hidden">
         <button id="self-afk-button">Ausentar</button>
-        <!-- === INICIO DE LA MODIFICACIÓN === -->
         <label for="guest-avatar-input" id="self-avatar-label-guest" class="hidden context-menu-button">
             Cambiar Avatar
         </label>
-        <!-- === FIN DE LA MODIFICACIÓN === -->
     </div>
 
      <div id="image-modal-overlay" class="modal-overlay hidden">
@@ -353,9 +358,7 @@
     </div>
     <div id="mobile-overlay"></div>
 
-    <!-- === INICIO DE LA MODIFICACIÓN === -->
     <input type="file" id="guest-avatar-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
-    <!-- === FIN DE LA MODIFICACIÓN === -->
 
     <script type="module" src="js/main.js"></script>
 </body>

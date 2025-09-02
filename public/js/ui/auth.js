@@ -1,6 +1,6 @@
 import state from '../state.js';
 import * as dom from '../domElements.js';
-import { isValidNick, unlockAudioContext } from '../utils.js'; // <-- MODIFICACIÓN: Importar unlockAudioContext
+import { isValidNick, unlockAudioContext } from '../utils.js';
 
 function setupAuthTabs() {
     const authTabs = document.querySelectorAll('.auth-tab');
@@ -77,9 +77,9 @@ function setupForgotPasswordModal() {
 export function initAuth() {
     setupAuthTabs();
     setupForgotPasswordModal();
-
+    
     dom.guestJoinButton.addEventListener('click', () => {
-        unlockAudioContext(); // <-- MODIFICACIÓN: Desbloquear audio aquí
+        unlockAudioContext();
         const nick = dom.guestNickInput.value.trim();
         const roomName = dom.guestRoomSelect.value;
         if (!isValidNick(nick)) {
@@ -87,18 +87,22 @@ export function initAuth() {
             dom.authError.classList.remove('hidden');
             return;
         }
-        if (nick && roomName) state.socket.emit('guest_join', { nick, roomName });
+        if (nick && roomName) {
+            state.socket.emit('guest_join', { nick, roomName });
+        }
     });
 
     dom.loginButton.addEventListener('click', () => {
-        unlockAudioContext(); // <-- MODIFICACIÓN: Desbloquear audio aquí
+        unlockAudioContext();
         const nick = dom.loginNickInput.value.trim();
         const password = dom.loginPasswordInput.value;
         const roomName = dom.loginRoomSelect.value;
-        if (nick && password && roomName) state.socket.emit('login', { nick, password, roomName });
+        if (nick && password && roomName) {
+            state.socket.emit('login', { nick, password, roomName });
+        }
     });
-
-    dom.registerButton.addEventListener('click', () => {
+    
+    dom.registerButton.addEventListener('click', async () => {
         const nick = dom.registerNickInput.value.trim();
         const email = dom.registerEmailInput.value.trim();
         const password = dom.registerPasswordInput.value;
@@ -119,8 +123,29 @@ export function initAuth() {
             dom.authError.classList.remove('hidden');
             return;
         }
-        if (nick && email && password) {
-            state.socket.emit('register', { nick, email, password });
+        
+        try {
+             const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nick, email, password })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                dom.authError.classList.add('hidden');
+                dom.authSuccess.textContent = result.message;
+                dom.authSuccess.classList.remove('hidden');
+                document.getElementById('show-login-tab').click();
+                dom.loginNickInput.value = nick;
+            } else {
+                dom.authSuccess.classList.add('hidden');
+                dom.authError.textContent = result.error;
+                dom.authError.classList.remove('hidden');
+            }
+        } catch (error) {
+            dom.authSuccess.classList.add('hidden');
+            dom.authError.textContent = "Error de conexión al servidor.";
+            dom.authError.classList.remove('hidden');
         }
     });
 }

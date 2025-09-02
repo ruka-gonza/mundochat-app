@@ -1,6 +1,9 @@
 import state from '../state.js';
 import * as dom from '../domElements.js';
 import { switchToChat } from './chatInput.js';
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 export function addPrivateChat(nick) {
     if (nick === state.myNick || state.activePrivateChats.has(nick)) return;
@@ -12,8 +15,6 @@ export function addPrivateChat(nick) {
 export function updateConversationList() {
     dom.roomList.innerHTML = '';
     dom.privateChatList.innerHTML = '';
-
-    const defaultRooms = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Romance", "Chile", "Argentina", "Brasil", "España", "México"];
 
     const createConversationItem = (id, isRoom, isDisconnected = false) => {
         const item = document.createElement('li');
@@ -32,14 +33,12 @@ export function updateConversationList() {
         closeBtn.className = 'close-conversation';
         closeBtn.innerHTML = '×';
         
-        // --- INICIO DE LA MODIFICACIÓN ---
-        // Lógica unificada para el botón de cierre
-         const canBeClosed = isRoom ? id !== '#Staff-Logs' : true;
+        const canBeClosed = isRoom ? id !== '#General' && id !== '#Staff-Logs' : true;
 
         if (canBeClosed) {
             item.appendChild(closeBtn);
             closeBtn.onclick = (e) => {
-                e.stopPropagation(); // Evita que se cambie a la sala al hacer clic en la X
+                e.stopPropagation();
                 if (isRoom) {
                     state.socket.emit('leave room', { roomName: id });
                 } else {
@@ -60,7 +59,6 @@ export function updateConversationList() {
                 }
             };
         }
-        // --- FIN DE LA MODIFICACIÓN ---
         
         if (state.currentChatContext.with === id) item.classList.add('active');
         if (state.usersWithUnreadMessages.has(id)) {

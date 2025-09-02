@@ -1,9 +1,25 @@
 import state from '../state.js';
 import * as dom from '../domElements.js';
 import { isValidNick } from '../utils.js';
-import { unlockAudioContext } from '../utils.js'; // <-- MODIFICACIÓN: Importar la función
+import { unlockAudioContext } from '../utils.js';
 
-// --- (Otras funciones como fetchAndShowReports, etc., permanecen igual) ---
+// =========================================================================
+// ===                    INICIO DE LA MODIFICACIÓN                    ===
+// =========================================================================
+/**
+ * Abre el modal para mostrar una imagen en tamaño completo.
+ * @param {string} imageSrc - La URL de la imagen a mostrar.
+ */
+export function openImageModal(imageSrc) {
+    if (dom.modalImage && dom.imageModalOverlay) {
+        dom.modalImage.src = imageSrc;
+        dom.imageModalOverlay.classList.remove('hidden');
+    }
+}
+// =========================================================================
+// ===                     FIN DE LA MODIFICACIÓN                    ===
+// =========================================================================
+
 export async function fetchAndShowReports() {
     try {
         const response = await fetch('/api/admin/reports');
@@ -106,13 +122,10 @@ export function openProfileModal() {
     state.selectedAvatarFile = null;
     dom.profileAvatarPreview.src = state.myUserData.avatar_url || 'image/default-avatar.png';
     
-    // --- INICIO DE LA MODIFICACIÓN ---
-    // Asegurarse de que el texto del archivo seleccionado se reinicie
     const fileNameDisplay = document.getElementById('file-name-display');
     if (fileNameDisplay) {
         fileNameDisplay.textContent = 'Ningún archivo seleccionado';
     }
-    // --- FIN DE LA MODIFICACIÓN ---
 
     dom.profileModal.classList.remove('hidden');
 }
@@ -126,14 +139,10 @@ export function showSexoWarningModal() {
 export function initModals() {
     const welcomePopup = dom.welcomePopup;
     function hideWelcomePopup() { if (welcomePopup) welcomePopup.classList.add('hidden'); }
-    
-    // --- INICIO DE LA MODIFICACIÓN ---
-    // Se elimina la función local "unlockAudioContext" de aquí.
-    // --- FIN DE LA MODIFICACIÓN ---
 
     if (dom.confirmWelcomePopupButton) {
         dom.confirmWelcomePopupButton.addEventListener('click', () => {
-            unlockAudioContext(); // Ahora llama a la función centralizada
+            unlockAudioContext();
             hideWelcomePopup();
         });
     }
@@ -251,7 +260,7 @@ export function initModals() {
             alert('Hubo un error al conectar con el servidor.');
         } finally {
             dom.saveProfileButton.disabled = false;
-            dom.saveProfileButton.textContent = 'Guardar Avatar'; // Texto corregido
+            dom.saveProfileButton.textContent = 'Guardar Avatar';
             state.selectedAvatarFile = null;
             dom.avatarFileInput.value = '';
         }
@@ -274,7 +283,7 @@ export function initModals() {
             alert('Hubo un error al conectar con el servidor.');
         } finally {
             dom.changeNickButton.disabled = false;
-            dom.changeNickButton.textContent = 'Cambiar'; // Texto corregido
+            dom.changeNickButton.textContent = 'Cambiar';
         }
     });
 }

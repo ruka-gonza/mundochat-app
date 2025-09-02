@@ -283,13 +283,20 @@ function initializeSocket(io) {
             console.error("Error durante la verificación de VPN:", error);
         }
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         socket.on('reauthenticate', async (cookieData) => {
             console.log(`Intento de re-autenticación para el nick: ${cookieData.nick}`);
             const userInDb = await userService.findUserById(cookieData.id);
+            
+            // 1. Validar que el usuario de la cookie exista y coincida con la base de datos.
             if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
                 console.warn(`Fallo en la re-autenticación para ${cookieData.nick} (datos no coinciden).`);
                 return socket.emit('reauth_failed');
             }
+
+            // 2. Lógica "Ghost Session Killer": Buscar y desconectar cualquier sesión antigua.
             const oldSocketId = roomService.findSocketIdByNick(userInDb.nick);
             if (oldSocketId && oldSocketId !== socket.id) {
                 const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -298,10 +305,15 @@ function initializeSocket(io) {
                     oldSocket.disconnect(true);
                 }
             }
+
+            // 3. Proceder con la configuración de la nueva sesión.
             socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: socket.handshake.address, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
             console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
             socket.emit('reauth_success');
         });
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
 
         socket.on('guest_join', async (data) => {
             const { nick, roomName } = data;
@@ -350,6 +362,10 @@ function initializeSocket(io) {
             try {
                 const match = await userService.verifyPassword(password, registeredData.password);
                 if (!match) return socket.emit('auth_error', { message: "Contraseña incorrecta." });
+                
+                // =========================================================================
+                // ===             INICIO DE LA CORRECCIÓN (YA PRESENTE Y CORRECTA)          ===
+                // =========================================================================
                 const oldSocketId = roomService.findSocketIdByNick(registeredData.nick);
                 if (oldSocketId) {
                     const oldSocket = io.sockets.sockets.get(oldSocketId);
@@ -358,6 +374,10 @@ function initializeSocket(io) {
                         oldSocket.disconnect(true);
                     }
                 }
+                // =========================================================================
+                // ===              FIN DE LA CORRECCIÓN (YA PRESENTE Y CORRECTA)          ===
+                // =========================================================================
+
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
                 await userService.updateUserIP(registeredData.nick, userIP);
                 socket.emit('assign id', registeredData.id);

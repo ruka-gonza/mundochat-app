@@ -1,6 +1,6 @@
-import state from './state.js';
-import * as dom from './domElements.js';
-import { showNotification } from './utils.js';
+import state from '../state.js';
+import * as dom from '../domElements.js';
+import { showNotification } from '../utils.js';
 import { addPrivateChat, updateConversationList } from './ui/conversations.js'; 
 import { renderUserList } from './ui/userInteractions.js';
 import { appendMessageToView, createMessageElement } from './ui/renderer.js';
@@ -96,7 +96,8 @@ export function initializeSocketEvents(socket) {
     // =========================================================================
     // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
-    // Al no especificar Max-Age, el navegador la trata como una cookie de sesión.
+    // Al no especificar Max-Age, el navegador la trata como una cookie de sesión,
+    // que se elimina automáticamente al cerrar el navegador.
     socket.on('set session cookie', (data) => {
         document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; SameSite=Lax`;
     });

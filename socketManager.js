@@ -12,7 +12,7 @@ const fetch = require('node-fetch');
 
 let fileChunks = {};
 
-// ... (todas las funciones auxiliares como generateLinkPreview, handleChatMessage, etc., se mantienen igual) ...
+// ... (todas las funciones auxiliares se mantienen igual) ...
 
 async function generateLinkPreview(text) {
     if (!text) return null;

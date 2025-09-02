@@ -93,9 +93,17 @@ export function initializeSocketEvents(socket) {
 
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Esta es la versión correcta. Al no especificar Max-Age, el navegador
+    // la trata como una cookie de sesión, que se elimina al cerrar el navegador.
     socket.on('set session cookie', (data) => {
         document.cookie = `user_auth=${JSON.stringify(data)}; Path=/; SameSite=Lax`;
     });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     
     socket.on('update user list', ({ roomName, users }) => {
         if (!state.roomUserLists) state.roomUserLists = {};
@@ -283,7 +291,7 @@ export function initializeSocketEvents(socket) {
                 if (state.joinedRooms.has(room.name)) {
                     li.classList.add('current-room');
                 } else {
-                    li.onclick = () => switchToChat(room.name, 'room'); // CORREGIDO: Llamar a switchToChat
+                    li.onclick = () => switchToChat(room.name, 'room');
                 }
                 dom.roomSwitcherList.appendChild(li);
             }
@@ -385,28 +393,19 @@ export function initializeSocketEvents(socket) {
         }
     });
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     socket.on('reauth_success', () => {
-        console.log("Re-autenticación exitosa. Ejecutando acción pendiente...");
-        // Si estábamos intentando unirnos a una sala nueva, lo hacemos ahora.
+        console.log("Re-autenticación exitosa. Re-uniéndose a la última sala activa...");
         if (state.pendingRoomJoin) {
             socket.emit('join room', { roomName: state.pendingRoomJoin });
-            state.pendingRoomJoin = null; // Limpiamos la intención
+            state.pendingRoomJoin = null;
         } 
-        // Si no, simplemente nos re-unimos a la última sala activa.
         else if (state.lastActiveRoom) {
             socket.emit('join room', { roomName: state.lastActiveRoom });
         } 
-        // Como último recurso, nos unimos a General.
         else {
             socket.emit('join room', { roomName: '#General' });
         }
     });
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     socket.on('reauth_failed', () => {
         console.error("La re-autenticación falló. Forzando recarga de página.");

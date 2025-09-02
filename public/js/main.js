@@ -6,9 +6,6 @@ import { initChatInput, switchToChat } from './ui/chatInput.js';
 import { initConversations } from './ui/conversations.js';
 import { initModals } from './ui/modals.js';
 import { initUserInteractions } from './ui/userInteractions.js';
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
 function initResponsiveHandlers() {
     const { conversationsPanel, userListContainer, mobileOverlay } = dom;
@@ -56,20 +53,36 @@ function initThemeSwitcher() {
     });
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
+            // 1. Limpieza Visual Inmediata (Opcional pero mejora la UX)
+            // Ocultamos el contenedor del chat para que el usuario vea que la acción tuvo efecto.
+            dom.chatContainer.classList.add('hidden');
+            dom.welcomeContainer.classList.remove('hidden');
+
+            // 2. Borrar la cookie de autenticación para prevenir el login automático.
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            
+            // 3. Notificar al servidor para que limpie la sesión y avise a los demás.
             if (state.socket) {
                 state.socket.emit('logout');
             }
+
+            // 4. Recargar la página después de un breve instante para asegurar que el evento se envíe.
             setTimeout(() => {
                 location.reload();
             }, 100); 
         });
     }
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
     state.socket = io({

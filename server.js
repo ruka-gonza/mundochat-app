@@ -22,6 +22,9 @@ const io = new Server(server, {
   pingInterval: 10000,
   pingTimeout: 5000
 });
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 // --- CONFIGURACIÓN DE EXPRESS ---
 app.use(express.static(path.join(__dirname, 'public')));

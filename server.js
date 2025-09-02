@@ -22,7 +22,7 @@ const server = http.createServer(app);
 // =========================================================================
 // Configuración del servidor de Socket.IO con "heartbeat" (pings) reforzado
 const io = new Server(server, {
-  maxHttpBufferSize: 1e7, // Límite de 10MB para subidas
+  maxHttpBufferSize: 1e7, // Límite de 10MB para subidas de
   
   // Configuración de ping más agresiva para mantener la conexión viva a través de redes inestables y proxies
   pingInterval: 10000, // Envía un ping a cada cliente cada 10 segundos

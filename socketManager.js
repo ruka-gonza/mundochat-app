@@ -279,37 +279,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     roomService.updateRoomData(io);
 }
 
-function handleDefinitiveDisconnect(io, { id, userData, joinedRooms }) {
-    if (!userData || !userData.nick) return;
-
-    console.log(`[Definitive Disconnect] Cleaning up for user ${userData.nick}.`);
-    logActivity('DISCONNECT', userData);
-    io.emit('user disconnected', { nick: userData.nick });
-    
-    joinedRooms.forEach(roomName => {
-        if (roomService.rooms[roomName] && roomService.rooms[roomName].users[id]) {
-            io.to(roomName).emit('system message', { text: `${userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
-            delete roomService.rooms[roomName].users[id];
-            roomService.updateUserList(io, roomName);
-            if (Object.keys(roomService.rooms[roomName].users).length === 0 && !roomService.DEFAULT_ROOMS.includes(roomName) && roomName !== roomService.MOD_LOG_ROOM) {
-                delete roomService.rooms[roomName];
-            }
-        }
-    });
-    
-    clearUserFileChunks(id);
-    roomService.updateRoomData(io);
-
-    if (userData.role === 'guest') {
-        roomService.guestSocketMap.delete(userData.id);
-        if (userData.temp_avatar_path) {
-            fs.unlink(userData.temp_avatar_path, (err) => {
-                if (err) console.error(`Error al borrar avatar temporal de ${userData.nick}:`, err);
-            });
-        }
-    }
-}
-
 function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
@@ -356,59 +325,38 @@ function initializeSocket(io) {
             console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
             socket.emit('reauth_success');
         });
-        
-        // El login y guest join ahora se manejan por HTTP para las cookies,
-        // pero mantenemos la lógica de Socket.IO por si el cliente la sigue usando.
+
         socket.on('guest_join', async (data) => {
             const { nick, roomName } = data;
-            if (!nick || !roomName) return socket.emit('auth_error', { message: "El nick y la sala son obligatorios." });
-            if (nick.length < 3 || nick.length > 15) return socket.emit('auth_error', { message: "El nick debe tener entre 3 y 15 caracteres." });
-            if (!/^[a-zA-Z0-9_-]+$/.test(nick)) { return socket.emit('auth_error', { message: "El nick solo puede contener letras, números, guiones (-) y guiones bajos (_)." }); }
-            const existingUser = await userService.findUserByNick(nick);
-            if (existingUser) return socket.emit('auth_error', { message: `El nick '${nick}' está registrado. Por favor, inicia sesión.` });
-            if (roomService.isNickInUse(nick)) return socket.emit('auth_error', { message: `El nick '${nick}' ya está en uso.` });
-            const persistentId = uuidv4();
-            socket.emit('assign id', persistentId);
-            if (await checkBanStatus(socket, persistentId, userIP)) return;
+            if (!nick || !roomName) return; 
+            if (await checkBanStatus(socket, null, userIP)) return;
+
+            // La validación se hace ahora en la ruta HTTP /api/guest/join
+            // Aquí solo asociamos los datos al socket.
+            const persistentId = data.id || uuidv4();
             socket.userData = { nick, id: persistentId, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
             roomService.guestSocketMap.set(persistentId, socket.id);
             logActivity('CONNECT', socket.userData);
             await handleJoinRoom(io, socket, { roomName });
-            socket.emit('system message', { text: '¡Bienvenido! Como invitado, puedes cambiar tu avatar con /avatar <url_imagen> o haciendo clic derecho en tu nick.', type: 'highlight', roomName: roomName });
         });
 
         socket.on('login', async (data) => {
-            const { nick, password, roomName } = data;
+            const { nick, roomName } = data;
             if (await checkBanStatus(socket, nick.toLowerCase(), userIP)) return;
             const registeredData = await userService.findUserByNick(nick);
-            if (!registeredData) return socket.emit('auth_error', { message: "El nick o email no está registrado." });
-            try {
-                const match = await userService.verifyPassword(password, registeredData.password);
-                if (!match) return socket.emit('auth_error', { message: "Contraseña incorrecta." });
-                const oldSocketId = roomService.findSocketIdByNick(registeredData.nick);
-                if (oldSocketId) {
-                    const oldSocket = io.sockets.sockets.get(oldSocketId);
-                    if (oldSocket) {
-                        console.warn(`Desconectando sesión fantasma para ${registeredData.nick} durante nuevo login.`);
-                        oldSocket.disconnect(true);
-                    }
-                }
-                socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
-                await userService.updateUserIP(registeredData.nick, userIP);
-                socket.emit('assign id', registeredData.id);
-                logActivity('CONNECT', socket.userData);
-                await handleJoinRoom(io, socket, { roomName });
-            } catch (error) {
-                console.error("Error en login:", error);
-                socket.emit('auth_error', { message: "Error interno del servidor al iniciar sesión." });
-            }
+            if (!registeredData) return;
+
+            socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
+            await userService.updateUserIP(registeredData.nick, userIP);
+            logActivity('CONNECT', socket.userData);
+            await handleJoinRoom(io, socket, { roomName });
         });
         
         socket.on('join room', (data) => handleJoinRoom(io, socket, data));
         
         socket.on('leave room', (data) => {
             const { roomName } = data;
-            if (!socket.rooms.has(roomName) || !roomService.rooms[roomName]) return;
+            if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName]) return;
             if (roomName === roomService.MOD_LOG_ROOM) return;
             logActivity('LEAVE_ROOM', socket.userData, `Sala: ${roomName}`);
             socket.leave(roomName);
@@ -420,6 +368,9 @@ function initializeSocket(io) {
             roomService.updateRoomData(io);
         });
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         socket.on('logout', () => {
             handleDefinitiveDisconnect(io, {
                 id: socket.id,
@@ -438,15 +389,49 @@ function initializeSocket(io) {
 
             if (!socketData.userData || !socketData.userData.nick) return;
 
+            // Eliminamos al usuario de la lista VISUAL inmediatamente.
+            socketData.joinedRooms.forEach(roomName => {
+                if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socketData.id]) {
+                    delete roomService.rooms[roomName].users[socketData.id];
+                    roomService.updateUserList(io, roomName);
+                }
+            });
+
+            // Iniciamos el período de gracia SÓLO para el mensaje de "ha abandonado".
             setTimeout(() => {
                 const newSocketId = roomService.findSocketIdByNick(socketData.userData.nick);
                 if (newSocketId) {
                     console.log(`[Graceful Disconnect] User ${socketData.userData.nick} reconnected quickly. Aborting leave message.`);
                     return;
                 }
-                handleDefinitiveDisconnect(io, socketData);
-            }, 2000);
+                
+                // Si no ha vuelto, enviamos el mensaje y hacemos la limpieza final.
+                logActivity('DISCONNECT', socketData.userData);
+                io.emit('user disconnected', { nick: socketData.userData.nick });
+                
+                socketData.joinedRooms.forEach(roomName => {
+                    if (roomService.rooms[roomName]) { // La sala puede haber sido borrada
+                         io.to(roomName).emit('system message', { text: `${socketData.userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
+                    }
+                });
+
+                clearUserFileChunks(socketData.id);
+                roomService.updateRoomData(io);
+
+                if (socketData.userData.role === 'guest') {
+                    roomService.guestSocketMap.delete(socketData.userData.id);
+                    if (socketData.userData.temp_avatar_path) {
+                        fs.unlink(socketData.userData.temp_avatar_path, (err) => {
+                            if (err) console.error(`Error al borrar avatar temporal de ${socketData.userData.nick}:`, err);
+                        });
+                    }
+                }
+
+            }, 2500); // Un poco más de tiempo para asegurar la detección.
         });
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
         socket.on('chat message', (data) => handleChatMessage(io, socket, data));

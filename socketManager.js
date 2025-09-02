@@ -249,14 +249,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
     }
     socket.userData.isStaff = isAnyStaff;
     
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    // Guardamos también el socket.id para una identificación única en el cliente.
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     if (socket.userData.isStaff) {
         socket.emit('set admin cookie', { nick: socket.userData.nick, role: socket.userData.role });
@@ -377,7 +370,13 @@ function initializeSocket(io) {
             if (await checkBanStatus(socket, persistentId, userIP)) return;
             socket.userData = { nick, id: persistentId, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
             roomService.guestSocketMap.set(persistentId, socket.id);
+            // =========================================================================
+            // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
             socket.emit('set session cookie', { id: socket.userData.id, nick: socket.userData.nick, role: socket.userData.role });
+            // =========================================================================
+            // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
             logActivity('CONNECT', socket.userData);
             await handleJoinRoom(io, socket, { roomName });
             socket.emit('system message', { text: '¡Bienvenido! Como invitado, puedes cambiar tu avatar con /avatar <url_imagen> o haciendo clic derecho en tu nick.', type: 'highlight', roomName: roomName });
@@ -422,7 +421,13 @@ function initializeSocket(io) {
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
                 await userService.updateUserIP(registeredData.nick, userIP);
                 socket.emit('assign id', registeredData.id);
+                // =========================================================================
+                // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+                // =========================================================================
                 socket.emit('set session cookie', { id: socket.userData.id, nick: socket.userData.nick, role: socket.userData.role });
+                // =========================================================================
+                // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+                // =========================================================================
                 logActivity('CONNECT', socket.userData);
                 await handleJoinRoom(io, socket, { roomName });
             } catch (error) {

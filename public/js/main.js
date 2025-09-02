@@ -53,31 +53,20 @@ function initThemeSwitcher() {
     });
 }
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
-            // 1. Borrar la cookie de autenticación para prevenir el login automático.
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            
-            // 2. Enviar un evento explícito al servidor para una limpieza inmediata.
             if (state.socket) {
                 state.socket.emit('logout');
             }
-
-            // 3. Dar un pequeño margen para que el evento se envíe antes de recargar.
             setTimeout(() => {
                 location.reload();
             }, 100); 
         });
     }
 }
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
 document.addEventListener('DOMContentLoaded', () => {
     state.socket = io({
@@ -103,13 +92,23 @@ document.addEventListener('DOMContentLoaded', () => {
     connectionOverlay.style.display = 'none';
     document.body.appendChild(connectionOverlay);
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    let disconnectTimer;
+
     state.socket.on('disconnect', (reason) => {
         console.warn(`Desconectado del servidor. Razón: ${reason}`);
-        connectionOverlay.innerHTML = '🔴 Desconectado. Intentando reconectar...';
-        connectionOverlay.style.display = 'block';
+        // Inicia un temporizador. Si la desconexión es muy corta, no mostraremos el banner.
+        disconnectTimer = setTimeout(() => {
+            connectionOverlay.innerHTML = '🔴 Desconectado. Intentando reconectar...';
+            connectionOverlay.style.display = 'block';
+        }, 2000); // Muestra el banner solo si la desconexión dura más de 2 segundos.
     });
 
     state.socket.on('connect', () => {
+        // Si nos conectamos, cancelamos el temporizador para que el banner no aparezca.
+        clearTimeout(disconnectTimer);
         console.log("¡Conectado de nuevo al servidor!");
         connectionOverlay.style.display = 'none';
         
@@ -126,6 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     
     state.socket.on('reconnect_failed', () => {
         console.error("Fallo en la reconexión.");

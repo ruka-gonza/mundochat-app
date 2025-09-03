@@ -39,6 +39,11 @@ router.post('/join', async (req, res) => {
         userData: sessionData,
         token: authToken 
     });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
+    res.status(200).json({ message: "Guest join successful", userData: sessionData });
 });
 
 module.exports = router;

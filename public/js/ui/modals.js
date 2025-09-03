@@ -1,14 +1,49 @@
 import state from '../state.js';
 import * as dom from '../domElements.js';
 import { isValidNick } from '../utils.js';
-import { unlockAudioContext } from '../utils.js'; // <-- MODIFICACIÓN: Importar la función
+import { unlockAudioContext } from '../utils.js';
 
-// --- (Otras funciones como fetchAndShowReports, etc., permanecen igual) ---
+export function openImageModal(imageSrc) {
+    if (dom.modalImage && dom.imageModalOverlay) {
+        dom.modalImage.src = imageSrc;
+        dom.imageModalOverlay.classList.remove('hidden');
+    }
+}
+
+export async function fetchWithCredentials(url, options = {}) {
+    options.credentials = 'include';
+    
+    // Si no hay cabeceras, las inicializamos
+    if (!options.headers) {
+        options.headers = {};
+    }
+
+    // AÑADIMOS LA CABECERA DE AUTORIZACIÓN CON EL TOKEN
+    if (state.authToken) {
+        options.headers['Authorization'] = `Bearer ${state.authToken}`;
+    }
+    
+    const response = await fetch(url, options);
+    
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.indexOf("application/json") !== -1) {
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || `La petición falló con el estado ${response.status}`);
+        }
+        return result;
+    } else {
+        if (!response.ok) {
+            const textError = await response.text();
+            throw new Error(textError || `La petición falló con el estado ${response.status}`);
+        }
+        return response;
+    }
+}
+
 export async function fetchAndShowReports() {
     try {
-        const response = await fetch('/api/admin/reports');
-        if (!response.ok) throw new Error('No se pudo cargar la lista de denuncias.');
-        const reports = await response.json();
+        const reports = await fetchWithCredentials('/api/admin/reports');
         dom.reportsList.innerHTML = '';
         if (reports.length === 0) {
             dom.reportsList.innerHTML = `<tr><td colspan="4">No hay denuncias recientes.</td></tr>`;
@@ -32,9 +67,7 @@ export async function fetchAndShowReports() {
 
 export async function fetchAndShowBannedUsers() {
     try {
-        const response = await fetch('/api/admin/banned');
-        if (!response.ok) throw new Error('No se pudo cargar la lista de baneados.');
-        const users = await response.json();
+        const users = await fetchWithCredentials('/api/admin/banned');
         dom.bannedUsersList.innerHTML = '';
         users.forEach(user => {
             const row = document.createElement('tr');
@@ -49,9 +82,7 @@ export async function fetchAndShowBannedUsers() {
 
 export async function fetchAndShowMutedUsers() {
     try {
-        const response = await fetch('/api/admin/muted');
-        if (!response.ok) throw new Error('No se pudo cargar la lista de silenciados.');
-        const users = await response.json();
+        const users = await fetchWithCredentials('/api/admin/muted');
         dom.mutedUsersList.innerHTML = '';
         users.forEach(user => {
             const row = document.createElement('tr');
@@ -66,9 +97,7 @@ export async function fetchAndShowMutedUsers() {
 
 export async function fetchAndShowOnlineUsers() {
     try {
-        const response = await fetch('/api/admin/online-users');
-        if (!response.ok) throw new Error('No se pudo cargar la lista de usuarios online.');
-        const users = await response.json();
+        const users = await fetchWithCredentials('/api/admin/online-users');
         dom.onlineUsersList.innerHTML = '';
         users.forEach(user => {
             const row = document.createElement('tr');
@@ -82,9 +111,7 @@ export async function fetchAndShowOnlineUsers() {
 
 export async function fetchAndShowActivityLogs() {
     try {
-        const response = await fetch('/api/admin/activity-logs?limit=100');
-        if (!response.ok) throw new Error('No se pudo cargar el registro de actividad.');
-        const logs = await response.json();
+        const logs = await fetchWithCredentials('/api/admin/activity-logs?limit=100');
         dom.activityLogsList.innerHTML = '';
         logs.forEach(log => {
             const row = document.createElement('tr');
@@ -106,13 +133,10 @@ export function openProfileModal() {
     state.selectedAvatarFile = null;
     dom.profileAvatarPreview.src = state.myUserData.avatar_url || 'image/default-avatar.png';
     
-    // --- INICIO DE LA MODIFICACIÓN ---
-    // Asegurarse de que el texto del archivo seleccionado se reinicie
     const fileNameDisplay = document.getElementById('file-name-display');
     if (fileNameDisplay) {
         fileNameDisplay.textContent = 'Ningún archivo seleccionado';
     }
-    // --- FIN DE LA MODIFICACIÓN ---
 
     dom.profileModal.classList.remove('hidden');
 }
@@ -126,14 +150,10 @@ export function showSexoWarningModal() {
 export function initModals() {
     const welcomePopup = dom.welcomePopup;
     function hideWelcomePopup() { if (welcomePopup) welcomePopup.classList.add('hidden'); }
-    
-    // --- INICIO DE LA MODIFICACIÓN ---
-    // Se elimina la función local "unlockAudioContext" de aquí.
-    // --- FIN DE LA MODIFICACIÓN ---
 
     if (dom.confirmWelcomePopupButton) {
         dom.confirmWelcomePopupButton.addEventListener('click', () => {
-            unlockAudioContext(); // Ahora llama a la función centralizada
+            unlockAudioContext();
             hideWelcomePopup();
         });
     }
@@ -180,22 +200,20 @@ export function initModals() {
             const userId = target.dataset.id;
             if (confirm(`¿Estás seguro de que quieres desbanear a ${userId}?`)) {
                 try {
-                    const response = await fetch('/api/admin/unban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
-                    const result = await response.json();
-                    alert(result.message || result.error);
-                    if (response.ok) fetchAndShowBannedUsers();
-                } catch (err) { alert('Error al procesar la solicitud.'); }
+                    const result = await fetchWithCredentials('/api/admin/unban', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }) });
+                    alert(result.message);
+                    fetchAndShowBannedUsers();
+                } catch (err) { alert('Error al procesar la solicitud: ' + err.message); }
             }
         }
         if (target.classList.contains('unmute-btn')) {
             const nick = target.dataset.nick;
             if (confirm(`¿Estás seguro de que quieres quitar el mute a ${nick}?`)) {
                 try {
-                    const response = await fetch('/api/admin/unmute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nick }) });
-                    const result = await response.json();
-                    alert(result.message || result.error);
-                    if (response.ok) fetchAndShowMutedUsers();
-                } catch (err) { alert('Error al procesar la solicitud.'); }
+                    const result = await fetchWithCredentials('/api/admin/unmute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nick }) });
+                    alert(result.message);
+                    fetchAndShowMutedUsers();
+                } catch (err) { alert('Error al procesar la solicitud: ' + err.message); }
             }
         }
     });
@@ -234,47 +252,61 @@ export function initModals() {
             }
         }
     });
-
+    
     dom.saveProfileButton.addEventListener('click', async () => {
-        if (!state.selectedAvatarFile) { alert('Por favor, selecciona una imagen para subir.'); return; }
-        dom.saveProfileButton.disabled = true; dom.saveProfileButton.textContent = 'Subiendo...';
-        const formData = new FormData();
-        formData.append('nick', state.myNick);
-        formData.append('avatarFile', state.selectedAvatarFile);
-        try {
-            const response = await fetch('/api/user/avatar', { method: 'POST', body: formData });
-            const result = await response.json();
-            alert(response.ok ? result.message : `Error: ${result.error || 'No se pudo subir la imagen.'}`);
-            if (response.ok) dom.profileModal.classList.add('hidden');
-        } catch (error) {
-            console.error('Error al guardar perfil:', error);
-            alert('Hubo un error al conectar con el servidor.');
-        } finally {
-            dom.saveProfileButton.disabled = false;
-            dom.saveProfileButton.textContent = 'Guardar Avatar'; // Texto corregido
-            state.selectedAvatarFile = null;
-            dom.avatarFileInput.value = '';
+        if (!state.selectedAvatarFile) {
+            alert('Por favor, selecciona una imagen para subir.');
+            return;
         }
+        dom.saveProfileButton.disabled = true;
+        dom.saveProfileButton.textContent = 'Subiendo...';
+
+        const reader = new FileReader();
+        reader.readAsDataURL(state.selectedAvatarFile);
+        reader.onload = async () => {
+            const avatarBase64 = reader.result;
+            try {
+                const result = await fetchWithCredentials('/api/user/avatar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ avatarBase64 })
+                });
+                alert(result.message);
+                dom.profileModal.classList.add('hidden');
+            } catch (error) {
+                console.error('Error al guardar perfil:', error);
+                alert('Hubo un error al conectar con el servidor: ' + error.message);
+            } finally {
+                dom.saveProfileButton.disabled = false;
+                dom.saveProfileButton.textContent = 'Guardar Avatar';
+                state.selectedAvatarFile = null;
+                dom.avatarFileInput.value = '';
+            }
+        };
+        reader.onerror = (error) => {
+            console.error('Error al leer el archivo:', error);
+            alert('No se pudo leer el archivo de imagen.');
+            dom.saveProfileButton.disabled = false;
+            dom.saveProfileButton.textContent = 'Guardar Avatar';
+        };
     });
 
     dom.changeNickButton.addEventListener('click', async () => {
         const newNick = dom.newNickInput.value.trim();
-        const oldNick = state.myNick;
-        if (!newNick || newNick === oldNick || newNick.length < 3 || newNick.length > 15 || !isValidNick(newNick)) {
+        if (!isValidNick(newNick)) {
             alert('Nick inválido. Debe tener entre 3-15 caracteres y solo puede contener letras, números, guiones y guiones bajos.'); return;
         }
         dom.changeNickButton.disabled = true; dom.changeNickButton.textContent = 'Cambiando...';
         try {
-            const response = await fetch('/api/user/nick', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldNick, newNick }) });
-            const result = await response.json();
-            alert(response.ok ? result.message : `Error: ${result.error || 'No se pudo cambiar el nick.'}`);
-            if (response.ok) dom.profileModal.classList.add('hidden');
+            const result = await fetchWithCredentials('/api/user/nick', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newNick }) });
+            alert(result.message);
+            dom.profileModal.classList.add('hidden');
         } catch (error) {
             console.error('Error al cambiar nick:', error);
-            alert('Hubo un error al conectar con el servidor.');
+            alert('Hubo un error al conectar con el servidor: ' + error.message);
         } finally {
             dom.changeNickButton.disabled = false;
-            dom.changeNickButton.textContent = 'Cambiar'; // Texto corregido
+            dom.changeNickButton.textContent = 'Cambiar';
         }
     });
 }

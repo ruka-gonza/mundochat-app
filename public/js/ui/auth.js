@@ -1,130 +1,185 @@
-const express = require('express');
-const router = express.Router();
-const userService = require('../services/userService');
-const passwordResetService = require('../services/passwordResetService');
-const emailService = require('../services/emailService');
-const bcrypt = require('bcrypt');
-const config = require('../config');
-const db = require('../services/db-connection');
+import state from '../state.js';
+import * as dom from '../domElements.js';
+import { isValidNick, unlockAudioContext } from '../utils.js';
 
-router.post('/login', async (req, res) => {
-    const { nick, password } = req.body;
-    
-    try {
-        const user = await userService.findUserByNick(nick);
-        if (!user) {
-            return res.status(401).json({ error: "El nick o email no está registrado." });
-        }
-
-        const match = await userService.verifyPassword(password, user.password);
-        if (!match) {
-            return res.status(401).json({ error: "Contraseña incorrecta." });
-        }
-        
-        const sessionData = {
-            id: user.id,
-            nick: user.nick,
-            role: user.role
-        };
-
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
-        res.cookie('user_auth', JSON.stringify(sessionData), {
-            httpOnly: false,
-            sameSite: 'none', // Permite que la cookie se envíe en peticiones fetch
-            secure: true,     // Requerido para sameSite: 'none'
-            maxAge: 3600 * 1000 // 1 hora
+function setupAuthTabs() {
+    const authTabs = document.querySelectorAll('.auth-tab');
+    const authForms = document.querySelectorAll('.auth-form');
+    authTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetFormId = tab.dataset.form;
+            authTabs.forEach(t => t.classList.remove('active'));
+            authForms.forEach(f => f.classList.add('hidden'));
+            tab.classList.add('active');
+            document.getElementById(targetFormId).classList.remove('hidden');
+            dom.authError.classList.add('hidden');
+            dom.authSuccess.classList.add('hidden');
         });
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
+    });
+}
 
-        res.status(200).json({ message: "Login successful", userData: sessionData });
+function setupForgotPasswordModal() {
+    dom.showForgotPasswordLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        dom.forgotIdentifierInput.value = '';
+        dom.forgotPasswordMessage.classList.add('hidden');
+        dom.forgotPasswordModal.classList.remove('hidden');
+    });
 
-    } catch (error) {
-        console.error("Error en la ruta /api/auth/login:", error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
-    }
-});
+    dom.closeForgotPasswordModalButton.addEventListener('click', () => {
+        dom.forgotPasswordModal.classList.add('hidden');
+    });
 
+    dom.forgotPasswordModal.addEventListener('click', (e) => {
+        if (e.target === dom.forgotPasswordModal) {
+            dom.forgotPasswordModal.classList.add('hidden');
+        }
+    });
 
-router.post('/forgot-password', async (req, res) => {
-    // ... esta ruta no cambia
-    const { identifier } = req.body; 
+    dom.sendResetLinkButton.addEventListener('click', async () => {
+        const identifier = dom.forgotIdentifierInput.value.trim();
+        dom.forgotPasswordMessage.classList.add('hidden');
+        dom.forgotPasswordMessage.classList.remove('error-message', 'success-message');
 
-    if (!identifier) {
-        return res.status(400).json({ error: 'Por favor, introduce tu nick o correo electrónico.' });
-    }
-
-    try {
-        const user = await userService.findUserByNick(identifier);
-        if (!user) {
-            return res.json({ message: 'Si el nick o correo electrónico están registrados, recibirás un enlace para restablecer tu contraseña.' });
+        if (!identifier) {
+            dom.forgotPasswordMessage.textContent = 'Por favor, introduce tu nick o correo electrónico.';
+            dom.forgotPasswordMessage.classList.remove('hidden');
+            dom.forgotPasswordMessage.classList.add('error-message');
+            return;
         }
 
-        if (!user.email) {
-            return res.status(400).json({ error: 'Tu cuenta no tiene un correo electrónico asociado para la recuperación de contraseña. Contacta a un administrador.' });
-        }
+        dom.sendResetLinkButton.disabled = true;
+        dom.sendResetLinkButton.textContent = 'Enviando...';
 
-        const resetToken = await passwordResetService.createResetToken(user.id);
-        const resetLink = `${config.appBaseUrl}/reset-password.html?token=${resetToken}`;
-
-        const emailSent = await emailService.sendPasswordResetEmail(user.email, resetLink);
-
-        if (emailSent) {
-            res.json({ message: 'Si el nick o correo electrónico están registrados, recibirás un enlace para restablecer tu contraseña.' });
-        } else {
-            res.status(500).json({ error: 'No se pudo enviar el correo de restablecimiento. Inténtalo de nuevo más tarde.' });
-        }
-
-    } catch (error) {
-        console.error('Error en /forgot-password:', error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
-    }
-});
-
-router.post('/reset-password', async (req, res) => {
-    // ... esta ruta no cambia
-    const { token, newPassword, confirmPassword } = req.body;
-
-    if (!token || !newPassword || !confirmPassword) {
-        return res.status(400).json({ error: 'Todos los campos son obligatorios.' });
-    }
-    if (newPassword !== confirmPassword) {
-        return res.status(400).json({ error: 'Las contraseñas no coinciden.' });
-    }
-    if (newPassword.length < 6) { 
-        return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
-    }
-
-    try {
-        const tokenData = await passwordResetService.validateResetToken(token);
-        if (!tokenData) {
-            return res.status(400).json({ error: 'Token de restablecimiento inválido o expirado.' });
-        }
-
-        const user = await userService.findUserById(tokenData.userId);
-        if (!user) {
-            return res.status(404).json({ error: 'Usuario no encontrado.' });
-        }
-
-        const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await new Promise((resolve, reject) => {
-            db.run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id], function(err) {
-                if (err) return reject(err);
-                resolve(this.changes > 0);
+        try {
+            const response = await fetch('/api/auth/forgot-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ identifier })
             });
-        });
+            const data = await response.json();
+            dom.forgotPasswordMessage.textContent = data.message || data.error || 'Error al procesar la solicitud.';
+            dom.forgotPasswordMessage.classList.remove('hidden');
+            dom.forgotPasswordMessage.classList.toggle('success-message', response.ok);
+            dom.forgotPasswordMessage.classList.toggle('error-message', !response.ok);
+        } catch (error) {
+            console.error('Error al solicitar restablecimiento:', error);
+            dom.forgotPasswordMessage.textContent = 'Error de conexión al servidor.';
+            dom.forgotPasswordMessage.classList.remove('hidden');
+            dom.forgotPasswordMessage.classList.add('error-message');
+        } finally {
+            dom.sendResetLinkButton.disabled = false;
+            dom.sendResetLinkButton.textContent = 'Enviar Enlace';
+        }
+    });
+}
+
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+export function initAuth() { // <-- AÑADIR LA PALABRA "export" AQUÍ
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+    setupAuthTabs();
+    setupForgotPasswordModal();
+    
+    dom.guestJoinButton.addEventListener('click', async () => {
+        unlockAudioContext();
+        const nick = dom.guestNickInput.value.trim();
+        const roomName = dom.guestRoomSelect.value;
+        if (!isValidNick(nick)) {
+            dom.authError.textContent = "El nick solo puede contener letras, números, guiones (-) y guiones bajos (_).";
+            dom.authError.classList.remove('hidden');
+            return;
+        }
+        if (nick && roomName) {
+            try {
+                const response = await fetch('/api/guest/join', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nick }),
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error);
+                }
+                state.socket.emit('guest_join', { ...result.userData, roomName });
+            } catch (error) {
+                dom.authError.textContent = error.message;
+                dom.authError.classList.remove('hidden');
+            }
+        }
+    });
+
+    dom.loginButton.addEventListener('click', async () => {
+        unlockAudioContext();
+        const nick = dom.loginNickInput.value.trim();
+        const password = dom.loginPasswordInput.value;
+        const roomName = dom.loginRoomSelect.value;
+        if (nick && password && roomName) {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ nick, password }),
+                });
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error);
+                }
+                state.socket.emit('login', { ...result.userData, roomName });
+            } catch (error) {
+                dom.authError.textContent = error.message;
+                dom.authError.classList.remove('hidden');
+            }
+        }
+    });
+    
+    dom.registerButton.addEventListener('click', async () => {
+        const nick = dom.registerNickInput.value.trim();
+        const email = dom.registerEmailInput.value.trim();
+        const password = dom.registerPasswordInput.value;
+        const confirm = dom.registerPasswordConfirm.value;
+
+        if (password !== confirm) {
+            dom.authError.textContent = "Las contraseñas no coinciden.";
+            dom.authError.classList.remove('hidden');
+            return;
+        }
+        if (!email || !/\S+@\S+\.\S+/.test(email)) {
+            dom.authError.textContent = "Formato de correo electrónico inválido.";
+            dom.authError.classList.remove('hidden');
+            return;
+        }
+        if (!isValidNick(nick)) {
+            dom.authError.textContent = "El nick solo puede contener letras, números, guiones (-) y guiones bajos (_).";
+            dom.authError.classList.remove('hidden');
+            return;
+        }
         
-        await passwordResetService.invalidateResetToken(token);
-
-        res.json({ message: 'Contraseña restablecida con éxito. Ya puedes iniciar sesión.' });
-
-    } catch (error) {
-        console.error('Error en /reset-password POST:', error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
-    }
-});
-
-module.exports = router;
+        try {
+             const response = await fetch('/api/auth/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nick, email, password })
+            });
+            const result = await response.json();
+            if (response.ok) {
+                dom.authError.classList.add('hidden');
+                dom.authSuccess.textContent = result.message;
+                dom.authSuccess.classList.remove('hidden');
+                document.getElementById('show-login-tab').click();
+                dom.loginNickInput.value = nick;
+            } else {
+                dom.authSuccess.classList.add('hidden');
+                dom.authError.textContent = result.error;
+                dom.authError.classList.remove('hidden');
+            }
+        } catch (error) {
+            dom.authSuccess.classList.add('hidden');
+            dom.authError.textContent = "Error de conexión al servidor.";
+            dom.authError.classList.remove('hidden');
+        }
+    });
+}

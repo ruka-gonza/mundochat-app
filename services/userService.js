@@ -12,13 +12,14 @@ function getRole(nick) {
     return 'user';
 }
 
-function findUserByNick(identifier) {
+function findUserByNick(identifier) { // 'identifier' puede ser un nick o un email
     return new Promise((resolve, reject) => {
         const lowerCaseIdentifier = identifier.toLowerCase();
+        // La consulta SQL busca en ambas columnas
         db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                row.role = getRole(row.nick); // Asignamos el rol dinámicamente
+                row.role = getRole(row.nick);
             }
             resolve(row);
         });

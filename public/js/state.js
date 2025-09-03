@@ -1,9 +1,11 @@
 const state = {
     socket: null, 
+    authToken: null, // <-- NUEVA LÍNEA: Para guardar el token de sesión
     myNick: '',
     myUserData: {},
     currentChatContext: { type: 'none', with: null },
     lastActiveRoom: '#General', 
+    pendingRoomJoin: null,
     privateMessageHistories: {},
     publicMessageHistories: {},
     joinedRooms: new Set(),
@@ -12,6 +14,7 @@ const state = {
     disconnectedPrivateChats: new Set(),
     currentRoomUsers: [],
     allUsersData: {},
+    roomUserLists: {}, 
     selectedAvatarFile: null,
     ignoredNicks: new Set(),
     isFirstLogin: true,

@@ -46,15 +46,7 @@ export function createMessageElement(msg, isPrivate = false) {
         return item;
     }
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    // Ahora siempre usamos el nick real, nunca "Yo".
     const senderNick = isPrivate ? msg.from : msg.nick;
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-
     if (state.ignoredNicks.has(senderNick.toLowerCase())) {
         return document.createDocumentFragment();
     }
@@ -83,18 +75,18 @@ export function createMessageElement(msg, isPrivate = false) {
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
+    
+    if (!isSent && !isPrivate) {
+        headerDiv.dataset.nick = senderNick;
+        headerDiv.dataset.messageId = msg.id;
+        headerDiv.style.cursor = 'pointer';
+    }
     contentDiv.appendChild(headerDiv);
     
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
-        const quoteNick = document.createElement('strong');
-        quoteNick.textContent = msg.replyTo.nick;
-        const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 ? msg.replyTo.text.substring(0, 70) + '...' : msg.replyTo.text;
-        quoteText.textContent = replaceEmoticons(previewText);
-        quoteDiv.appendChild(quoteNick);
-        quoteDiv.appendChild(quoteText);
+        quoteDiv.innerHTML = `<strong>${msg.replyTo.nick}</strong><p>${replaceEmoticons(msg.replyTo.text)}</p>`;
         contentDiv.appendChild(quoteDiv);
     }
     
@@ -117,7 +109,8 @@ export function createMessageElement(msg, isPrivate = false) {
     } else {
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
-        textSpan.innerHTML = replaceEmoticons(msg.text);
+        // Añadimos dos puntos y un espacio no rompible para separar el nick del texto
+        textSpan.innerHTML = `:&nbsp;${replaceEmoticons(msg.text)}`;
         contentDiv.appendChild(textSpan);
     }
 

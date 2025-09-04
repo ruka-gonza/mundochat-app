@@ -226,9 +226,6 @@ body.dark-mode #private-chat-with-user {
 #chat-window, #private-chat-window { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
 #messages, #private-chat-window ul { list-style-type: none; padding: 20px; flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 
-/* ========================================================================= */
-/* ===                    INICIO DE LA CORRECCIÓN CLAVE                    === */
-/* ========================================================================= */
 #messages > li, #private-chat-window ul li {
     position: relative;
     display: flex;
@@ -252,18 +249,25 @@ body.dark-mode #private-chat-with-user {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    max-width: 100%; /* Asegura que el contenedor no se desborde */
+    max-width: calc(100% - 46px);
+}
+
+#messages > li.sent-by-me .message-main-wrapper, 
+#private-chat-window ul li.sent .message-main-wrapper {
+    align-items: flex-end;
 }
 
 .message-content {
     padding: 8px 12px;
     border-radius: 18px;
     line-height: 1.4;
-    word-break: break-word; /* Rompe palabras largas */
-    overflow-wrap: break-word; /* Equivalente moderno */
+    word-break: break-word;
+    overflow-wrap: break-word;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
 }
 
-/* Colores de los globos de mensaje */
 #messages > li .message-content, #private-chat-window ul li.received .message-content { 
     background-color: var(--other-message-bubble); 
     border-radius: 4px 18px 18px 18px; 
@@ -277,9 +281,6 @@ body.dark-mode #private-chat-with-user {
     color: var(--text-primary); 
     border-radius: 18px 4px 18px 18px; 
 }
-/* ========================================================================= */
-/* ===                     FIN DE LA CORRECCIÓN CLAVE                    === */
-/* ========================================================================= */
 
 #form { position: relative; background: var(--bg-input-area); padding: 10px 20px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border-color); flex-shrink: 0; box-shadow: 0 -2px 4px var(--shadow-light); }
 #input { border: none; background: var(--bg-main); padding: 12px 18px; flex-grow: 1; border-radius: 22px; font-size: 1rem; color: var(--text-primary); outline: none; transition: background-color 0.2s; }
@@ -294,8 +295,6 @@ body.dark-mode #private-chat-with-user {
 .system-message.warning { color: #e97406; font-weight: 500; }
 .system-message.highlight { background-color: rgba(0, 136, 204, 0.1) !important; color: #005c8a; border-radius: 8px; font-style: normal; padding: 10px 15px !important; white-space: pre-wrap; text-align: left; }
 #messages > li.mencion .message-content { background-color: var(--bg-mention) !important; border-left: 3px solid #ffc107; }
-.emoji-only-message { font-size: 2.8rem; line-height: 1.2; }
-
 #typing-indicator, #private-typing-indicator { height: 24px; padding: 0 20px; font-style: italic; color: var(--text-secondary); flex-shrink: 0; }
 
 /* ======================================================= */
@@ -1032,104 +1031,6 @@ body.dark-mode .message-timestamp {
 /* ===         11. CORRECCIÓN SCROLL HORIZONTAL        === */
 /* ======================================================= */
 
-.message-main-wrapper {
-    max-width: 100%;
-}
-.link-preview-card {
-    display: flex;
-    margin-top: 8px;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    overflow: hidden;
-    background-color: var(--bg-main);
-    color: var(--text-primary);
-    text-decoration: none;
-    max-width: 400px;
-    transition: background-color 0.2s;
-}
-
-.link-preview-card:hover {
-    background-color: var(--bg-hover);
-}
-
-.preview-image-container {
-    flex-shrink: 0;
-}
-
-.preview-image-container img {
-    width: 100px;
-    height: 100px;
-    object-fit: cover;
-    display: block;
-    border-right: 1px solid var(--border-color);
-}
-
-.preview-info {
-    padding: 10px 15px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    min-width: 0; /* Permite que el texto se ajuste */
-}
-
-.preview-title {
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.preview-description {
-    font-size: 0.9em;
-    color: var(--text-secondary);
-    margin-top: 4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.youtube-embed-wrapper {
-    position: relative;
-    width: 100%;
-    max-width: 480px;
-    padding-bottom: 56.25%; /* Proporción 16:9 */
-    height: 0;
-    margin-top: 8px;
-}
-
-.youtube-embed-wrapper iframe {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border: none;
-    border-radius: 12px;
-}
-#audio-recording-controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background-color: var(--bg-hover);
-    padding: 4px 8px;
-    border-radius: 20px;
-}
-
-#recording-timer {
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-family: monospace;
-    font-size: 0.9em;
-}
-
-/* Oculta los botones de texto y emojis durante la grabación */
-#form.is-recording #input,
-#form.is-recording #emoji-button,
-#form.is-recording #image-upload,
-#form.is-recording #send-icon-button,
-#form.is-recording #record-audio-button {
-    display: none;
-}
 .action-button-logout {
     width: 100%;
     background-color: #e74c3c; /* Un color rojo para indicar salida */
@@ -1154,17 +1055,19 @@ body.dark-mode .action-button-logout {
 body.dark-mode .action-button-logout:hover {
     background-color: #c0392b;
 }
-#messages > li, #private-chat-window ul li {
-    flex-direction: row;
-    align-items: flex-start;
-}
+
+/* ======================================================= */
+/* ===       12. ESTILOS MEJORADOS PARA MULTIMEDIA       === */
+/* ======================================================= */
 
 .media-only-content {
-    background-color: transparent !important;
-    padding: 0 !important;
+    background-color: var(--bg-content) !important;
+    padding: 8px !important;
     border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid var(--border-color);
+    overflow: visible;
+    border: none;
+    display: flex;
+    flex-direction: column;
 }
 
 .media-message.image-message {
@@ -1173,9 +1076,11 @@ body.dark-mode .action-button-logout:hover {
     max-height: 250px;
     width: auto;
     height: auto;
-    border-radius: 0;
+    border-radius: 12px;
     cursor: zoom-in;
     transition: filter 0.2s;
+    align-self: flex-start;
+    border: 1px solid var(--border-color);
 }
 .media-message.image-message:hover {
     filter: brightness(0.9);
@@ -1186,26 +1091,13 @@ body.dark-mode .action-button-logout:hover {
 }
 
 .media-only-content .message-timestamp {
-    position: absolute;
-    bottom: 8px;
-    right: 8px;
-    background-color: rgba(0, 0, 0, 0.5);
-    color: white;
-    padding: 2px 6px;
-    border-radius: 8px;
-    font-size: 0.7em;
-    user-select: none;
-}
-
-.message-header strong {
-    font-weight: 600;
-    color: var(--primary-color);
-}
-
-.message-header {
-    margin-bottom: 4px;
-    font-size: 0.9em;
+    position: static;
+    background-color: transparent;
     color: var(--text-secondary);
+    padding: 0;
+    font-size: 0.75em;
+    margin-top: 4px;
+    align-self: flex-end;
 }
 
 .message-header strong {
@@ -1214,15 +1106,15 @@ body.dark-mode .action-button-logout:hover {
 }
 
 /* REGLAS PARA OCULTAR EL HEADER CUANDO NO SE NECESITA */
+/* LA REGLA PARA .sent-by-me HA SIDO ELIMINADA */
 
-/* LA REGLA PARA .sent-by-me HA SIDO ELIMINADA PARA QUE SE MUESTRE EL NICK */
-
-/* 2. Ocultar en mensajes privados (esto se mantiene) */
+/* 2. Ocultar en mensajes privados */
 #private-chat-window ul li .message-header {
     display: none;
 }
 
-/* 3. Ocultar en mensajes que solo contienen media (esto se mantiene) */
+/* 3. Ocultar en mensajes que solo contienen media */
 .media-only-content .message-header {
-    display: none;
+    display: block !important;
+    margin-bottom: 6px;
 }

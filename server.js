@@ -36,12 +36,19 @@ const corsOptions = {
     credentials: true,
 };
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 const io = new Server(server, {
   cors: corsOptions,
-  maxHttpBufferSize: 1e7,
+  // Aumentamos el límite de tamaño del buffer de Socket.IO a 20MB.
+  maxHttpBufferSize: 20 * 1024 * 1024, // 20 MB
   pingInterval: 10000,
   pingTimeout: 5000
 });
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 app.use(cors(corsOptions));
 
@@ -49,8 +56,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
 app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
 
-app.use(express.json({ limit: '15mb' }));
-app.use(express.urlencoded({ limit: '15mb', extended: true }));
+// Aumentamos el límite de Express para que coincida
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
 app.use(cookieParser());
 
 app.use((req, res, next) => {
@@ -66,7 +74,6 @@ app.post('/api/auth/keep-alive', (req, res) => {
                 httpOnly: false,
                 maxAge: 3600 * 1000,
             };
-
             if (isProduction) {
                 cookieOptions.sameSite = 'none';
                 cookieOptions.secure = true;
@@ -74,7 +81,6 @@ app.post('/api/auth/keep-alive', (req, res) => {
                 cookieOptions.sameSite = 'lax';
             }
             res.cookie('user_auth', userAuthCookie, cookieOptions);
-
             return res.status(200).json({ message: 'Session extended.' });
         } catch (e) {
             return res.status(400).json({ error: 'Invalid session cookie.' });

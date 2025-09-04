@@ -178,6 +178,9 @@ export async function handleFileUpload(file) {
 // =========================================================================
 
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {
         addPrivateChat(contextId); 
@@ -237,6 +240,9 @@ export function switchToChat(contextId, contextType) {
         }
     }
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 export function updateTypingIndicator() {
     const targetIndicator = state.currentChatContext.type === 'room'

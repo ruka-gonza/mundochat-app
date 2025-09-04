@@ -4,7 +4,7 @@ import { createMessageElement } from './renderer.js';
 import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
-import { fetchWithCredentials } from './modals.js'; // Importamos la función fetch
+import { fetchWithCredentials } from './modals.js';
 
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
@@ -121,20 +121,16 @@ export function sendMessage() {
     hideReplyContextBar();
 }
 
-// =========================================================================
-// ===             NUEVA LÓGICA DE SUBIDA DE ARCHIVOS (FETCH)            ===
-// =========================================================================
 export async function handleFileUpload(file) {
     if (!file || !state.currentChatContext.with || state.currentChatContext.type === 'none') {
         alert('Por favor, selecciona una sala o chat privado para enviar el archivo.');
         return;
     }
-    if (file.size > 15 * 1024 * 1024) { // Límite de 15MB
+    if (file.size > 15 * 1024 * 1024) {
         alert('El archivo es demasiado grande (máx 15MB).');
         return;
     }
 
-    // Muestra un indicador visual de que el archivo se está subiendo
     const indicator = document.createElement('li');
     indicator.className = 'system-message';
     indicator.textContent = `Subiendo ${file.name}...`;
@@ -158,13 +154,11 @@ export async function handleFileUpload(file) {
                     contextWith: state.currentChatContext.with
                 })
             });
-            // La subida fue exitosa, el servidor emitirá el mensaje por Socket.IO
             console.log(result.message);
         } catch (error) {
             console.error('Error al subir archivo:', error);
             alert(`Error al subir archivo: ${error.message}`);
         } finally {
-            // Elimina el indicador de "Subiendo..."
             if(indicator) indicator.remove();
         }
     };
@@ -173,14 +167,7 @@ export async function handleFileUpload(file) {
         if(indicator) indicator.remove();
     };
 };
-// =========================================================================
-// ===                       FIN DE LA NUEVA LÓGICA                      ===
-// =========================================================================
 
-
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {
         addPrivateChat(contextId); 
@@ -240,9 +227,6 @@ export function switchToChat(contextId, contextType) {
         }
     }
 }
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
 export function updateTypingIndicator() {
     const targetIndicator = state.currentChatContext.type === 'room'
@@ -307,13 +291,18 @@ export function initChatInput() {
             state.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) state.audioChunks.push(event.data);
             };
+            
             state.mediaRecorder.onstop = () => {
-                state.audioBlob = new Blob(state.audioChunks, { type: options.mimeType });
+                // Forzamos el tipo a 'audio/webm' para evitar inconsistencias del navegador
+                const blobOptions = { type: 'audio/webm' };
+                state.audioBlob = new Blob(state.audioChunks, blobOptions);
+                
                 const sendBtn = document.getElementById('send-audio-button');
                 const stopBtn = document.getElementById('stop-recording-button');
                 if(sendBtn) sendBtn.classList.remove('hidden');
                 if(stopBtn) stopBtn.classList.add('hidden');
             };
+
             state.mediaRecorder.start();
             recordingStartTime = Date.now();
             

@@ -74,13 +74,7 @@ function setupForgotPasswordModal() {
     });
 }
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
-export function initAuth() { // <-- AÑADIR LA PALABRA "export" AQUÍ
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
+export function initAuth() {
     setupAuthTabs();
     setupForgotPasswordModal();
     

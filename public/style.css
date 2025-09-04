@@ -213,15 +213,6 @@ body {
     flex-shrink: 0;
 }
 
-body.dark-mode #private-chat-view .chat-header {
-    background-color: #2e4b32;
-    border-bottom-color: #395d3c;
-}
-
-body.dark-mode #private-chat-with-user {
-    color: #c8e6c9;
-}
-
 #main-chat-area, #private-chat-view { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
 #chat-window, #private-chat-window { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
 #messages, #private-chat-window ul { list-style-type: none; padding: 20px; flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
@@ -298,23 +289,19 @@ body.dark-mode #private-chat-with-user {
 #typing-indicator, #private-typing-indicator { height: 24px; padding: 0 20px; font-style: italic; color: var(--text-secondary); flex-shrink: 0; }
 
 .reply-quote {
-    background-color: rgba(0, 0, 0, 0.05); /* Un fondo sutil */
-    border-left: 3px solid var(--primary-color); /* Una barra de color distintiva */
+    background-color: rgba(0, 0, 0, 0.05);
+    border-left: 3px solid var(--primary-color);
     padding: 6px 10px;
     margin-bottom: 6px;
     border-radius: 4px;
     font-size: 0.9em;
     opacity: 0.8;
-}
-
-/* En modo oscuro, ajustamos el fondo de la cita */
-body.dark-mode .reply-quote {
-    background-color: rgba(255, 255, 255, 0.08);
+    width: 100%; /* Ocupa todo el ancho del globo */
 }
 
 .reply-quote strong {
     color: var(--primary-color);
-    display: block; /* El nombre del usuario en su propia línea */
+    display: block;
     font-weight: 600;
 }
 
@@ -322,7 +309,7 @@ body.dark-mode .reply-quote {
     margin: 0;
     white-space: nowrap;
     overflow: hidden;
-    text-overflow: ellipsis; /* Corta el texto si es muy largo */
+    text-overflow: ellipsis;
     color: var(--text-secondary);
 }
 
@@ -581,11 +568,6 @@ tbody tr:nth-child(even) { background-color: var(--bg-panel); }
     background-color: var(--primary-color-hover);
 }
 
-body.dark-mode .input-group input[type="text"]:focus {
-    box-shadow: 0 0 0 2px rgba(77, 171, 247, 0.3);
-}
-
-
 /* ======================================================= */
 /* ===         7. ESTILOS RESPONSIVOS (MÓVIL)          === */
 /* ======================================================= */
@@ -647,6 +629,7 @@ body.dark-mode tbody tr:nth-child(even) { background-color: rgba(0,0,0,0.2); }
 body.dark-mode #popup-report-button { background-color: #5c2b29; border-color: #a53125; color: #ff8a80; }
 body.dark-mode #profile-button { background: #333; border-color: #555; color: #f1f1f1; }
 body.dark-mode #profile-button:hover { background-color: #444; }
+body.dark-mode .reply-quote { background-color: rgba(255, 255, 255, 0.08); }
 
 .edited-indicator {
     display: inline-block;
@@ -774,11 +757,10 @@ body.dark-mode #profile-button:hover { background-color: #444; }
     width: 180px; /* Ancho fijo para un mejor aspecto */
 }
 
-/* Regla unificada para botón y etiqueta */
 #self-context-menu button,
 #self-context-menu label.context-menu-button {
     width: 100%;
-    padding: 10px 15px; /* Aumentamos el padding para mejor tacto */
+    padding: 10px 15px;
     border: none;
     background-color: transparent;
     color: var(--text-primary);
@@ -786,13 +768,12 @@ body.dark-mode #profile-button:hover { background-color: #444; }
     cursor: pointer;
     font-weight: 500;
     text-align: left;
-    font-size: 1rem; /* ¡Aquí está la clave! Tamaño de fuente consistente */
+    font-size: 1rem;
     line-height: 1.2;
-    display: block; /* Aseguramos que la etiqueta ocupe todo el espacio */
+    display: block;
     box-sizing: border-box;
 }
 
-/* Hover unificado */
 #self-context-menu button:hover,
 #self-context-menu label.context-menu-button:hover {
     background-color: var(--bg-hover);
@@ -839,27 +820,6 @@ body.dark-mode #profile-button:hover { background-color: #444; }
 @keyframes slideInUp {
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
-}
-
-.reply-quote {
-    background-color: var(--bg-hover);
-    border-left: 3px solid var(--primary-color);
-    padding: 6px 10px;
-    margin-bottom: 6px;
-    border-radius: 4px;
-    font-size: 0.9em;
-    opacity: 0.8;
-}
-
-.reply-quote strong {
-    color: var(--primary-color);
-}
-
-.reply-quote p {
-    margin: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 #sexo-warning-modal .modal-content {
@@ -913,7 +873,7 @@ body.dark-mode #profile-button:hover { background-color: #444; }
 #image-modal-overlay {
     background-color: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(5px);
-    cursor: pointer;
+    cursor: zoom-out;
 }
 
 #modal-image {
@@ -929,9 +889,11 @@ body.dark-mode #profile-button:hover { background-color: #444; }
 #close-image-modal {
     color: white;
     font-size: 40px;
+    position: absolute;
     top: 15px;
     right: 35px;
     text-shadow: 0 0 8px black;
+    cursor: zoom-out;
 }
 
 .message-embed-container {
@@ -978,25 +940,6 @@ body.dark-mode #profile-button:hover { background-color: #444; }
     background: rgba(0, 0, 0, 0.85);
 }
 
-#self-context-menu .context-menu-button {
-    display: block;
-    width: 100%;
-    padding: 8px 12px;
-    border: none;
-    background-color: transparent;
-    color: var(--text-primary);
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    text-align: left;
-    font-size: 1em;
-    box-sizing: border-box;
-}
-
-#self-context-menu .context-menu-button:hover {
-    background-color: var(--bg-hover);
-    color: var(--primary-color);
-}
 /* ======================================================= */
 /* ===    9. MEJORA DE NOTIFICACIÓN MÓVIL (Badge)      === */
 /* ======================================================= */
@@ -1042,16 +985,15 @@ body.dark-mode #profile-button:hover { background-color: #444; }
 /* ======================================================= */
 
 .message-timestamp {
-    display: inline-block; /* Para que esté en la misma línea que el texto */
-    font-size: 0.75em;     /* Más pequeño que el texto del mensaje */
-    color: var(--text-secondary); /* Un color sutil */
-    margin-left: 8px;      /* Espacio entre el texto y la hora */
-    user-select: none;     /* No se puede seleccionar con el ratón */
-    opacity: 0.8;          /* Ligeramente transparente */
-    vertical-align: bottom;/* Se alinea con la parte inferior del texto */
+    display: inline-block;
+    font-size: 0.75em;
+    color: var(--text-secondary);
+    margin-left: 8px;
+    user-select: none;
+    opacity: 0.8;
+    vertical-align: bottom;
 }
 
-/* En modo oscuro, aclaramos un poco el texto para que sea legible */
 body.dark-mode .message-timestamp {
     color: #a0a3a8;
 }
@@ -1059,10 +1001,9 @@ body.dark-mode .message-timestamp {
 /* ======================================================= */
 /* ===         11. CORRECCIÓN SCROLL HORIZONTAL        === */
 /* ======================================================= */
-
 .action-button-logout {
     width: 100%;
-    background-color: #e74c3c; /* Un color rojo para indicar salida */
+    background-color: #e74c3c;
     color: white;
     border: none;
     border-radius: 8px;
@@ -1070,7 +1011,7 @@ body.dark-mode .message-timestamp {
     cursor: pointer;
     font-weight: 600;
     transition: background-color 0.2s;
-    margin-top: 10px; /* Espacio para separarlo de otros botones */
+    margin-top: 10px;
 }
 
 .action-button-logout:hover {
@@ -1129,48 +1070,48 @@ body.dark-mode .action-button-logout:hover {
     align-self: flex-end;
 }
 
+.message-header {
+    margin-bottom: 4px;
+    font-size: 1em; /* Ajustado para que coincida con el texto */
+    color: var(--text-secondary);
+    margin-right: 0.5ch;
+}
+
 .message-header strong {
     font-weight: 600;
     color: var(--primary-color);
 }
 
 /* REGLAS PARA OCULTAR EL HEADER CUANDO NO SE NECESITA */
-/* LA REGLA PARA .sent-by-me HA SIDO ELIMINADA */
-
-/* 2. Ocultar en mensajes privados */
+#messages > li.sent-by-me .message-header,
 #private-chat-window ul li .message-header {
     display: none;
 }
 
-/* 3. Ocultar en mensajes que solo contienen media */
 .media-only-content .message-header {
     display: block !important;
     margin-bottom: 6px;
 }
+
 /* ======================================================= */
 /* ===    14. MEJORAS DE UI PARA GRABACIÓN DE AUDIO      === */
 /* ======================================================= */
 
-/* Cuando el formulario está en modo grabación... */
 #form.is-recording {
-    /* ...le damos más espacio a los controles de grabación. */
     gap: 15px;
 }
 
-/* ...ocultamos el input de texto. */
 #form.is-recording #input {
     display: none;
 }
 
-/* ...ocultamos los botones de acción normales. */
 #form.is-recording #emoji-button,
-#form.is-recording .file-label, /* Oculta el label de la cámara */
+#form.is-recording .file-label,
 #form.is-recording #send-icon-button,
 #form.is-recording #record-audio-button {
     display: none;
 }
 
-/* Mostramos los controles de grabación, que estaban ocultos. */
 #audio-recording-controls {
     display: flex;
     align-items: center;
@@ -1178,7 +1119,6 @@ body.dark-mode .action-button-logout:hover {
     background-color: var(--bg-hover);
     padding: 4px 8px;
     border-radius: 20px;
-    /* Hacemos que ocupe el espacio disponible */
     flex-grow: 1;
     justify-content: space-between;
 }

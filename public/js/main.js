@@ -57,10 +57,16 @@ function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
-            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+            // Borra la cookie de sesión de forma robusta
+            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";
+            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"; // Respaldo para localhost
+            
             if (state.socket) {
                 state.socket.emit('logout');
             }
+            // Limpiamos el token del estado
+            state.authToken = null;
+            
             setTimeout(() => {
                 location.reload();
             }, 100); 
@@ -123,13 +129,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const authCookie = document.cookie.split('; ').find(row => row.startsWith('user_auth='));
         if (authCookie) {
             try {
-                // Quitamos el `HttpOnly` del servidor para poder leerla aquí
-                const userData = JSON.parse(authCookie.split('=')[1]);
+                // =========================================================================
+                // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+                // =========================================================================
+                const cookieValue = authCookie.split('=')[1];
+                const decodedCookie = decodeURIComponent(cookieValue);
+                const userData = JSON.parse(decodedCookie);
+                // =========================================================================
+                // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+                // =========================================================================
+
                 if (userData && userData.id && userData.nick) {
+                    // No guardamos el token aquí, esperamos a que el login/join nos dé uno nuevo.
                     state.socket.emit('reauthenticate', userData);
                 }
             } catch (e) {
                 console.error("Error parsing auth cookie:", e);
+                // Si la cookie está corrupta, la borramos para evitar bucles de errores.
+                document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             }
         }
     });

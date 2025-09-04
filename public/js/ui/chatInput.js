@@ -279,7 +279,9 @@ export function initChatInput() {
 
         dom.input.disabled = false;
         if(sendButton) sendButton.disabled = false;
-        document.getElementById('image-upload').disabled = false;
+        
+        const imageUploadInput = document.getElementById('image-upload');
+        if(imageUploadInput) imageUploadInput.disabled = false;
         dom.emojiButton.disabled = false;
 
         state.audioChunks = [];
@@ -294,26 +296,14 @@ export function initChatInput() {
             return;
         }
 
-        if (hasMicPermission) {
-            startRecording();
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            stopRecording();
             return;
         }
-
+        
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            hasMicPermission = true;
-            stream.getTracks().forEach(track => track.stop());
-            startRecording();
-        } catch (err) {
-            console.error('Error al solicitar permiso de micrófono:', err);
-            alert('No se pudo acceder al micrófono. Asegúrate de haber concedido el permiso en la configuración de tu navegador para este sitio.');
-            hasMicPermission = false;
-        }
-    }
-
-    async function startRecording() {
-        try {
-            state.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            state.audioStream = stream;
 
             const recordingControls = document.getElementById('audio-recording-controls');
             const recordButton = document.getElementById('record-audio-button');
@@ -329,12 +319,13 @@ export function initChatInput() {
             if (cancelBtn) cancelBtn.classList.remove('hidden');
 
             dom.input.disabled = true;
-            if(sendButton) sendButton.disabled = true;
-            document.getElementById('image-upload').disabled = true;
+            if (sendButton) sendButton.disabled = true;
+            const imageUploadInput = document.getElementById('image-upload');
+            if(imageUploadInput) imageUploadInput.disabled = true;
             dom.emojiButton.disabled = true;
-
+            
             const options = { mimeType: 'audio/webm; codecs=opus' };
-            state.mediaRecorder = new MediaRecorder(state.audioStream, options);
+            state.mediaRecorder = new MediaRecorder(stream, options);
             state.audioChunks = [];
 
             state.mediaRecorder.ondataavailable = (event) => {
@@ -344,15 +335,15 @@ export function initChatInput() {
             state.mediaRecorder.onstop = () => {
                 const blobOptions = { type: 'audio/webm' };
                 state.audioBlob = new Blob(state.audioChunks, blobOptions);
-                if(stopBtn) stopBtn.classList.add('hidden');
-                if(sendBtn) sendBtn.classList.remove('hidden');
+                if (stopBtn) stopBtn.classList.add('hidden');
+                if (sendBtn) sendBtn.classList.remove('hidden');
             };
 
             state.mediaRecorder.start();
-            
+
             recordingStartTime = Date.now();
             const timer = document.getElementById('recording-timer');
-            if(timer) timer.textContent = '00:00';
+            if (timer) timer.textContent = '00:00';
             recordingInterval = setInterval(() => {
                 if (!timer) return;
                 const elapsed = Date.now() - recordingStartTime;
@@ -360,10 +351,10 @@ export function initChatInput() {
                 const minutes = String(Math.floor(elapsed / (1000 * 60))).padStart(2, '0');
                 timer.textContent = `${minutes}:${seconds}`;
             }, 1000);
-
+            
         } catch (err) {
-            console.error('Error al iniciar la grabación:', err);
-            alert('Hubo un problema al iniciar la grabación, por favor intenta de nuevo.');
+            console.error('Error al solicitar permiso o iniciar grabación:', err);
+            alert('No se pudo acceder al micrófono. Asegúrate de haber concedido el permiso en la configuración de tu navegador.');
             resetAudioRecorderUI();
         }
     }
@@ -380,10 +371,10 @@ export function initChatInput() {
     const cancelRecordingButton = document.getElementById('cancel-recording-button');
     const sendAudioButton = document.getElementById('send-audio-button');
 
-    if(recordButton) recordButton.addEventListener('click', handleMicClick);
-    if(stopRecordingButton) stopRecordingButton.addEventListener('click', stopRecording);
-    if(cancelRecordingButton) cancelRecordingButton.addEventListener('click', resetAudioRecorderUI);
-    if(sendAudioButton) sendAudioButton.addEventListener('click', () => {
+    if (recordButton) recordButton.addEventListener('click', handleMicClick);
+    if (stopRecordingButton) stopRecordingButton.addEventListener('click', stopRecording);
+    if (cancelRecordingButton) cancelRecordingButton.addEventListener('click', resetAudioRecorderUI);
+    if (sendAudioButton) sendAudioButton.addEventListener('click', () => {
         if (state.audioBlob) {
             const fileName = `audio-${Date.now()}.webm`;
             handleFileUpload(new File([state.audioBlob], fileName, { type: state.audioBlob.type }));

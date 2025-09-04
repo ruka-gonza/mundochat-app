@@ -25,14 +25,22 @@ router.post('/chat-file', async (req, res) => {
         return res.status(400).json({ error: 'Faltan datos para la subida.' });
     }
     
-    const match = fileBase64.match(/^data:((image|audio)\/(\w+));base64,(.+)$/);
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Expresión regular mejorada que acepta image/*, audio/*, y video/* (para webm)
+    const match = fileBase64.match(/^data:((image|audio|video)\/([\w\+]+));base64,(.+)$/);
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
     if (!match) {
         return res.status(400).json({ error: 'Formato de archivo inválido.' });
     }
 
-    const mimeType = match[1];
-    const fileType = match[2]; // 'image' o 'audio'
-    const extension = match[3];
+    const mimeType = match[1]; // ej: "audio/webm"
+    const fileKind = match[2]; // 'image', 'audio', o 'video'
+    const extension = match[3];  // ej: 'webm'
     const base64Data = match[4];
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
@@ -46,15 +54,18 @@ router.post('/chat-file', async (req, res) => {
         const filePath = path.join(chatUploadsDir, fileName);
         await fs.writeFile(filePath, fileBuffer);
         
-        const fileUrl = `data/chat_uploads/${fileName}`; // URL pública
-        const textPlaceholder = `[${fileType === 'image' ? 'Imagen' : 'Audio'}: ${fileName}]`;
+        const fileUrl = `data/chat_uploads/${fileName}`;
+        
+        // Determinar el tipo de preview correcto (image o audio)
+        const previewType = fileKind === 'image' ? 'image' : 'audio';
+        const textPlaceholder = `[${previewType === 'image' ? 'Imagen' : 'Audio'}: ${fileName}]`;
 
         const previewData = {
-            type: fileType,
+            type: previewType,
             url: fileUrl,
             title: fileName,
-            image: fileType === 'image' ? fileUrl : null,
-            description: `${fileType === 'image' ? 'Imagen' : 'Audio'} subido por el usuario`
+            image: previewType === 'image' ? fileUrl : null,
+            description: `${previewType === 'image' ? 'Imagen' : 'Audio'} subido por el usuario`
         };
 
         const timestamp = new Date().toISOString();
@@ -62,7 +73,7 @@ router.post('/chat-file', async (req, res) => {
         if (contextType === 'room') {
             const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const lastId = await new Promise((resolve, reject) => {
-                stmt.run(contextWith, sender.nick, textPlaceholder, sender.role, sender.isVIP ? 1:0, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
+                stmt.run(contextWith, sender.nick, textPlaceholder, sender.isVIP ? 1:0, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
                     if (err) return reject(err);
                     resolve(this.lastID);
                 });
@@ -85,7 +96,6 @@ router.post('/chat-file', async (req, res) => {
             if (targetSocketId) {
                 io.to(targetSocketId).emit('private message', messagePayload);
             }
-            // Eco para el remitente
             const mySocketId = roomService.findSocketIdByNick(sender.nick);
             if (mySocketId) {
                 io.to(mySocketId).emit('private message', messagePayload);

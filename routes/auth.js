@@ -10,12 +10,9 @@ const { v4: uuidv4 } = require('uuid');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// Almacenamiento en memoria de tokens de sesión activos.
 const activeTokens = new Map();
-// Exportamos el mapa de tokens para que otros módulos puedan usarlo.
 module.exports.activeTokens = activeTokens;
 
-// --- RUTA DE REGISTRO ---
 router.post('/register', async (req, res) => {
     const { nick, email, password } = req.body;
     const ip = req.ip;
@@ -53,7 +50,6 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// --- RUTA DE LOGIN ---
 router.post('/login', async (req, res) => {
     const { nick, password } = req.body;
     try {
@@ -95,7 +91,6 @@ router.post('/login', async (req, res) => {
     }
 });
 
-// --- RUTA DE OLVIDO DE CONTRASEÑA ---
 router.post('/forgot-password', async (req, res) => {
     const { identifier } = req.body; 
 
@@ -105,9 +100,12 @@ router.post('/forgot-password', async (req, res) => {
 
     try {
         const user = await userService.findUserByNick(identifier);
-        if (!user || !user.email) {
-            // Por seguridad, siempre damos el mismo mensaje genérico.
+        if (!user) {
             return res.json({ message: 'Si el nick o correo electrónico están registrados, recibirás un enlace para restablecer tu contraseña.' });
+        }
+
+        if (!user.email) {
+            return res.status(400).json({ error: 'Tu cuenta no tiene un correo electrónico asociado para la recuperación de contraseña. Contacta a un administrador.' });
         }
 
         const resetToken = await passwordResetService.createResetToken(user.id);
@@ -127,7 +125,6 @@ router.post('/forgot-password', async (req, res) => {
     }
 });
 
-// --- RUTA DE RESTABLECIMIENTO DE CONTRASEÑA ---
 router.post('/reset-password', async (req, res) => {
     const { token, newPassword, confirmPassword } = req.body;
 
@@ -161,6 +158,7 @@ router.post('/reset-password', async (req, res) => {
         });
         
         await passwordResetService.invalidateResetToken(token);
+
         res.json({ message: 'Contraseña restablecida con éxito. Ya puedes iniciar sesión.' });
 
     } catch (error) {
@@ -169,6 +167,5 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-// Exportamos el router y el mapa de tokens
 const authRouter = router;
 module.exports = authRouter;

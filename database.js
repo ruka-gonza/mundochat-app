@@ -109,7 +109,7 @@ db.serialize(async () => {
         });
     });
 
-    // --- Tabla 'messages' (MODIFICADA) ---
+    // --- Tabla 'messages' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS messages (
@@ -149,14 +149,14 @@ db.serialize(async () => {
     });
   
     
-    // --- Tabla 'private_messages' ---
+    // --- Tabla 'private_messages' (MODIFICADA) ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS private_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 from_nick TEXT NOT NULL,
                 to_nick TEXT NOT NULL,
-                text TEXT NOT NULL,
+                text TEXT,
                 timestamp TEXT NOT NULL
             )
         `, (err) => {
@@ -165,6 +165,13 @@ db.serialize(async () => {
             resolve();
         });
     });
+    
+    // Añadimos las columnas de previsualización para archivos en mensajes privados
+    await addColumn('private_messages', 'preview_type', 'TEXT');
+    await addColumn('private_messages', 'preview_url', 'TEXT');
+    await addColumn('private_messages', 'preview_title', 'TEXT');
+    await addColumn('private_messages', 'preview_description', 'TEXT');
+    await addColumn('private_messages', 'preview_image', 'TEXT');
     
     // --- Tabla 'activity_logs' ---
     await new Promise(resolve => {

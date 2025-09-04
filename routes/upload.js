@@ -18,7 +18,7 @@ async function ensureUploadsDir() {
 
 router.post('/chat-file', async (req, res) => {
     const { fileBase64, contextType, contextWith } = req.body;
-    const sender = req.verifiedUser; // Del middleware isCurrentUser
+    const sender = req.verifiedUser;
     const io = req.io;
 
     if (!fileBase64 || !contextType || !contextWith) {
@@ -26,37 +26,45 @@ router.post('/chat-file', async (req, res) => {
     }
     
     // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // ===                    INICIO DE LA CORRECCIÓN DE DEBUG                   ===
     // =========================================================================
-    // Expresión regular mejorada que acepta image/*, audio/*, y video/* (para webm)
-    const match = fileBase64.match(/^data:((image|audio|video)\/([\w\+]+));base64,(.+)$/);
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
+    const match = fileBase64.match(/^data:((image|audio|video)\/([\w\-\+]+));base64,(.+)$/);
 
     if (!match) {
-        return res.status(400).json({ error: 'Formato de archivo inválido.' });
+        // Si la expresión regular falla, intentamos obtener el tipo de datos para depurar.
+        const debugMatch = fileBase64.match(/^data:([a-zA-Z0-9\/_\-\+]+);base64,/);
+        const receivedType = debugMatch ? debugMatch[1] : 'Desconocido';
+        
+        console.error(`[DEBUG] Formato de archivo rechazado. Tipo recibido: ${receivedType}`);
+        
+        return res.status(400).json({ 
+            error: `Formato de archivo inválido. El servidor recibió el tipo: ${receivedType}` 
+        });
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN DE DEBUG                   ===
+    // =========================================================================
 
-    const mimeType = match[1]; // ej: "audio/webm"
-    const fileKind = match[2]; // 'image', 'audio', o 'video'
-    const extension = match[3];  // ej: 'webm'
+    const mimeType = match[1];
+    const fileKind = match[2];
+    const extension = match[3];
     const base64Data = match[4];
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
-    if (fileBuffer.length > 15 * 1024 * 1024) { // Límite de 15MB
+    if (fileBuffer.length > 15 * 1024 * 1024) {
         return res.status(413).json({ error: 'El archivo es demasiado grande.' });
     }
 
     try {
         await ensureUploadsDir();
-        const fileName = `${uuidv4()}.${extension}`;
+        // Usamos la extensión real obtenida del mime type
+        const finalExtension = extension.replace('x-matroska', 'mkv'); // Caso especial para webm a veces
+        const fileName = `${uuidv4()}.${finalExtension}`;
         const filePath = path.join(chatUploadsDir, fileName);
         await fs.writeFile(filePath, fileBuffer);
         
         const fileUrl = `data/chat_uploads/${fileName}`;
         
-        // Determinar el tipo de preview correcto (image o audio)
         const previewType = fileKind === 'image' ? 'image' : 'audio';
         const textPlaceholder = `[${previewType === 'image' ? 'Imagen' : 'Audio'}: ${fileName}]`;
 
@@ -73,7 +81,7 @@ router.post('/chat-file', async (req, res) => {
         if (contextType === 'room') {
             const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const lastId = await new Promise((resolve, reject) => {
-                stmt.run(contextWith, sender.nick, textPlaceholder, sender.isVIP ? 1:0, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
+                stmt.run(contextWith, sender.nick, textPlaceholder, sender.role, sender.isVIP ? 1:0, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
                     if (err) return reject(err);
                     resolve(this.lastID);
                 });

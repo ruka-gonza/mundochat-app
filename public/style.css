@@ -1211,3 +1211,84 @@ body.dark-mode .action-button-logout {
 body.dark-mode .action-button-logout:hover {
     background-color: #c0392b;
 }
+#messages > li, #private-chat-window ul li {
+    flex-direction: row; /* Asegura que el avatar esté al lado del contenido */
+    align-items: flex-start;
+}
+
+/* El globo del mensaje */
+.message-content {
+    display: flex;
+    flex-direction: column;
+    max-width: 450px; /* Un ancho máximo para los globos */
+}
+
+/* NUEVO: Estilos para globos que solo contienen media */
+.media-only-content {
+    background-color: transparent !important; /* Quitamos el fondo del globo */
+    padding: 0 !important; /* Quitamos el padding */
+    border-radius: 16px;
+    overflow: hidden; /* Importante para que la imagen respete el borde redondeado */
+    border: 1px solid var(--border-color);
+}
+
+/* La imagen dentro de un mensaje */
+.media-message.image-message {
+    display: block;
+    max-width: 350px; /* Ancho máximo de la imagen */
+    max-height: 400px;
+    width: auto;
+    height: auto;
+    border-radius: 0; /* La imagen ocupa todo el contenedor */
+    cursor: pointer;
+    transition: filter 0.2s;
+}
+.media-message.image-message:hover {
+    filter: brightness(0.9);
+}
+
+/* El reproductor de audio dentro de un mensaje */
+.media-message.audio-message {
+    width: 300px; /* Ancho fijo para el reproductor */
+}
+
+/* Posicionamiento de la hora sobre la media */
+.media-only-content .message-timestamp {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 8px;
+    font-size: 0.7em;
+    user-select: none;
+}
+
+/* Ocultamos la cabecera (nick) para mensajes de media */
+#messages > li .media-only-content + .message-header,
+#private-chat-window ul li .media-only-content + .message-header {
+    display: none;
+}
+
+/* Ajustes generales al header del mensaje */
+.message-header {
+    margin-bottom: 4px;
+    font-size: 0.9em;
+    color: var(--text-secondary);
+}
+
+.message-header strong {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+/* Ocultamos el header para mensajes propios */
+#messages > li.sent-by-me .message-header {
+    display: none;
+}
+
+/* Ocultamos el header del mensaje en privados (ya está en la barra superior) */
+#private-chat-window ul li .message-header {
+    display: none;
+}

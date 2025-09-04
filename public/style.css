@@ -226,6 +226,9 @@ body.dark-mode #private-chat-with-user {
 #chat-window, #private-chat-window { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; }
 #messages, #private-chat-window ul { list-style-type: none; padding: 20px; flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 
+/* ========================================================================= */
+/* ===                    INICIO DE LA CORRECCIÓN CLAVE                    === */
+/* ========================================================================= */
 #messages > li, #private-chat-window ul li {
     position: relative;
     display: flex;
@@ -249,22 +252,34 @@ body.dark-mode #private-chat-with-user {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
+    max-width: 100%; /* Asegura que el contenedor no se desborde */
 }
 
-#messages > li.sent-by-me .message-main-wrapper, 
-#private-chat-window ul li.sent .message-main-wrapper {
-    align-items: flex-end;
+.message-content {
+    padding: 8px 12px;
+    border-radius: 18px;
+    line-height: 1.4;
+    word-break: break-word; /* Rompe palabras largas */
+    overflow-wrap: break-word; /* Equivalente moderno */
 }
 
-.message-content { padding: 8px 12px; border-radius: 18px; line-height: 1.4; word-break: break-word; }
-.message-header { margin-bottom: 4px; font-weight: 600; color: var(--primary-color); }
-.message-text { color: var(--text-primary); }
-
-
-#messages > li .message-content, #private-chat-window ul li.received .message-content { background-color: var(--other-message-bubble); border-radius: 4px 18px 18px 18px; }
-#messages > li.sent-by-me, #private-chat-window ul li.sent { align-self: flex-end; flex-direction: row-reverse; }
-#messages > li.sent-by-me .message-content, #private-chat-window ul li.sent .message-content { background-color: var(--my-message-bubble); color: var(--text-primary); border-radius: 18px 4px 18px 18px; }
-#messages > li.sent-by-me .message-header, #private-chat-window ul li .message-header { display: none; }
+/* Colores de los globos de mensaje */
+#messages > li .message-content, #private-chat-window ul li.received .message-content { 
+    background-color: var(--other-message-bubble); 
+    border-radius: 4px 18px 18px 18px; 
+}
+#messages > li.sent-by-me, #private-chat-window ul li.sent { 
+    align-self: flex-end; 
+    flex-direction: row-reverse; 
+}
+#messages > li.sent-by-me .message-content, #private-chat-window ul li.sent .message-content { 
+    background-color: var(--my-message-bubble); 
+    color: var(--text-primary); 
+    border-radius: 18px 4px 18px 18px; 
+}
+/* ========================================================================= */
+/* ===                     FIN DE LA CORRECCIÓN CLAVE                    === */
+/* ========================================================================= */
 
 #form { position: relative; background: var(--bg-input-area); padding: 10px 20px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border-color); flex-shrink: 0; box-shadow: 0 -2px 4px var(--shadow-light); }
 #input { border: none; background: var(--bg-main); padding: 12px 18px; flex-grow: 1; border-radius: 22px; font-size: 1rem; color: var(--text-primary); outline: none; transition: background-color 0.2s; }
@@ -281,19 +296,6 @@ body.dark-mode #private-chat-with-user {
 #messages > li.mencion .message-content { background-color: var(--bg-mention) !important; border-left: 3px solid #ffc107; }
 .emoji-only-message { font-size: 2.8rem; line-height: 1.2; }
 
-
-.message-content .image-thumbnail {
-    display: block;
-    max-width: 100px;
-    max-height: 100px;
-    border-radius: 12px;
-    object-fit: cover;
-    cursor: pointer;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    margin-top: 5px;
-    border: 1px solid var(--border-color);
-}
-.message-content .image-thumbnail:hover { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 #typing-indicator, #private-typing-indicator { height: 24px; padding: 0 20px; font-style: italic; color: var(--text-secondary); flex-shrink: 0; }
 
 /* ======================================================= */
@@ -320,35 +322,29 @@ body.dark-mode #private-chat-with-user {
 #emoji-picker span { cursor: pointer; font-size: 26px; border-radius: 8px; transition: background-color 0.2s; display: flex; justify-content: center; align-items: center; aspect-ratio: 1 / 1; }
 #emoji-picker span:hover { background-color: var(--bg-hover); }
 
-
-/* --- INICIO DE LA MODIFICACIÓN: ESTILOS DE BOTONES DE ACCIÓN --- */
-.message-main-wrapper {
-    position: relative; /* Contexto para el posicionamiento absoluto de los botones */
+.message-main-wrapper:hover .message-actions {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .message-actions {
     position: absolute;
-    top: -12px; /* Sube los botones por encima del globo del mensaje */
+    top: -12px;
     right: 0;
     z-index: 5;
-    
-    /* Estilo tipo "píldora" */
     background-color: var(--bg-content);
     border: 1px solid var(--border-color);
     border-radius: 20px;
     padding: 2px 4px;
     box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-
     display: flex;
     gap: 4px;
-    opacity: 0; /* Oculto por defecto */
+    opacity: 0;
     transition: opacity 0.2s ease, transform 0.2s ease;
-    transform: translateY(5px); /* Empieza ligeramente abajo */
+    transform: translateY(5px);
     pointer-events: none;
 }
-
-/* Eliminamos la regla específica para mensajes enviados, ya no es necesaria */
-/* #messages > li.sent-by-me .message-actions { ... } */
 
 .message-actions .action-btn {
     background: none;
@@ -356,7 +352,7 @@ body.dark-mode #private-chat-with-user {
     cursor: pointer;
     font-size: 16px;
     padding: 4px;
-    color: var(--text-secondary); /* Color visible sobre fondo claro/oscuro */
+    color: var(--text-secondary);
     border-radius: 50%;
     width: 28px;
     height: 28px;
@@ -370,15 +366,6 @@ body.dark-mode #private-chat-with-user {
     background-color: var(--bg-hover);
     color: var(--text-primary);
 }
-
-/* Mostramos los botones cuando el contenedor del mensaje tiene la clase */
-#messages > li.actions-visible .message-actions {
-  opacity: 1;
-  transform: translateY(0); /* Vuelve a su posición original */
-  pointer-events: auto;
-}
-/* --- FIN DE LA MODIFICACIÓN --- */
-
 
 #user-action-popup { position: absolute; background-color: var(--bg-content); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1500; padding: 10px; width: 200px; }
 #user-action-popup .user-info { padding-bottom: 8px; margin-bottom: 8px; border-bottom: 1px solid var(--border-color); text-align: center; }
@@ -415,7 +402,6 @@ tbody tr:nth-child(even) { background-color: var(--bg-panel); }
 .action-button.unmute-btn { background-color: #2980b9; }
 .action-button:hover { opacity: 0.85; }
 
-/* Estilos para el avatar dentro del modal de perfil */
 .profile-avatar {
     display: block;
     width: 150px;
@@ -633,31 +619,6 @@ body.dark-mode tbody tr:nth-child(even) { background-color: rgba(0,0,0,0.2); }
 body.dark-mode #popup-report-button { background-color: #5c2b29; border-color: #a53125; color: #ff8a80; }
 body.dark-mode #profile-button { background: #333; border-color: #555; color: #f1f1f1; }
 body.dark-mode #profile-button:hover { background-color: #444; }
-
-.message-header {
-    display: none;
-}
-
-.message-nick {
-    font-weight: 600;
-    color: var(--primary-color);
-    margin-right: 0.5ch;
-    cursor: pointer;
-}
-
-.message-nick:hover {
-    text-decoration: underline;
-}
-
-.message-content {
-    padding: 6px 12px;
-    border-radius: 12px;
-    background-color: transparent !important;
-}
-
-.emoji-only-message {
-    font-size: 1rem;
-}
 
 .edited-indicator {
     display: inline-block;
@@ -1071,24 +1032,6 @@ body.dark-mode .message-timestamp {
 /* ===         11. CORRECCIÓN SCROLL HORIZONTAL        === */
 /* ======================================================= */
 
-/*
-  Esta regla asegura que las palabras largas o texto sin espacios
-  se corten y pasen a la siguiente línea en lugar de crear
-  un scroll horizontal, tanto en el globo del mensaje como en el
-  contenedor de texto específico.
-*/
-.message-content, .message-text {
-    word-break: break-word;
-    overflow-wrap: break-word; /* Propiedad más moderna y preferida */
-    -webkit-hyphens: auto; /* Para Safari */
-    -ms-hyphens: auto;     /* Para IE */
-    hyphens: auto;         /* Estándar: añade guiones al cortar palabras, se ve mejor */
-}
-
-/*
-  Ajuste adicional para asegurar que el contenedor del mensaje no se
-  expanda más allá de lo necesario.
-*/
 .message-main-wrapper {
     max-width: 100%;
 }
@@ -1216,25 +1159,6 @@ body.dark-mode .action-button-logout:hover {
     align-items: flex-start;
 }
 
-/* El globo del mensaje */
-.message-content {
-    display: flex;
-    flex-direction: column;
-    max-width: 450px;
-    padding: 8px 12px; /* Re-añadimos el padding general */
-    border-radius: 18px;
-}
-
-/* Quitamos el borde redondeado específico que ya no necesitamos */
-#messages > li .message-content, #private-chat-window ul li.received .message-content {
-    border-radius: 4px 18px 18px 18px;
-}
-#messages > li.sent-by-me .message-content, #private-chat-window ul li.sent .message-content {
-    border-radius: 18px 4px 18px 18px;
-}
-
-
-/* Estilos para globos que solo contienen media */
 .media-only-content {
     background-color: transparent !important;
     padding: 0 !important;
@@ -1271,17 +1195,6 @@ body.dark-mode .action-button-logout:hover {
     border-radius: 8px;
     font-size: 0.7em;
     user-select: none;
-}
-
-/* ========================================================================= */
-/* ===                    INICIO DE LA CORRECCIÓN CLAVE                    === */
-/* ========================================================================= */
-
-/* Ajustes generales al header del mensaje */
-.message-header {
-    margin-bottom: 4px;
-    font-size: 0.9em;
-    color: var(--text-secondary);
 }
 
 .message-header strong {

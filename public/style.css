@@ -297,6 +297,35 @@ body.dark-mode #private-chat-with-user {
 #messages > li.mencion .message-content { background-color: var(--bg-mention) !important; border-left: 3px solid #ffc107; }
 #typing-indicator, #private-typing-indicator { height: 24px; padding: 0 20px; font-style: italic; color: var(--text-secondary); flex-shrink: 0; }
 
+.reply-quote {
+    background-color: rgba(0, 0, 0, 0.05); /* Un fondo sutil */
+    border-left: 3px solid var(--primary-color); /* Una barra de color distintiva */
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    opacity: 0.8;
+}
+
+/* En modo oscuro, ajustamos el fondo de la cita */
+body.dark-mode .reply-quote {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.reply-quote strong {
+    color: var(--primary-color);
+    display: block; /* El nombre del usuario en su propia línea */
+    font-weight: 600;
+}
+
+.reply-quote p {
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Corta el texto si es muy largo */
+    color: var(--text-secondary);
+}
+
 /* ======================================================= */
 /* ===         5. MODALES Y POPUPS                     === */
 /* ======================================================= */

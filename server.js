@@ -9,11 +9,11 @@ const { initializeSocket } = require('./socketManager');
 const botService = require('./services/botService'); 
 const { isCurrentUser } = require('./middleware/isCurrentUser');
 
-// --- Importar Rutas ---
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 const guestRoutes = require('./routes/guest');
+const uploadRoutes = require('./routes/upload');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,6 +43,9 @@ const io = new Server(server, {
   pingInterval: 10000,
   pingTimeout: 5000
 });
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 app.use(cors(corsOptions));
 
@@ -50,7 +53,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
 app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
 app.use('/data/chat_uploads', express.static(path.join(__dirname, 'data', 'chat_uploads')));
-
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 app.use(cookieParser());
@@ -91,6 +93,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/guest', guestRoutes);
+app.use('/api/upload', isCurrentUser, uploadRoutes);
 
 initializeSocket(io);
 botService.initialize(io);

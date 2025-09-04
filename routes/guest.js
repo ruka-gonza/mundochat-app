@@ -1,95 +1,48 @@
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const roomService = require('../services/roomService'); // Necesitamos esto para encontrar el socket
+const roomService = require('../services/roomService');
+const { v4: uuidv4 } = require('uuid');
+const userService = require('../services/userService');
 
-// 1. Crear directorio si no existe
-const tempUploadsDir = process.env.RENDER
-  ? path.join(__dirname, '../data/temp_avatars')
-  : path.join(__dirname, '../temp_avatars');
+const isProduction = process.env.NODE_ENV === 'production';
 
-if (!fs.existsSync(tempUploadsDir)) {
-    fs.mkdirSync(tempUploadsDir, { recursive: true });
-}
+router.post('/join', async (req, res) => {
+    const { nick } = req.body;
+    
+    if (!nick) return res.status(400).json({ error: "El nick es obligatorio." });
+    if (nick.length < 3 || nick.length > 15) return res.status(400).json({ error: "El nick debe tener entre 3 y 15 caracteres." });
+    const existingUser = await userService.findUserByNick(nick);
+    if (existingUser) return res.status(400).json({ error: `El nick '${nick}' está registrado. Por favor, inicia sesión.` });
+    if (roomService.isNickInUse(nick)) return res.status(400).json({ error: `El nick '${nick}' ya está en uso.` });
 
-// 2. Configurar Multer para archivos temporales
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, tempUploadsDir);
-    },
-    filename: function (req, file, cb) {
-        // Usamos el ID de invitado (UUID) para un nombre de archivo único
-        const guestId = req.body.guestId || 'unknown-guest';
-        const safeId = guestId.replace(/[^a-z0-9]/gi, '_');
-        const uniqueSuffix = Date.now() + '-' + safeId;
-        cb(null, uniqueSuffix + path.extname(file.originalname));
+    const persistentId = uuidv4();
+    const sessionData = {
+        id: persistentId,
+        nick: nick,
+        role: 'guest'
+    };
+    
+    const { activeTokens } = require('./auth.js');
+    const authToken = uuidv4();
+    activeTokens.set(authToken, sessionData);
+
+    const cookieOptions = {
+        httpOnly: false,
+        maxAge: 3600 * 1000, // 1 hora
+    };
+
+    if (isProduction) {
+        cookieOptions.sameSite = 'none';
+        cookieOptions.secure = true;
+    } else {
+        cookieOptions.sameSite = 'lax';
     }
-});
+    res.cookie('user_auth', JSON.stringify(sessionData), cookieOptions);
 
-const upload = multer({
-    storage: storage,
-    limits: { fileSize: 2 * 1024 * 1024 }, // Límite de 2MB
-    fileFilter: function (req, file, cb) {
-        const filetypes = /jpeg|jpg|png|gif|webp/;
-        const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-        if (mimetype && extname) {
-            return cb(null, true);
-        }
-        cb(new Error('Solo se permiten archivos de imagen (jpeg, jpg, png, gif, webp).'));
-    }
-}).single('avatarFile');
-
-// 3. Definir la ruta POST para la subida
-router.post('/avatar', (req, res) => {
-    upload(req, res, async function (err) {
-        if (err) {
-            return res.status(400).json({ error: err.message });
-        }
-        if (!req.file) {
-            return res.status(400).json({ error: 'No se ha subido ningún archivo válido.' });
-        }
-
-        const { guestId } = req.body;
-        const io = req.io;
-
-        if (!guestId) {
-            fs.unlinkSync(req.file.path); // Borrar archivo huérfano
-            return res.status(400).json({ error: 'Falta el ID del invitado.' });
-        }
-
-        // Encontrar el socket del invitado a través del mapa
-        const socketId = roomService.guestSocketMap.get(guestId);
-        const targetSocket = socketId ? io.sockets.sockets.get(socketId) : null;
-
-        if (!targetSocket || targetSocket.userData.role !== 'guest') {
-            fs.unlinkSync(req.file.path); // Borrar archivo si el usuario ya no existe
-            return res.status(404).json({ error: 'No se encontró la sesión del invitado.' });
-        }
-
-        // Si el invitado ya tenía un avatar temporal, borramos el antiguo
-        if (targetSocket.userData.temp_avatar_path) {
-            fs.unlink(targetSocket.userData.temp_avatar_path, (err) => {
-                if (err) console.error("No se pudo borrar el avatar temporal antiguo:", err);
-            });
-        }
-        
-        const avatarDir = process.env.RENDER ? 'data/temp_avatars' : 'temp_avatars';
-        const avatarUrl = `${avatarDir}/${req.file.filename}`;
-
-        // Actualizar datos en el socket
-        targetSocket.userData.avatar_url = avatarUrl;
-        targetSocket.userData.temp_avatar_path = req.file.path; // Ruta física para borrarlo después
-
-        // Notificar a todos los clientes del cambio
-        io.emit('user_data_updated', {
-            nick: targetSocket.userData.nick,
-            avatar_url: avatarUrl
-        });
-
-        res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
+    res.status(200).json({ 
+        message: "Guest join successful", 
+        userData: sessionData,
+        token: authToken 
     });
 });
 

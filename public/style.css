@@ -1292,3 +1292,40 @@ body.dark-mode .action-button-logout:hover {
 #private-chat-window ul li .message-header {
     display: none;
 }
+.media-message.image-message {
+    max-width: 250px; /* Tamaño máximo más razonable */
+    max-height: 250px;
+    cursor: zoom-in; /* ¡Cursor de lupa! */
+}
+
+/* El fondo oscuro del modal */
+#image-modal-overlay {
+    background-color: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(5px);
+    cursor: zoom-out; /* Cursor para indicar que se puede cerrar */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* La imagen grande dentro del modal */
+#modal-image {
+    display: block;
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    cursor: default; /* El cursor vuelve a ser normal sobre la imagen */
+}
+
+/* El botón de cierre del modal */
+#close-image-modal {
+    color: white;
+    font-size: 40px;
+    position: absolute;
+    top: 15px;
+    right: 35px;
+    text-shadow: 0 0 8px black;
+    cursor: zoom-out;
+}

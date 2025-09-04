@@ -42,11 +42,10 @@ async function handleGuestAvatarUpload(event) {
     reader.onload = async () => {
         const avatarBase64 = reader.result;
         try {
-            // Usa la ruta universal /api/user/avatar
             await fetchWithCredentials('/api/user/avatar', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ avatarBase64 }) // Solo necesita el Base64, el servidor sabe quién es
+                body: JSON.stringify({ avatarBase64 })
             });
         } catch (error) {
             console.error('Error al subir avatar de invitado:', error);
@@ -299,28 +298,27 @@ export function initUserInteractions() {
             e.stopPropagation();
             showAvatarPopup(avatar);
         }
-    });
 
-    dom.messagesContainer.addEventListener('click', (e) => {
-        
-        const previewCard = e.target.closest('.link-preview-card');
-        if (previewCard) {
-            e.preventDefault(); 
-            const type = previewCard.dataset.previewType;
-            if (type === 'image') {
-                openImageModal(previewCard.dataset.imageUrl);
-            } else if (type === 'youtube') {
-                createYoutubeEmbed(previewCard.dataset.youtubeId, previewCard);
-            }
+        const chatImage = e.target.closest('.media-message.image-message');
+        if (chatImage) {
+            e.preventDefault();
+            openImageModal(chatImage.src);
             return;
         }
         
-        const currentlyVisible = document.querySelector('#messages > li.actions-visible');
+        const previewCard = e.target.closest('.link-preview-card');
+        if (previewCard && previewCard.dataset.previewType === 'youtube') {
+            e.preventDefault();
+            createYoutubeEmbed(previewCard.dataset.youtubeId, previewCard);
+            return;
+        }
+        
+        const currentlyVisible = document.querySelector('#messages > li.actions-visible, #private-chat-window li.actions-visible');
         if (currentlyVisible && !e.target.closest('li')) {
             currentlyVisible.classList.remove('actions-visible');
         }
 
-        const messageItem = e.target.closest('li');
+        const messageItem = e.target.closest('li[id^="message-"]');
         if (messageItem && currentlyVisible && currentlyVisible !== messageItem) {
             currentlyVisible.classList.remove('actions-visible');
         }

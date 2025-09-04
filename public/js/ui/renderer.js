@@ -1,9 +1,9 @@
 import state from '../state.js';
 import { getUserIcons, replaceEmoticons } from '../utils.js';
+import { openImageModal } from './modals.js';
 
 function createPreviewCard(preview) {
     if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio') {
-        // Ya no renderizamos imágenes/audios como "previews", sino como contenido principal.
         return null;
     }
 
@@ -38,11 +38,8 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
-// =========================================================================
-// ===                    INICIO DE LA REFACTORIZACIÓN                    ===
-// =========================================================================
 export function createMessageElement(msg, isPrivate = false) {
-    if (!msg.nick && !msg.from) { // Mensajes de sistema
+    if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
         item.className = `system-message ${msg.type || ''}`;
         item.textContent = msg.text;
@@ -55,14 +52,12 @@ export function createMessageElement(msg, isPrivate = false) {
     }
 
     const isMediaOnly = msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio');
-    
     const item = document.createElement('li');
     item.id = `message-${msg.id}`;
     const isSent = msg.from === state.myNick || msg.nick === state.myNick;
-    
     const senderData = state.allUsersData[senderNick.toLowerCase()] || {};
     const avatarUrl = (isSent && state.myUserData.avatar_url) ? state.myUserData.avatar_url : (senderData.avatar_url || 'image/default-avatar.png');
-    
+
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = 'message-avatar';
@@ -71,30 +66,32 @@ export function createMessageElement(msg, isPrivate = false) {
     const mainContentWrapper = document.createElement('div');
     mainContentWrapper.className = 'message-main-wrapper';
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    
+    // 1. Crear siempre la cabecera con el nick.
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
     mainContentWrapper.appendChild(headerDiv);
 
+    // 2. Crear el contenedor del contenido del mensaje.
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
     if (isMediaOnly) {
         contentDiv.classList.add('media-only-content');
     }
 
+    // 3. Añadir la cita si es una respuesta.
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
-        const quoteNick = document.createElement('strong');
-        quoteNick.textContent = msg.replyTo.nick;
-        const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 ? msg.replyTo.text.substring(0, 70) + '...' : msg.replyTo.text;
-        quoteText.textContent = replaceEmoticons(previewText);
-        quoteDiv.appendChild(quoteNick);
-        quoteDiv.appendChild(quoteText);
+        quoteDiv.innerHTML = `<strong>${msg.replyTo.nick}</strong><p>${replaceEmoticons(msg.replyTo.text)}</p>`;
         contentDiv.appendChild(quoteDiv);
     }
     
+    // 4. Añadir el contenido principal (media o texto).
     if (isMediaOnly) {
         if (msg.preview.type === 'image') {
             const img = document.createElement('img');
@@ -114,15 +111,17 @@ export function createMessageElement(msg, isPrivate = false) {
     } else {
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
-        textSpan.innerHTML = replaceEmoticons(msg.text); // Usamos innerHTML para renderizar emoticonos
+        textSpan.innerHTML = replaceEmoticons(msg.text);
         contentDiv.appendChild(textSpan);
     }
 
+    // 5. Añadir previsualización de enlaces si existe.
     const linkPreview = createPreviewCard(msg.preview);
     if (linkPreview) {
         contentDiv.appendChild(linkPreview);
     }
     
+    // 6. Añadir la hora y el indicador de editado.
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'message-timestamp';
     timestampSpan.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -136,6 +135,45 @@ export function createMessageElement(msg, isPrivate = false) {
     }
 
     mainContentWrapper.appendChild(contentDiv);
+
+    // 7. Añadir los botones de acción al final.
+    const iAmModerator = ['owner', 'admin'].includes(state.myUserData.role);
+    if (!isPrivate) {
+        const actionsDiv = document.createElement('div');
+        actionsDiv.className = 'message-actions';
+        
+        // Botón de editar (solo para mensajes propios y de texto)
+        if (isSent && msg.text && !isMediaOnly) {
+            const editBtn = document.createElement('button');
+            editBtn.textContent = '✏️';
+            editBtn.title = 'Editar mensaje';
+            editBtn.className = 'action-btn edit-btn';
+            editBtn.dataset.messageId = msg.id;
+            actionsDiv.appendChild(editBtn);
+        }
+
+        // Botón de borrar (para mensajes propios o si eres moderador)
+        if (isSent || iAmModerator) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = '🗑️';
+            deleteBtn.title = 'Eliminar mensaje';
+            deleteBtn.className = 'action-btn delete-btn';
+            deleteBtn.dataset.messageId = msg.id;
+            if (iAmModerator && !isSent) {
+                deleteBtn.dataset.isModAction = 'true';
+            }
+            actionsDiv.appendChild(deleteBtn);
+        }
+        
+        if (actionsDiv.hasChildNodes()) {
+            mainContentWrapper.appendChild(actionsDiv);
+        }
+    }
+
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
     item.appendChild(mainContentWrapper);
 
     if (isPrivate) {
@@ -150,9 +188,6 @@ export function createMessageElement(msg, isPrivate = false) {
     
     return item;
 }
-// =========================================================================
-// ===                     FIN DE LA REFACTORIZACIÓN                     ===
-// =========================================================================
 
 export function appendMessageToView(msg, isPrivate) {
     let listElement;

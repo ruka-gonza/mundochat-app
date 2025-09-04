@@ -1,5 +1,6 @@
 import state from '../state.js';
 import { getUserIcons, replaceEmoticons } from '../utils.js';
+import { openImageModal } from './modals.js';
 
 function createPreviewCard(preview) {
     if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio') {
@@ -45,7 +46,15 @@ export function createMessageElement(msg, isPrivate = false) {
         return item;
     }
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Ahora siempre usamos el nick real, nunca "Yo".
     const senderNick = isPrivate ? msg.from : msg.nick;
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
     if (state.ignoredNicks.has(senderNick.toLowerCase())) {
         return document.createDocumentFragment();
     }
@@ -74,12 +83,6 @@ export function createMessageElement(msg, isPrivate = false) {
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
-
-    if (!isSent && !isPrivate) {
-        headerDiv.dataset.nick = senderNick;
-        headerDiv.dataset.messageId = msg.id;
-        headerDiv.style.cursor = 'pointer';
-    }
     contentDiv.appendChild(headerDiv);
     
     if (msg.replyTo) {

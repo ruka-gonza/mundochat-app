@@ -1212,7 +1212,7 @@ body.dark-mode .action-button-logout:hover {
     background-color: #c0392b;
 }
 #messages > li, #private-chat-window ul li {
-    flex-direction: row; /* Asegura que el avatar esté al lado del contenido */
+    flex-direction: row;
     align-items: flex-start;
 }
 
@@ -1220,39 +1220,47 @@ body.dark-mode .action-button-logout:hover {
 .message-content {
     display: flex;
     flex-direction: column;
-    max-width: 450px; /* Un ancho máximo para los globos */
+    max-width: 450px;
+    padding: 8px 12px; /* Re-añadimos el padding general */
+    border-radius: 18px;
 }
 
-/* NUEVO: Estilos para globos que solo contienen media */
+/* Quitamos el borde redondeado específico que ya no necesitamos */
+#messages > li .message-content, #private-chat-window ul li.received .message-content {
+    border-radius: 4px 18px 18px 18px;
+}
+#messages > li.sent-by-me .message-content, #private-chat-window ul li.sent .message-content {
+    border-radius: 18px 4px 18px 18px;
+}
+
+
+/* Estilos para globos que solo contienen media */
 .media-only-content {
-    background-color: transparent !important; /* Quitamos el fondo del globo */
-    padding: 0 !important; /* Quitamos el padding */
+    background-color: transparent !important;
+    padding: 0 !important;
     border-radius: 16px;
-    overflow: hidden; /* Importante para que la imagen respete el borde redondeado */
+    overflow: hidden;
     border: 1px solid var(--border-color);
 }
 
-/* La imagen dentro de un mensaje */
 .media-message.image-message {
     display: block;
-    max-width: 350px; /* Ancho máximo de la imagen */
-    max-height: 400px;
+    max-width: 250px;
+    max-height: 250px;
     width: auto;
     height: auto;
-    border-radius: 0; /* La imagen ocupa todo el contenedor */
-    cursor: pointer;
+    border-radius: 0;
+    cursor: zoom-in;
     transition: filter 0.2s;
 }
 .media-message.image-message:hover {
     filter: brightness(0.9);
 }
 
-/* El reproductor de audio dentro de un mensaje */
 .media-message.audio-message {
-    width: 300px; /* Ancho fijo para el reproductor */
+    width: 300px;
 }
 
-/* Posicionamiento de la hora sobre la media */
 .media-only-content .message-timestamp {
     position: absolute;
     bottom: 8px;
@@ -1265,11 +1273,9 @@ body.dark-mode .action-button-logout:hover {
     user-select: none;
 }
 
-/* Ocultamos la cabecera (nick) para mensajes de media */
-#messages > li .media-only-content + .message-header,
-#private-chat-window ul li .media-only-content + .message-header {
-    display: none;
-}
+/* ========================================================================= */
+/* ===                    INICIO DE LA CORRECCIÓN CLAVE                    === */
+/* ========================================================================= */
 
 /* Ajustes generales al header del mensaje */
 .message-header {
@@ -1283,49 +1289,16 @@ body.dark-mode .action-button-logout:hover {
     color: var(--primary-color);
 }
 
-/* Ocultamos el header para mensajes propios */
+/* REGLAS PARA OCULTAR EL HEADER CUANDO NO SE NECESITA */
+/* 1. Ocultar en mensajes propios */
 #messages > li.sent-by-me .message-header {
     display: none;
 }
-
-/* Ocultamos el header del mensaje en privados (ya está en la barra superior) */
+/* 2. Ocultar en mensajes privados */
 #private-chat-window ul li .message-header {
     display: none;
 }
-.media-message.image-message {
-    max-width: 250px; /* Tamaño máximo más razonable */
-    max-height: 250px;
-    cursor: zoom-in; /* ¡Cursor de lupa! */
-}
-
-/* El fondo oscuro del modal */
-#image-modal-overlay {
-    background-color: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(5px);
-    cursor: zoom-out; /* Cursor para indicar que se puede cerrar */
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-/* La imagen grande dentro del modal */
-#modal-image {
-    display: block;
-    max-width: 90vw;
-    max-height: 90vh;
-    object-fit: contain;
-    border-radius: 8px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    cursor: default; /* El cursor vuelve a ser normal sobre la imagen */
-}
-
-/* El botón de cierre del modal */
-#close-image-modal {
-    color: white;
-    font-size: 40px;
-    position: absolute;
-    top: 15px;
-    right: 35px;
-    text-shadow: 0 0 8px black;
-    cursor: zoom-out;
+/* 3. Ocultar en mensajes que solo contienen media */
+.media-only-content .message-header {
+    display: none;
 }

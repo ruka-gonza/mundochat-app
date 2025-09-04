@@ -1118,3 +1118,46 @@ body.dark-mode .action-button-logout:hover {
     display: block !important;
     margin-bottom: 6px;
 }
+/* ======================================================= */
+/* ===    14. MEJORAS DE UI PARA GRABACIÓN DE AUDIO      === */
+/* ======================================================= */
+
+/* Cuando el formulario está en modo grabación... */
+#form.is-recording {
+    /* ...le damos más espacio a los controles de grabación. */
+    gap: 15px;
+}
+
+/* ...ocultamos el input de texto. */
+#form.is-recording #input {
+    display: none;
+}
+
+/* ...ocultamos los botones de acción normales. */
+#form.is-recording #emoji-button,
+#form.is-recording .file-label, /* Oculta el label de la cámara */
+#form.is-recording #send-icon-button,
+#form.is-recording #record-audio-button {
+    display: none;
+}
+
+/* Mostramos los controles de grabación, que estaban ocultos. */
+#audio-recording-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background-color: var(--bg-hover);
+    padding: 4px 8px;
+    border-radius: 20px;
+    /* Hacemos que ocupe el espacio disponible */
+    flex-grow: 1;
+    justify-content: space-between;
+}
+
+#recording-timer {
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: monospace;
+    font-size: 0.9em;
+    margin: 0 10px;
+}

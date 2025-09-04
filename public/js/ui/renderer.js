@@ -3,7 +3,6 @@ import { getUserIcons, replaceEmoticons } from '../utils.js';
 
 function createPreviewCard(preview) {
     if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio') {
-        // Ya no renderizamos imágenes/audios como "previews", sino como contenido principal.
         return null;
     }
 
@@ -75,6 +74,12 @@ export function createMessageElement(msg, isPrivate = false) {
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
+
+    if (!isSent && !isPrivate) {
+        headerDiv.dataset.nick = senderNick;
+        headerDiv.dataset.messageId = msg.id;
+        headerDiv.style.cursor = 'pointer';
+    }
     contentDiv.appendChild(headerDiv);
     
     if (msg.replyTo) {

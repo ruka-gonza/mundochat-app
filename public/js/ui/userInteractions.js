@@ -173,7 +173,8 @@ function showNickContextMenu(event, nick, messageId) {
         const textElement = messageElement.querySelector('.message-text');
         if (textElement) {
             const textContentClone = textElement.cloneNode(true);
-            textContentClone.querySelector('.message-nick').remove();
+            const nickElementInClone = textContentClone.querySelector('.message-nick');
+            if (nickElementInClone) nickElementInClone.remove();
             
             state.replyingTo = {
                 id: messageId,
@@ -344,10 +345,11 @@ export function initUserInteractions() {
             return;
         }
 
-        const nickElement = e.target.closest('.message-nick');
-        if (nickElement && nickElement.dataset.nick) {
-            const nick = nickElement.dataset.nick;
-            const messageId = nickElement.dataset.messageId;
+        const headerElement = e.target.closest('.message-header');
+        if (headerElement && headerElement.dataset.nick) {
+            e.stopPropagation();
+            const nick = headerElement.dataset.nick;
+            const messageId = headerElement.dataset.messageId;
             if (nick === state.myNick) showSelfContextMenu(e);
             else showNickContextMenu(e, nick, messageId);
             return;

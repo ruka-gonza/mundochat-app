@@ -1202,16 +1202,27 @@ body.dark-mode .action-button-logout:hover {
     color: var(--primary-color);
 }
 
-/* REGLAS PARA OCULTAR EL HEADER CUANDO NO SE NECESITA */
-/* 1. Ocultar en mensajes propios */
-#messages > li.sent-by-me .message-header {
-    display: none;
+.message-header {
+    margin-bottom: 4px;
+    font-size: 0.9em;
+    color: var(--text-secondary);
 }
-/* 2. Ocultar en mensajes privados */
+
+.message-header strong {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+/* REGLAS PARA OCULTAR EL HEADER CUANDO NO SE NECESITA */
+
+/* LA REGLA PARA .sent-by-me HA SIDO ELIMINADA PARA QUE SE MUESTRE EL NICK */
+
+/* 2. Ocultar en mensajes privados (esto se mantiene) */
 #private-chat-window ul li .message-header {
     display: none;
 }
-/* 3. Ocultar en mensajes que solo contienen media */
+
+/* 3. Ocultar en mensajes que solo contienen media (esto se mantiene) */
 .media-only-content .message-header {
     display: none;
 }

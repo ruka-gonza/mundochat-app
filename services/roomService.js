@@ -47,8 +47,61 @@ function findSocketIdByNick(nick) {
 }
 
 function isNickInUse(nick) { return !!findSocketIdByNick(nick); }
-async function updateUserList(io, roomName) { /* tu código existente aquí si tienes más lógica */ }
-async function createRoom(roomName, io) { /* tu código existente aquí si tienes más lógica */ }
+async function createRoom(roomName, io) {
+    if (rooms[roomName]) {
+        return false; // La sala ya existe
+    }
+    rooms[roomName] = { users: {} };
+    updateRoomData(io); // Notifica a todos los clientes sobre la nueva sala
+    return true;
+}
+
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+/**
+ * Calcula la lista de usuarios actualizada para una sala y la emite a todos en esa sala.
+ * @param {object} io - La instancia del servidor de Socket.IO.
+ * @param {string} roomName - El nombre de la sala a actualizar.
+ */
+async function updateUserList(io, roomName) {
+    if (!rooms[roomName]) {
+        return; // No hacer nada si la sala ya no existe
+    }
+
+    const usersInRoom = Object.values(rooms[roomName].users);
+    
+    // Obtenemos los datos completos y el rol efectivo de cada usuario en la sala
+    const userListPromises = usersInRoom.map(async (u) => {
+        const effectiveRole = await permissionService.getUserEffectiveRole(u.id, roomName);
+        return {
+            id: u.id,
+            nick: u.nick,
+            role: effectiveRole,
+            isVIP: u.isVIP,
+            avatar_url: u.avatar_url,
+            isAFK: u.isAFK 
+        };
+    });
+
+    const finalUserList = await Promise.all(userListPromises);
+
+    // Ordenar la lista: primero por rol, luego alfabéticamente
+    const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
+    finalUserList.sort((a, b) => {
+        const roleA = roleOrder[a.role] ?? 99;
+        const roleB = roleOrder[b.role] ?? 99;
+        if (roleA < roleB) return -1;
+        if (roleA > roleB) return 1;
+        return a.nick.localeCompare(b.nick);
+    });
+
+    // Enviar la lista actualizada a todos los clientes en esa sala específica
+    io.to(roomName).emit('update user list', { roomName, users: finalUserList });
+}
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 
 module.exports = {
@@ -59,7 +112,7 @@ module.exports = {
     createRoom,
     findSocketIdByNick,
     isNickInUse,
-    updateUserList,
+    updateUserList, // <-- ¡Ahora esta función tiene lógica!
     updateRoomData,
-    getActiveRoomsWithUserCount // Exportamos la nueva función
+    getActiveRoomsWithUserCount
 };

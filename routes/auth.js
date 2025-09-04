@@ -10,9 +10,12 @@ const { v4: uuidv4 } = require('uuid');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Almacenamiento en memoria de tokens de sesión activos.
 const activeTokens = new Map();
+// Exportamos el mapa de tokens para que otros módulos puedan usarlo.
 module.exports.activeTokens = activeTokens;
 
+// --- RUTA DE REGISTRO ---
 router.post('/register', async (req, res) => {
     const { nick, email, password } = req.body;
     const ip = req.ip;
@@ -50,6 +53,7 @@ router.post('/register', async (req, res) => {
     }
 });
 
+// --- RUTA DE LOGIN ---
 router.post('/login', async (req, res) => {
     const { nick, password } = req.body;
     try {
@@ -91,111 +95,19 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// --- RUTA DE OLVIDO DE CONTRASEÑA ---
 router.post('/forgot-password', async (req, res) => {
     const { identifier } = req.body; 
 
-router.post('/register', async (req, res) => {
-    const { nick, email, password } = req.body;
-    const ip = req.ip;
-
-    if (!nick || !email || !password) {
-        return res.status(400).json({ error: "Todos los campos son obligatorios." });
-    }
-    if (nick.length < 3 || nick.length > 15) {
-        return res.status(400).json({ error: "El nick debe tener entre 3 y 15 caracteres." });
-    }
-    if (!/^[a-zA-Z0-9_-]+$/.test(nick)) {
-        return res.status(400).json({ error: "El nick solo puede contener letras, números, guiones y guiones bajos." });
-    }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-        return res.status(400).json({ error: "Formato de correo electrónico inválido." });
-    }
-
-    try {
-        const existingUserByNick = await userService.findUserByNick(nick);
-        if (existingUserByNick) {
-            return res.status(400).json({ error: "Ese nick ya está registrado." });
-        }
-        
-        const existingUserByEmail = await userService.findUserByNick(email);
-        if (existingUserByEmail) {
-            return res.status(400).json({ error: "Ese correo electrónico ya está en uso." });
-        }
-
-        await userService.createUser(nick, email, password, ip);
-        res.status(201).json({ message: `¡Nick '${nick}' registrado con éxito! Ahora puedes iniciar sesión.` });
-
-    } catch (error) {
-        console.error("Error al registrar usuario:", error);
-        res.status(500).json({ error: "Error interno del servidor al registrar el usuario." });
-    }
-});
-
-router.post('/login', async (req, res) => {
-    const { nick, password } = req.body;
-    try {
-        const user = await userService.findUserByNick(nick);
-        if (!user) {
-            return res.status(401).json({ error: "El nick o email no está registrado." });
-        }
-
-        const match = await userService.verifyPassword(password, user.password);
-        if (!match) {
-            return res.status(401).json({ error: "Contraseña incorrecta." });
-        }
-        
-        const sessionData = { id: user.id, nick: user.nick, role: user.role };
-        const authToken = uuidv4();
-        activeTokens.set(authToken, sessionData);
-
-        const cookieOptions = {
-            httpOnly: false,
-            maxAge: 3600 * 1000, // 1 hora
-        };
-
-        if (isProduction) {
-            cookieOptions.sameSite = 'none';
-            cookieOptions.secure = true;
-        } else {
-            cookieOptions.sameSite = 'lax';
-        }
-        res.cookie('user_auth', JSON.stringify(sessionData), cookieOptions);
-
-        res.status(200).json({ 
-            message: "Login successful", 
-            userData: sessionData, 
-            token: authToken 
-        });
-    } catch (error) {
-        console.error("Error en la ruta /api/auth/login:", error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
-    }
-});
-
-router.post('/forgot-password', async (req, res) => {
-    const { identifier } = req.body; 
-
-    if (!nick || !email || !password) {
-        return res.status(400).json({ error: "Todos los campos son obligatorios." });
-    }
-    if (nick.length < 3 || nick.length > 15) {
-        return res.status(400).json({ error: "El nick debe tener entre 3 y 15 caracteres." });
-    }
-    if (!/^[a-zA-Z0-9_-]+$/.test(nick)) {
-        return res.status(400).json({ error: "El nick solo puede contener letras, números, guiones y guiones bajos." });
-    }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-        return res.status(400).json({ error: "Formato de correo electrónico inválido." });
+    if (!identifier) {
+        return res.status(400).json({ error: 'Por favor, introduce tu nick o correo electrónico.' });
     }
 
     try {
         const user = await userService.findUserByNick(identifier);
-        if (!user) {
+        if (!user || !user.email) {
+            // Por seguridad, siempre damos el mismo mensaje genérico.
             return res.json({ message: 'Si el nick o correo electrónico están registrados, recibirás un enlace para restablecer tu contraseña.' });
-        }
-
-        if (!user.email) {
-            return res.status(400).json({ error: 'Tu cuenta no tiene un correo electrónico asociado para la recuperación de contraseña. Contacta a un administrador.' });
         }
 
         const resetToken = await passwordResetService.createResetToken(user.id);
@@ -215,6 +127,7 @@ router.post('/forgot-password', async (req, res) => {
     }
 });
 
+// --- RUTA DE RESTABLECIMIENTO DE CONTRASEÑA ---
 router.post('/reset-password', async (req, res) => {
     const { token, newPassword, confirmPassword } = req.body;
 
@@ -248,58 +161,14 @@ router.post('/reset-password', async (req, res) => {
         });
         
         await passwordResetService.invalidateResetToken(token);
-
-        await userService.createUser(nick, email, password, ip);
-        res.status(201).json({ message: `¡Nick '${nick}' registrado con éxito! Ahora puedes iniciar sesión.` });
+        res.json({ message: 'Contraseña restablecida con éxito. Ya puedes iniciar sesión.' });
 
     } catch (error) {
-        console.error("Error al registrar usuario:", error);
-        res.status(500).json({ error: "Error interno del servidor al registrar el usuario." });
-    }
-});
-
-
-router.post('/login', async (req, res) => {
-    const { nick, password } = req.body;
-    
-    try {
-        const user = await userService.findUserByNick(nick);
-        if (!user) {
-            return res.status(401).json({ error: "El nick o email no está registrado." });
-        }
-
-        const match = await userService.verifyPassword(password, user.password);
-        if (!match) {
-            return res.status(401).json({ error: "Contraseña incorrecta." });
-        }
-        
-        const sessionData = {
-            id: user.id,
-            nick: user.nick,
-            role: user.role
-        };
-        
-        const authToken = uuidv4();
-        activeTokens.set(authToken, sessionData);
-
-        res.cookie('user_auth', JSON.stringify(sessionData), {
-            httpOnly: false,
-            sameSite: 'none',
-            secure: isProduction,
-            maxAge: 3600 * 1000
-        });
-
-        res.status(200).json({ 
-            message: "Login successful", 
-            userData: sessionData, 
-            token: authToken 
-        });
-
-    } catch (error) {
-        console.error("Error en la ruta /api/auth/login:", error);
+        console.error('Error en /reset-password POST:', error);
         res.status(500).json({ error: 'Error interno del servidor.' });
     }
 });
 
+// Exportamos el router y el mapa de tokens
 const authRouter = router;
 module.exports = authRouter;

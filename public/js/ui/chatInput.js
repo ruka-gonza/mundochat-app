@@ -258,6 +258,7 @@ export function updateTypingIndicator() {
 export function initChatInput() {
     let recordingStartTime;
     let recordingInterval;
+    let sendButton = document.getElementById('send-icon-button');
 
     function resetAudioRecorderUI() {
         if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
@@ -270,7 +271,15 @@ export function initChatInput() {
         
         dom.form.classList.remove('is-recording');
         const recordingControls = document.getElementById('audio-recording-controls');
+        const recordButton = document.getElementById('record-audio-button');
+        
+        if (recordButton) recordButton.classList.remove('hidden');
         if (recordingControls) recordingControls.classList.add('hidden');
+
+        dom.input.disabled = false;
+        if(sendButton) sendButton.disabled = false;
+        document.getElementById('image-upload').disabled = false;
+        dom.emojiButton.disabled = false;
 
         state.audioChunks = [];
         state.audioBlob = null;
@@ -279,59 +288,72 @@ export function initChatInput() {
     }
 
     async function startRecording() {
+        console.log("Iniciando grabación...");
         if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
             alert('Selecciona una sala o chat privado para enviar notas de voz.');
             return;
         }
+
         try {
             state.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            console.log("Permiso de micrófono obtenido.");
+
+            const recordingControls = document.getElementById('audio-recording-controls');
+            const recordButton = document.getElementById('record-audio-button');
+            const stopBtn = document.getElementById('stop-recording-button');
+            const sendBtn = document.getElementById('send-audio-button');
+            const cancelBtn = document.getElementById('cancel-recording-button');
+            
+            dom.form.classList.add('is-recording');
+            if (recordButton) recordButton.classList.add('hidden');
+            if (recordingControls) recordingControls.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            if (sendBtn) sendBtn.classList.add('hidden');
+            if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+            dom.input.disabled = true;
+            if(sendButton) sendButton.disabled = true;
+            document.getElementById('image-upload').disabled = true;
+            dom.emojiButton.disabled = true;
+
             const options = { mimeType: 'audio/webm; codecs=opus' };
             state.mediaRecorder = new MediaRecorder(state.audioStream, options);
             state.audioChunks = [];
+
             state.mediaRecorder.ondataavailable = (event) => {
                 if (event.data.size > 0) state.audioChunks.push(event.data);
             };
-            
+
             state.mediaRecorder.onstop = () => {
-                // Forzamos el tipo a 'audio/webm' para evitar inconsistencias del navegador
                 const blobOptions = { type: 'audio/webm' };
                 state.audioBlob = new Blob(state.audioChunks, blobOptions);
-                
-                const sendBtn = document.getElementById('send-audio-button');
-                const stopBtn = document.getElementById('stop-recording-button');
-                if(sendBtn) sendBtn.classList.remove('hidden');
                 if(stopBtn) stopBtn.classList.add('hidden');
+                if(sendBtn) sendBtn.classList.remove('hidden');
             };
 
             state.mediaRecorder.start();
+            console.log("MediaRecorder iniciado.");
+
             recordingStartTime = Date.now();
-            
-            dom.form.classList.add('is-recording');
-            
-            const recordingControls = document.getElementById('audio-recording-controls');
-            const stopBtn = document.getElementById('stop-recording-button');
-            const sendBtn = document.getElementById('send-audio-button');
             const timer = document.getElementById('recording-timer');
-            if(recordingControls) recordingControls.classList.remove('hidden');
-            if(stopBtn) stopBtn.classList.remove('hidden');
-            if(sendBtn) sendBtn.classList.add('hidden');
             if(timer) timer.textContent = '00:00';
             recordingInterval = setInterval(() => {
-                const timer = document.getElementById('recording-timer');
                 if (!timer) return;
                 const elapsed = Date.now() - recordingStartTime;
                 const seconds = String(Math.floor(elapsed / 1000) % 60).padStart(2, '0');
                 const minutes = String(Math.floor(elapsed / (1000 * 60))).padStart(2, '0');
                 timer.textContent = `${minutes}:${seconds}`;
             }, 1000);
+
         } catch (err) {
-            console.error('Error al acceder al micrófono:', err);
-            alert('No se pudo acceder al micrófono. Asegúrate de dar permiso.');
+            console.error('Error al acceder al micrófono o iniciar la grabación:', err);
+            alert('No se pudo acceder al micrófono. Asegúrate de haber concedido el permiso en la configuración de tu navegador.');
             resetAudioRecorderUI();
         }
     }
 
     function stopRecording() {
+        console.log("Deteniendo grabación...");
         if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
             state.mediaRecorder.stop();
             clearInterval(recordingInterval);

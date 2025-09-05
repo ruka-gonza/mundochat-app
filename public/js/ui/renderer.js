@@ -52,12 +52,14 @@ export function createMessageElement(msg, isPrivate = false) {
     }
 
     const isMediaOnly = msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio');
+    const isSent = msg.from === state.myNick || msg.nick === state.myNick;
+    
     const item = document.createElement('li');
     item.id = `message-${msg.id}`;
-    const isSent = msg.from === state.myNick || msg.nick === state.myNick;
+    
     const senderData = state.allUsersData[senderNick.toLowerCase()] || {};
-    const avatarUrl = (isSent && state.myUserData.avatar_url) ? state.myUserData.avatar_url : (senderData.avatar_url || 'image/default-avatar.png');
-
+    const avatarUrl = senderData.avatar_url || 'image/default-avatar.png';
+    
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = 'message-avatar';
@@ -71,7 +73,7 @@ export function createMessageElement(msg, isPrivate = false) {
     if (isMediaOnly) {
         contentDiv.classList.add('media-only-content');
     }
-
+    
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
@@ -86,18 +88,7 @@ export function createMessageElement(msg, isPrivate = false) {
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
-        
-        const quoteNick = document.createElement('strong');
-        quoteNick.textContent = msg.replyTo.nick;
-        
-        const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 
-            ? msg.replyTo.text.substring(0, 70) + '...' 
-            : msg.replyTo.text;
-        quoteText.textContent = replaceEmoticons(previewText);
-
-        quoteDiv.appendChild(quoteNick);
-        quoteDiv.appendChild(quoteText);
+        quoteDiv.innerHTML = `<strong>${msg.replyTo.nick}</strong><p>${replaceEmoticons(msg.replyTo.text)}</p>`;
         contentDiv.appendChild(quoteDiv);
     }
     
@@ -118,9 +109,10 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(audioPlayer);
         }
     } else {
+        const textPrefix = isPrivate ? '' : ':&nbsp;';
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
-        textSpan.innerHTML = replaceEmoticons(msg.text); // Ya no se añade ': '
+        textSpan.innerHTML = textPrefix + replaceEmoticons(msg.text);
         contentDiv.appendChild(textSpan);
     }
 

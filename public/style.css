@@ -254,9 +254,6 @@ body {
     line-height: 1.4;
     word-break: break-word;
     overflow-wrap: break-word;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
 }
 
 #messages > li .message-content, #private-chat-window ul li.received .message-content { 
@@ -271,6 +268,78 @@ body {
     background-color: var(--my-message-bubble); 
     color: var(--text-primary); 
     border-radius: 18px 4px 18px 18px; 
+}
+
+.message-content:not(.media-only-content) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+}
+
+.media-only-content {
+    display: flex;
+    flex-direction: column;
+    background-color: var(--bg-content) !important;
+    padding: 8px !important;
+    border-radius: 16px;
+    overflow: visible;
+    border: none;
+}
+
+.message-header {
+    margin-right: 0.5ch;
+    font-size: 1em;
+    color: var(--text-secondary);
+}
+
+.message-header strong {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+#private-chat-window ul li .message-header {
+    display: none;
+}
+
+.media-only-content .message-header {
+    display: block !important;
+    margin-bottom: 6px;
+}
+
+.media-message {
+    margin-top: 6px;
+}
+
+.media-message.image-message {
+    display: block;
+    max-width: 250px;
+    max-height: 250px;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
+    cursor: zoom-in;
+    border: 1px solid var(--border-color);
+}
+
+.media-message.audio-message {
+    width: 300px;
+    max-width: 100%;
+}
+
+.message-timestamp {
+    font-size: 0.75em;
+    color: var(--text-secondary);
+    margin-left: 8px;
+    white-space: nowrap;
+}
+
+.media-only-content .message-timestamp {
+    position: static;
+    background-color: transparent;
+    color: var(--text-secondary);
+    padding: 0;
+    margin-top: 4px;
+    align-self: flex-end;
 }
 
 #form { position: relative; background: var(--bg-input-area); padding: 10px 20px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border-color); flex-shrink: 0; box-shadow: 0 -2px 4px var(--shadow-light); }
@@ -296,7 +365,7 @@ body {
     border-radius: 4px;
     font-size: 0.9em;
     opacity: 0.8;
-    width: 100%; /* Ocupa todo el ancho del globo */
+    width: 100%;
 }
 
 .reply-quote strong {
@@ -316,7 +385,6 @@ body {
 /* ======================================================= */
 /* ===         5. MODALES Y POPUPS                     === */
 /* ======================================================= */
-
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 2000; backdrop-filter: blur(4px); }
 .modal-content { background-color: var(--bg-content); color: var(--text-primary); padding: 20px 30px; border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; display: flex; flex-direction: column; box-shadow: 0 5px 20px rgba(0,0,0,0.2); position: relative; animation: fadeIn 0.3s ease-in-out; }
 @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
@@ -754,7 +822,7 @@ body.dark-mode .reply-quote { background-color: rgba(255, 255, 255, 0.08); }
     display: flex;
     flex-direction: column;
     gap: 3px;
-    width: 180px; /* Ancho fijo para un mejor aspecto */
+    width: 180px;
 }
 
 #self-context-menu button,
@@ -940,9 +1008,6 @@ body.dark-mode .reply-quote { background-color: rgba(255, 255, 255, 0.08); }
     background: rgba(0, 0, 0, 0.85);
 }
 
-/* ======================================================= */
-/* ===    9. MEJORA DE NOTIFICACIÓN MÓVIL (Badge)      === */
-/* ======================================================= */
 #toggle-conversations-btn {
     position: relative;
 }
@@ -980,10 +1045,6 @@ body.dark-mode .reply-quote { background-color: rgba(255, 255, 255, 0.08); }
     100% { box-shadow: 0 0 0 0 rgba(217, 83, 79, 0); }
 }
 
-/* ======================================================= */
-/* ===         10. ESTILOS PARA LA HORA DEL MENSAJE    === */
-/* ======================================================= */
-
 .message-timestamp {
     display: inline-block;
     font-size: 0.75em;
@@ -998,9 +1059,6 @@ body.dark-mode .message-timestamp {
     color: #a0a3a8;
 }
 
-/* ======================================================= */
-/* ===         11. CORRECCIÓN SCROLL HORIZONTAL        === */
-/* ======================================================= */
 .action-button-logout {
     width: 100%;
     background-color: #e74c3c;
@@ -1025,10 +1083,6 @@ body.dark-mode .action-button-logout {
 body.dark-mode .action-button-logout:hover {
     background-color: #c0392b;
 }
-
-/* ======================================================= */
-/* ===       12. ESTILOS MEJORADOS PARA MULTIMEDIA       === */
-/* ======================================================= */
 
 .media-only-content {
     background-color: var(--bg-content) !important;
@@ -1069,33 +1123,6 @@ body.dark-mode .action-button-logout:hover {
     margin-top: 4px;
     align-self: flex-end;
 }
-
-.message-header {
-    margin-bottom: 4px;
-    font-size: 1em; /* Ajustado para que coincida con el texto */
-    color: var(--text-secondary);
-    margin-right: 0.5ch;
-}
-
-.message-header strong {
-    font-weight: 600;
-    color: var(--primary-color);
-}
-
-/* REGLAS PARA OCULTAR EL HEADER CUANDO NO SE NECESITA */
-#messages > li.sent-by-me .message-header,
-#private-chat-window ul li .message-header {
-    display: none;
-}
-
-.media-only-content .message-header {
-    display: block !important;
-    margin-bottom: 6px;
-}
-
-/* ======================================================= */
-/* ===    14. MEJORAS DE UI PARA GRABACIÓN DE AUDIO      === */
-/* ======================================================= */
 
 #form.is-recording {
     gap: 15px;

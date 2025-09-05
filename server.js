@@ -41,7 +41,7 @@ const io = new Server(server, {
   cors: corsOptions,
   maxHttpBufferSize: 20 * 1024 * 1024,
   pingInterval: 10000,
-  pingTimeout: 5000
+  pingTimeout: 20000
 });
 
 app.use(cors(corsOptions));

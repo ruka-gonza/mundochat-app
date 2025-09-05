@@ -1,55 +1,41 @@
 import state from '../state.js';
 import { getUserIcons, replaceEmoticons } from '../utils.js';
+import { openImageModal } from './modals.js';
 
-function createEmbedElement(text) {
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const gifRegex = /(https?:\/\/\S+\.(?:gif))/i;
-
-    const youtubeMatch = text.match(youtubeRegex);
-    const gifMatch = text.match(gifRegex);
-
-    let embedContainer = null;
-    let embedContent = null;
-
-    if (youtubeMatch && youtubeMatch[1]) {
-        const videoId = youtubeMatch[1];
-        embedContainer = document.createElement('div');
-        embedContainer.className = 'message-embed-container';
-
-        embedContent = document.createElement('iframe');
-        
-        const origin = window.location.origin;
-
-        embedContent.src = `https://www.youtube-nocookie.com/embed/${videoId}?origin=${encodeURIComponent(origin)}`;
-        embedContent.sandbox = 'allow-scripts allow-same-origin allow-presentation allow-popups';
-        embedContent.title = 'Reproductor de video de YouTube';
-        embedContent.frameBorder = '0';
-        embedContent.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture';
-        embedContent.allowFullscreen = true;
-
-    } else if (gifMatch && gifMatch[0]) {
-        const gifUrl = gifMatch[0];
-        embedContainer = document.createElement('div');
-        embedContainer.className = 'message-embed-container';
-
-        embedContent = document.createElement('img');
-        embedContent.src = gifUrl;
-        embedContent.alt = 'GIF animado';
-        embedContent.loading = 'lazy';
+function createPreviewCard(preview) {
+    if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio') {
+        return null;
     }
 
-    if (embedContainer && embedContent) {
-        embedContent.className = 'embed-content';
-        embedContainer.appendChild(embedContent);
+    const linkCard = document.createElement('a');
+    linkCard.href = preview.url;
+    linkCard.target = '_blank';
+    linkCard.rel = 'noopener noreferrer';
+    linkCard.className = 'link-preview-card';
 
-        const closeButton = document.createElement('button');
-        closeButton.className = 'embed-close-btn';
-        closeButton.textContent = '×';
-        closeButton.title = 'Cerrar vista previa';
-        embedContainer.appendChild(closeButton);
+    if (preview.type === 'youtube') {
+        const videoIdMatch = preview.url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
+        if (videoIdMatch) {
+            linkCard.dataset.previewType = 'youtube';
+            linkCard.dataset.youtubeId = videoIdMatch[1];
+        }
     }
 
-    return embedContainer;
+    let innerHTML = '';
+    if (preview.image) {
+        innerHTML += `<div class="preview-image-container"><img src="${preview.image}" alt="Previsualización" loading="lazy"></div>`;
+    }
+    innerHTML += '<div class="preview-info">';
+    if (preview.title) {
+        innerHTML += `<strong class="preview-title">${preview.title}</strong>`;
+    }
+    if (preview.description) {
+        innerHTML += `<p class="preview-description">${preview.description}</p>`;
+    }
+    innerHTML += '</div>';
+
+    linkCard.innerHTML = innerHTML;
+    return linkCard;
 }
 
 export function createMessageElement(msg, isPrivate = false) {
@@ -65,90 +51,91 @@ export function createMessageElement(msg, isPrivate = false) {
         return document.createDocumentFragment();
     }
 
+    const isMediaOnly = msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio');
+    const isSent = msg.from === state.myNick || msg.nick === state.myNick;
+    
     const item = document.createElement('li');
     item.id = `message-${msg.id}`;
-    const isSent = msg.from === state.myNick || msg.nick === state.myNick;
+    
     const senderData = state.allUsersData[senderNick.toLowerCase()] || {};
-    const avatarUrl = (isSent && state.myUserData.avatar_url) ? state.myUserData.avatar_url : (senderData.avatar_url || 'image/default-avatar.png');
+    const avatarUrl = senderData.avatar_url || 'image/default-avatar.png';
+    
     const avatarImg = document.createElement('img');
     avatarImg.src = avatarUrl;
     avatarImg.className = 'message-avatar';
     item.appendChild(avatarImg);
-    
+
     const mainContentWrapper = document.createElement('div');
     mainContentWrapper.className = 'message-main-wrapper';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
+    if (isMediaOnly) {
+        contentDiv.classList.add('media-only-content');
+    }
+    
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'message-header';
+    headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
+    
+    if (!isSent && !isPrivate) {
+        headerDiv.dataset.nick = senderNick;
+        headerDiv.dataset.messageId = msg.id;
+        headerDiv.style.cursor = 'pointer';
+    }
+    contentDiv.appendChild(headerDiv);
     
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
+        
         const quoteNick = document.createElement('strong');
         quoteNick.textContent = msg.replyTo.nick;
+        
         const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 ? msg.replyTo.text.substring(0, 70) + '...' : msg.replyTo.text;
+        const previewText = msg.replyTo.text.length > 70 
+            ? msg.replyTo.text.substring(0, 70) + '...' 
+            : msg.replyTo.text;
         quoteText.textContent = replaceEmoticons(previewText);
+
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
         contentDiv.appendChild(quoteDiv);
     }
     
-    const icons = getUserIcons(senderData);
-    const displayName = isPrivate ? (isSent ? 'Yo' : msg.from) : msg.nick;
-    
-    const nickElement = document.createElement('span');
-    nickElement.className = 'message-nick';
-    nickElement.innerHTML = `${icons} <strong>${displayName}</strong>: `;
-
-    if (displayName !== 'Yo' && msg.nick !== state.myNick) {
-        nickElement.dataset.nick = msg.nick;
-        nickElement.dataset.messageId = msg.id;
-    }
-
-    if (msg.text) {
+    if (isMediaOnly) {
+        if (msg.preview.type === 'image') {
+            const img = document.createElement('img');
+            img.src = msg.preview.url;
+            img.alt = msg.preview.title;
+            img.className = 'media-message image-message';
+            img.loading = 'lazy';
+            contentDiv.appendChild(img);
+        } else if (msg.preview.type === 'audio') {
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.src = msg.preview.url;
+            audioPlayer.controls = true;
+            audioPlayer.preload = 'metadata';
+            audioPlayer.className = 'media-message audio-message';
+            contentDiv.appendChild(audioPlayer);
+        }
+    } else {
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
-        textSpan.appendChild(nickElement);
-        textSpan.append(replaceEmoticons(msg.text));
+        textSpan.innerHTML = replaceEmoticons(msg.text);
         contentDiv.appendChild(textSpan);
     }
 
-    if (msg.file) {
-        let fileElement;
-        
-        if (!msg.text) {
-             contentDiv.appendChild(nickElement);
-        }
-
-        if (msg.type.startsWith('image/')) {
-            fileElement = document.createElement('img');
-            fileElement.src = msg.file;
-            fileElement.className = 'image-thumbnail';
-            fileElement.alt = `Imagen de ${displayName}`;
-            fileElement.style.marginTop = '5px';
-        } else if (msg.type.startsWith('audio/')) {
-            fileElement = document.createElement('audio');
-            fileElement.src = msg.file;
-            fileElement.controls = true;
-            fileElement.style.marginTop = '5px';
-        }
-
-        if (fileElement) {
-            contentDiv.appendChild(fileElement);
-        }
+    const linkPreview = createPreviewCard(msg.preview);
+    if (linkPreview) {
+        contentDiv.appendChild(linkPreview);
     }
-
-    // --- INICIO DE LA CORRECCIÓN ---
-    // AÑADIMOS UNA COMPROBACIÓN PARA EVITAR ERRORES CON MENSAJES ANTIGUOS
-    if (msg.timestamp) {
-        const timestampSpan = document.createElement('span');
-        timestampSpan.className = 'message-timestamp';
-        timestampSpan.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        contentDiv.appendChild(timestampSpan);
-    }
-    // --- FIN DE LA CORRECCIÓN ---
-
+    
+    const timestampSpan = document.createElement('span');
+    timestampSpan.className = 'message-timestamp';
+    timestampSpan.textContent = new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    contentDiv.appendChild(timestampSpan);
+    
     if (msg.editedAt) {
         const editedSpan = document.createElement('span');
         editedSpan.className = 'edited-indicator';
@@ -158,19 +145,12 @@ export function createMessageElement(msg, isPrivate = false) {
 
     mainContentWrapper.appendChild(contentDiv);
 
-    if (msg.text) {
-        const embedElement = createEmbedElement(msg.text);
-        if (embedElement) {
-            mainContentWrapper.appendChild(embedElement);
-        }
-    }
-
     const iAmModerator = ['owner', 'admin'].includes(state.myUserData.role);
     if (!isPrivate) {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
         
-        if (isSent && msg.text) {
+        if (isSent && msg.text && !isMediaOnly) {
             const editBtn = document.createElement('button');
             editBtn.textContent = '✏️';
             editBtn.title = 'Editar mensaje';

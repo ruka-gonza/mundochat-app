@@ -1,5 +1,3 @@
-// socketManager.js (VERSIÓN COMPLETA, FINAL Y CORREGIDA)
-
 const roomService = require('./services/roomService');
 const userService = require('./services/userService');
 const banService = require('./services/banService');
@@ -10,46 +8,61 @@ const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection');
 const fs = require('fs');
+const fetch = require('node-fetch');
 
-let fileChunks = {};
+// Almacenamiento en memoria de sesiones que han sido cerradas.
+const closedSessions = new Set();
+// Exportamos el set para que otros módulos (como el middleware) puedan acceder a él.
+module.exports.closedSessions = closedSessions;
 
-// --- FUNCIONES AUXILIARES ---
+async function generateLinkPreview(text) {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const match = text.match(urlRegex);
+    if (!match) return null;
+    const url = match[0];
+    const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
+    if (imageRegex.test(url)) {
+        return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
+    }
+    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+    const youtubeMatch = url.match(youtubeRegex);
+    if (youtubeMatch && youtubeMatch[1]) {
+        try {
+            const videoId = youtubeMatch[1];
+            const response = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
+        } catch (error) {
+            console.error("Error al obtener datos de YouTube oEmbed:", error);
+            return null;
+        }
+    }
+    return null;
+}
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
-    if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
-        return;
-    }
+    if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) return;
     const sender = socket.userData;
-    if (sender.isMuted && !text.startsWith('/')) {
-        return socket.emit('system message', { text: 'Estás silenciado y no puedes enviar mensajes.', type: 'error', roomName });
-    }
-    if (text.startsWith('/')) {
-        return handleCommand(io, socket, text, roomName);
-    }
+    if (sender.isMuted && !text.startsWith('/')) return socket.emit('system message', { text: 'Estás silenciado y no puedes enviar mensajes.', type: 'error', roomName });
+    if (text.startsWith('/')) return handleCommand(io, socket, text, roomName);
+    const MAX_MESSAGE_LENGTH = 2000;
+    if (text.length > MAX_MESSAGE_LENGTH) return socket.emit('system message', { text: 'Error: Tu mensaje es demasiado largo.', type: 'error', roomName });
     const isMessageSafe = botService.checkMessage(socket, text);
-    if (!isMessageSafe) {
-        return;
-    }
-    
+    if (!isMessageSafe) return;
+    const previewData = await generateLinkPreview(text);
     const timestamp = new Date().toISOString();
-    
-    const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId) VALUES (?, ?, ?, ?, ?, ?, ?)');
-    
+    const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
     const lastId = await new Promise((resolve, reject) => {
-        stmt.run(roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null, function(err) {
+        stmt.run(roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null, previewData?.type || null, previewData?.url || null, previewData?.title || null, previewData?.description || null, previewData?.image || null, function(err) {
             if (err) return reject(err);
             resolve(this.lastID);
         });
         stmt.finalize();
     });
-
-    if (!lastId) {
-        console.error("Error guardando mensaje: no se obtuvo lastID");
-        return;
-    }
-
-    const messageData = { id: lastId, text, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName, timestamp: timestamp };
-
+    if (!lastId) return console.error("Error guardando mensaje: no se obtuvo lastID");
+    const messagePayload = { id: lastId, text, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName, timestamp, replyToId, preview: previewData };
     if (replyToId) {
         const originalMessage = await new Promise((resolve, reject) => {
             db.get('SELECT nick, text FROM messages WHERE id = ?', [replyToId], (err, row) => {
@@ -57,15 +70,9 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
                 resolve(row);
             });
         });
-        if (originalMessage) {
-            messageData.replyTo = {
-                nick: originalMessage.nick,
-                text: originalMessage.text
-            };
-        }
+        if (originalMessage) messagePayload.replyTo = { nick: originalMessage.nick, text: originalMessage.text };
     }
-    
-    io.to(roomName).emit('chat message', messageData);
+    io.to(roomName).emit('chat message', messagePayload);
 }
 
 function handlePrivateMessage(io, socket, { to, text }) {
@@ -90,43 +97,6 @@ function handlePrivateMessage(io, socket, { to, text }) {
         socket.emit('system message', { text: `El usuario '${to}' no se encuentra conectado.`, type: 'error' });
     }
 }
-
-function handleFileStart(socket, data) { fileChunks[data.id] = { ...data, chunks: [], receivedSize: 0, owner: socket.id }; }
-function handlePrivateFileStart(socket, data) { fileChunks[data.id] = { ...data, toNick: data.to, chunks: [], receivedSize: 0, owner: socket.id }; }
-
-async function handleFileChunk(io, socket, data) {
-    const fileData = fileChunks[data.id];
-    if (!fileData || fileData.owner !== socket.id) return;
-    fileData.chunks.push(data.data);
-    fileData.receivedSize += data.data.byteLength;
-    if (fileData.receivedSize >= fileData.size) {
-        const fullFileBuffer = Buffer.concat(fileData.chunks);
-        const base64File = `data:${fileData.type};base64,${fullFileBuffer.toString('base64')}`;
-        const sender = socket.userData;
-        const timestamp = new Date().toISOString();
-        const fileMessagePayload = { file: base64File, type: fileData.type, nick: sender.nick, from: sender.nick, to: fileData.toNick, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
-        if (fileData.roomName) {
-            fileMessagePayload.roomName = fileData.roomName;
-            const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
-            const lastId = await new Promise((resolve, reject) => {
-                stmt.run(fileData.roomName, sender.nick, base64File, sender.role, sender.isVIP ? 1 : 0, timestamp, function(err) {
-                    if (err) return reject(err);
-                    resolve(this.lastID);
-                });
-                stmt.finalize();
-            });
-            if (lastId) { fileMessagePayload.id = lastId; }
-            io.to(fileData.roomName).emit('file message', fileMessagePayload);
-        } else if (fileData.toNick) {
-            const targetSocketId = roomService.findSocketIdByNick(fileData.toNick);
-            if (targetSocketId) { io.to(targetSocketId).emit('private file message', fileMessagePayload); }
-            socket.emit('private file message', fileMessagePayload);
-        }
-        delete fileChunks[data.id];
-    }
-}
-
-function clearUserFileChunks(socketId) { Object.keys(fileChunks).forEach(fileId => { if (fileChunks[fileId].owner === socketId) { delete fileChunks[fileId]; } }); }
 
 function handleEditMessage(io, socket, { messageId, newText, roomName }) {
     const senderNick = socket.userData.nick;
@@ -196,226 +166,193 @@ function logActivity(eventType, userData, details = null) {
 
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
-    if (socket.rooms.has(roomName)) return;
-    if (!roomService.rooms[roomName]) { roomService.rooms[roomName] = { users: {} }; }
+    
+    if (!roomService.rooms[roomName]) {
+        roomService.rooms[roomName] = { users: {} };
+    }
+
+    const wasAlreadyInRoom = Object.values(roomService.rooms[roomName].users).some(
+        user => user.id === socket.userData.id
+    );
+
+    const existingSocketId = Object.keys(roomService.rooms[roomName].users).find(
+        sid => roomService.rooms[roomName].users[sid].id === socket.userData.id && sid !== socket.id
+    );
+    if (existingSocketId) {
+        delete roomService.rooms[roomName].users[existingSocketId];
+    }
+    
     socket.join(roomName);
+    if (!socket.joinedRooms) socket.joinedRooms = new Set();
     socket.joinedRooms.add(roomName);
+    
     let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(socket.userData.role);
     if (!isAnyStaff && socket.userData.id) {
-        const staffRooms = await new Promise((resolve, reject) => {
+        const staffRooms = await new Promise((resolve) => {
             db.all('SELECT 1 FROM room_staff WHERE userId = ? LIMIT 1', [socket.userData.id], (err, rows) => {
-                if (err) return reject(err);
+                if (err) resolve([]);
                 resolve(rows);
             });
         });
-        if (staffRooms.length > 0) { isAnyStaff = true; }
+        if (staffRooms.length > 0) isAnyStaff = true;
     }
     socket.userData.isStaff = isAnyStaff;
-    roomService.rooms[roomName].users[socket.id] = socket.userData;
+    
+    roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
+
     if (socket.userData.isStaff) {
-        socket.emit('set admin cookie', { nick: socket.userData.nick, role: socket.userData.role });
-        if (!socket.rooms.has(roomService.MOD_LOG_ROOM)) {
-            socket.join(roomService.MOD_LOG_ROOM);
-            socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
-            if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
-            roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = socket.userData;
-        }
+        socket.join(roomService.MOD_LOG_ROOM);
+        socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
+        if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
+        roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
     }
-    logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
-    const usersInRoom = Object.values(roomService.rooms[roomName].users);
-    const userListPromises = usersInRoom.map(async (u) => {
-        const effectiveRole = await permissionService.getUserEffectiveRole(u.id, roomName);
-        return { id: u.id, nick: u.nick, role: effectiveRole, isVIP: u.isVIP, avatar_url: u.avatar_url, isAFK: u.isAFK };
+    
+    if (!wasAlreadyInRoom) {
+        logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
+        socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
+    }
+
+    socket.emit('join_success', { 
+        user: socket.userData, 
+        roomName: roomName, 
+        joinedRooms: Array.from(socket.joinedRooms),
+        users: Object.values(roomService.rooms[roomName].users)
     });
-    const initialUserList = await Promise.all(userListPromises);
-    const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
-    initialUserList.sort((a, b) => {
-        const roleA = roleOrder[a.role] ?? 99;
-        const roleB = roleOrder[b.role] ?? 99;
-        if (roleA < roleB) return -1; if (roleA > roleB) return 1;
-        return a.nick.localeCompare(b.nick);
-    });
+    
+    roomService.updateUserList(io, roomName);
+    
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
-        if (err) { console.error("Error al cargar historial:", err); return; }
-        const history = rows.reverse().map(row => {
-            const baseMessage = { id: row.id, nick: row.nick, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId };
-            if (row.text.startsWith('data:')) { return { ...baseMessage, file: row.text, type: row.text.substring(5, row.text.indexOf(';')), text: null }; }
-            return { ...baseMessage, text: row.text };
-        });
+        if (err) return console.error("Error al cargar historial:", err);
+        const history = rows.reverse().map(row => ({ id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId, preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null }));
         socket.emit('load history', { roomName, history });
-        socket.emit('join_success', { user: socket.userData, roomName: roomName, joinedRooms: Array.from(socket.joinedRooms), users: initialUserList });
     });
-    socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
-    socket.broadcast.to(roomName).emit('update user list', { roomName, users: initialUserList });
-    if (roomService.rooms[roomService.MOD_LOG_ROOM] && roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id]) { roomService.updateUserList(io, roomName); }
+    
     roomService.updateRoomData(io);
 }
 
+function handleDefinitiveDisconnect(io, socketData) {
+    if (!socketData.userData || !socketData.userData.nick) return;
 
-// --- FUNCIÓN PRINCIPAL DE SOCKET.IO ---
+    // Añadimos el ID a la lista de sesiones cerradas
+    closedSessions.add(socketData.userData.id);
+    // Programamos su borrado para no llenar la memoria
+    setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000); // 5 minutos
+
+    logActivity('DISCONNECT', socketData.userData);
+    io.emit('user disconnected', { nick: socketData.userData.nick });
+
+    socketData.joinedRooms.forEach(roomName => {
+        if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socketData.id]) {
+            delete roomService.rooms[roomName].users[socketData.id];
+            io.to(roomName).emit('system message', { text: `${socketData.userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
+            roomService.updateUserList(io, roomName);
+        }
+    });
+    
+    roomService.updateRoomData(io);
+
+    if (socketData.userData.role === 'guest') {
+        roomService.guestSocketMap.delete(socketData.userData.id);
+        if (socketData.userData.temp_avatar_path) {
+            fs.unlink(socketData.userData.temp_avatar_path, (err) => {
+                if (err) console.error(`Error al borrar avatar temporal de ${socketData.userData.nick}:`, err);
+            });
+        }
+    }
+}
+
 function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
         
-        // --- INICIO DE LA CORRECCIÓN CON LOGS DE DIAGNÓSTICO ---
-        console.log(`[SocketManager] PASO 1: Nuevo usuario conectado: ${socket.id}`);
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
 
-        try {
-            console.log("[SocketManager] PASO 2: Intentando obtener la lista de salas...");
-            const roomList = roomService.getActiveRoomsWithUserCount();
-            console.log(`[SocketManager] PASO 3: Lista de salas obtenida (${roomList.length} salas). Enviando al cliente...`);
-            
-            socket.emit('update room data', roomList); 
-            console.log("[SocketManager] PASO 4: Lista de salas enviada al cliente con éxito.");
-
-        } catch (error) {
-            console.error('[ERROR CRÍTICO] Fallo al obtener o enviar la lista de salas:', error);
-            socket.disconnect(true);
-            return;
-        }
-        // --- FIN DE LA CORRECCIÓN ---
+        socket.emit('update room data', roomService.getActiveRoomsWithUserCount());
         
-        try {
-            const isVpnUser = await vpnCheckService.isVpn(userIP);
-            if (isVpnUser) {
-                console.warn(`[ADVERTENCIA DE VPN/PROXY] La IP ${userIP} fue marcada como sospechosa.`);
-            }
-        } catch (error) {
-            console.error("Error durante la verificación de VPN:", error);
-        }
+        vpnCheckService.isVpn(userIP).catch(err => console.error("Error en VPN Check:", err));
 
-        // --- MANEJADORES DE EVENTOS ---
-        socket.on('guest_join', async (data) => {
-            const { nick, roomName } = data;
-            if (!nick || !roomName) return socket.emit('auth_error', { message: "El nick y la sala son obligatorios." });
-            if (nick.length < 3 || nick.length > 15) return socket.emit('auth_error', { message: "El nick debe tener entre 3 y 15 caracteres." });
-            if (!/^[a-zA-Z0-9_-]+$/.test(nick)) { return socket.emit('auth_error', { message: "El nick solo puede contener letras, números, guiones (-) y guiones bajos (_)." }); }
-            const existingUser = await userService.findUserByNick(nick);
-            if (existingUser) return socket.emit('auth_error', { message: `El nick '${nick}' está registrado. Por favor, inicia sesión.` });
-            if (roomService.isNickInUse(nick)) return socket.emit('auth_error', { message: `El nick '${nick}' ya está en uso.` });
+        socket.on('reauthenticate', async (cookieData) => {
+            if (closedSessions.has(cookieData.id)) {
+                console.log(`Re-autenticación rechazada para ${cookieData.nick} (sesión cerrada).`);
+                return socket.emit('reauth_failed');
+            }
             
-            const persistentId = uuidv4();
-            socket.emit('assign id', persistentId);
-            if (await checkBanStatus(socket, persistentId, userIP)) { return; }
+            const userInDb = await userService.findUserById(cookieData.id);
+            if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
+                return socket.emit('reauth_failed');
+            }
             
-            socket.userData = { nick, id: persistentId, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
-            roomService.guestSocketMap.set(persistentId, socket.id);
-            socket.emit('set session cookie', { id: socket.userData.id, nick: socket.userData.nick, role: socket.userData.role });
-            logActivity('CONNECT', socket.userData);
-            await handleJoinRoom(io, socket, { roomName });
-            socket.emit('system message', { text: '¡Bienvenido! Como invitado, haz clic derecho en tu nick en la lista de usuarios para poner un avatar.', type: 'highlight', roomName: roomName });
+            socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: userIP, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
+            closedSessions.delete(userInDb.id);
+            console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
+            socket.emit('reauth_success');
         });
 
-        socket.on('register', async (data) => {
-            const { nick, email, password } = data;
-            if (!nick || !email || !password) return socket.emit('auth_error', { message: "El nick, el correo y la contraseña no pueden estar vacíos." });
-            if (nick.length < 3 || nick.length > 15) return socket.emit('auth_error', { message: "El nick debe tener entre 3 y 15 caracteres." });
-            if (!/^[a-zA-Z0-9_-]+$/.test(nick)) { return socket.emit('auth_error', { message: "El nick solo puede contener letras, números, guiones (-) y guiones bajos (_)." }); }
-            if (!/\S+@\S+\.\S+/.test(email)) return socket.emit('auth_error', { message: "Formato de correo electrónico inválido." });
-            if (roomService.isNickInUse(nick)) return socket.emit('auth_error', { message: `El nick '${nick}' está actualmente en uso por un invitado.` });
+        socket.on('guest_join', async (data) => {
+            const { nick, roomName, id } = data;
+            if (!nick || !roomName) return; 
+            if (await checkBanStatus(socket, null, userIP)) return;
             
-            const existingUserByNick = await userService.findUserByNick(nick);
-            if (existingUserByNick) { return socket.emit('auth_error', { message: "Ese nick ya está registrado." }); }
-            
-            const existingUserByEmail = await userService.findUserByNick(email);
-            if (existingUserByEmail) { return socket.emit('auth_error', { message: "Ese correo electrónico ya está registrado." }); }
-            
-            try {
-                await userService.createUser(nick, email, password, userIP);
-                socket.emit('register_success', { message: `¡Nick '${nick}' registrado con éxito! Ahora puedes entrar.` });
-            } catch (error) {
-                console.error("Error al registrar:", error);
-                socket.emit('auth_error', { message: "Error interno del servidor al registrar." });
-            }
+            socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
+            roomService.guestSocketMap.set(id, socket.id);
+            closedSessions.delete(id);
+            logActivity('CONNECT', socket.userData);
+            await handleJoinRoom(io, socket, { roomName });
         });
 
         socket.on('login', async (data) => {
-            const { nick, password, roomName } = data;
-            if (await checkBanStatus(socket, nick.toLowerCase(), userIP)) { return; }
+            const { nick, id, roomName } = data;
+            if (await checkBanStatus(socket, id, userIP)) return;
+            const registeredData = await userService.findUserById(id);
+            if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
             
-            const registeredData = await userService.findUserByNick(nick);
-            if (!registeredData) return socket.emit('auth_error', { message: "El nick o email no está registrado." });
-
-            try {
-                const match = await userService.verifyPassword(password, registeredData.password);
-                if (!match) return socket.emit('auth_error', { message: "Contraseña incorrecta." });
-                if (roomService.isNickInUse(registeredData.nick)) return socket.emit('auth_error', { message: `El usuario '${registeredData.nick}' ya está conectado.` });
-
-                socket.userData = { 
-                    nick: registeredData.nick, 
-                    id: registeredData.id, 
-                    role: registeredData.role,
-                    isMuted: registeredData.isMuted === 1, 
-                    isVIP: registeredData.isVIP === 1, 
-                    ip: userIP, 
-                    avatar_url: registeredData.avatar_url || 'image/default-avatar.png', 
-                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), 
-                    isAFK: false 
-                };
-
-                await userService.updateUserIP(registeredData.nick, userIP);
-                socket.emit('assign id', registeredData.id);
-                socket.emit('set session cookie', { id: socket.userData.id, nick: socket.userData.nick, role: socket.userData.role });
-                logActivity('CONNECT', socket.userData);
-                await handleJoinRoom(io, socket, { roomName });
-            } catch (error) {
-                console.error("Error en login:", error);
-                socket.emit('auth_error', { message: "Error interno del servidor al iniciar sesión." });
-            }
+            socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
+            await userService.updateUserIP(registeredData.nick, userIP);
+            closedSessions.delete(id);
+            logActivity('CONNECT', socket.userData);
+            await handleJoinRoom(io, socket, { roomName });
         });
         
         socket.on('join room', (data) => handleJoinRoom(io, socket, data));
         
         socket.on('leave room', (data) => {
             const { roomName } = data;
-            if (!socket.rooms.has(roomName) || !roomService.rooms[roomName]) return;
+            if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName]) return;
             if (roomName === roomService.MOD_LOG_ROOM) return;
             logActivity('LEAVE_ROOM', socket.userData, `Sala: ${roomName}`);
             socket.leave(roomName);
             socket.joinedRooms.delete(roomName);
-            if (roomService.rooms[roomName].users[socket.id]) { delete roomService.rooms[roomName].users[socket.id]; }
+            if (roomService.rooms[roomName].users[socket.id]) delete roomService.rooms[roomName].users[socket.id];
             socket.emit('leave_success', { roomName, joinedRooms: Array.from(socket.joinedRooms) });
             socket.to(roomName).emit('system message', { text: `${socket.userData.nick} ha abandonado la sala.`, type: 'leave', roomName });
             if (Object.keys(roomService.rooms[roomName].users).length === 0 && !roomService.DEFAULT_ROOMS.includes(roomName) && roomName !== roomService.MOD_LOG_ROOM) { delete roomService.rooms[roomName]; } else { roomService.updateUserList(io, roomName); }
             roomService.updateRoomData(io);
         });
 
-        socket.on('disconnect', () => {
-            const userData = socket.userData;
-            if (!userData || !userData.nick) return;
-            if (userData.role === 'guest') {
-                roomService.guestSocketMap.delete(userData.id);
-                if (userData.temp_avatar_path) {
-                    fs.unlink(userData.temp_avatar_path, (err) => {
-                        if (err) { console.error(`Error al borrar avatar temporal de ${userData.nick}:`, err); }
-                    });
-                }
-            }
-            logActivity('DISCONNECT', userData);
-            io.emit('user disconnected', { nick: userData.nick });
-            const roomsUserWasIn = Array.from(socket.joinedRooms || []);
-            roomsUserWasIn.forEach(roomName => {
-                if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socket.id]) {
-                    if (!socket.kicked) { io.to(roomName).emit('system message', { text: `${userData.nick} ha abandonado el chat.`, type: 'leave', roomName }); }
-                    delete roomService.rooms[roomName].users[socket.id];
-                    roomService.updateUserList(io, roomName);
-                    if (Object.keys(roomService.rooms[roomName].users).length === 0 && !roomService.DEFAULT_ROOMS.includes(roomName) && roomName !== roomService.MOD_LOG_ROOM) { delete roomService.rooms[roomName]; }
-                }
+        socket.on('logout', () => {
+            handleDefinitiveDisconnect(io, {
+                id: socket.id,
+                userData: socket.userData,
+                joinedRooms: Array.from(socket.joinedRooms || [])
             });
-            clearUserFileChunks(socket.id);
-            roomService.updateRoomData(io);
-            console.log('Un usuario se ha desconectado:', socket.id, userData.nick);
+            socket.disconnect(true);
         });
 
+        socket.on('disconnect', () => {
+            handleDefinitiveDisconnect(io, {
+                id: socket.id,
+                userData: socket.userData,
+                joinedRooms: Array.from(socket.joinedRooms || [])
+            });
+        });
+        
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
         socket.on('chat message', (data) => handleChatMessage(io, socket, data));
         socket.on('edit message', (data) => handleEditMessage(io, socket, data));
         socket.on('delete message', (data) => handleDeleteMessage(io, socket, data));
         socket.on('delete any message', (data) => handleDeleteAnyMessage(io, socket, data));
         socket.on('private message', (data) => handlePrivateMessage(io, socket, data));
-        
         socket.on('request private chat', ({ targetNick }) => {
             const sender = socket.userData;
             if (!sender || !sender.nick) return;
@@ -427,21 +364,29 @@ function initializeSocket(io) {
                 socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra conectado.`, type: 'error' });
             }
         });
-
+        
         socket.on('request private history', ({ withNick }) => {
             const myNick = socket.userData.nick;
             if (!myNick || !withNick) return;
-            const query = `SELECT id, from_nick, to_nick, text, timestamp FROM private_messages WHERE (from_nick = ? AND to_nick = ?) OR (from_nick = ? AND to_nick = ?) ORDER BY timestamp DESC LIMIT 50`;
+            const query = `
+                SELECT id, from_nick, to_nick, text, timestamp, 
+                       preview_type, preview_url, preview_title, preview_description, preview_image 
+                FROM private_messages 
+                WHERE (from_nick = ? AND to_nick = ?) OR (from_nick = ? AND to_nick = ?) 
+                ORDER BY timestamp DESC LIMIT 50`;
             db.all(query, [myNick, withNick, withNick, myNick], (err, rows) => {
                 if (err) { console.error("Error al cargar historial privado:", err); return; }
-                const history = rows.reverse().map(row => ({ id: row.id, text: row.text, from: row.from_nick, to: row.to_nick, timestamp: row.timestamp }));
+                const history = rows.reverse().map(row => ({ 
+                    id: row.id, 
+                    text: row.text, 
+                    from: row.from_nick, 
+                    to: row.to_nick, 
+                    timestamp: row.timestamp,
+                    preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null
+                }));
                 socket.emit('load private history', { withNick, history });
             });
         });
-
-        socket.on('file-start', (data) => handleFileStart(socket, data));
-        socket.on('private-file-start', (data) => handlePrivateFileStart(socket, data));
-        socket.on('file-chunk', (data) => handleFileChunk(io, socket, data));
         
         socket.on('typing', ({ context, to }) => {
             const sender = socket.userData;
@@ -453,7 +398,7 @@ function initializeSocket(io) {
                 if (targetSocketId) { io.to(targetSocketId).emit('typing', { nick: sender.nick, context: { type: 'private', with: sender.nick } }); }
             }
         });
-
+        
         socket.on('stop typing', ({ context, to }) => {
             const sender = socket.userData;
             if (!sender || !context || !context.with) return;
@@ -464,16 +409,15 @@ function initializeSocket(io) {
                 if (targetSocketId) { io.to(targetSocketId).emit('stop typing', { nick: sender.nick, context: { type: 'private', with: sender.nick } }); }
             }
         });
-
+        
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
             socket.userData.isAFK = !socket.userData.isAFK;
-            const { nick, isAFK } = socket.userData;
-            io.emit('user_data_updated', { nick, isAFK });
-            const statusMessage = isAFK ? `${nick} ahora está ausente.` : `${nick} ha vuelto.`;
+            io.emit('user_data_updated', { nick: socket.userData.nick, isAFK: socket.userData.isAFK });
+            const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
             socket.joinedRooms.forEach(room => { if (room !== socket.id) { io.to(room).emit('system message', { text: statusMessage, type: 'join', roomName: room }); } });
         });
-
+        
         socket.on('report user', ({ targetNick, reason }) => {
             const reporter = socket.userData;
             if (!reporter || !targetNick) return;

@@ -3,84 +3,96 @@ const router = express.Router();
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
 const config = require('../config');
-const multer = require('multer');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs').promises;
+const { v4: uuidv4 } = require('uuid');
 
 const uploadsDir = path.join(__dirname, '..', 'data', 'avatars');
+const tempUploadsDir = path.join(__dirname, '..', 'data', 'temp_avatars');
 
-if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
+// Función para asegurar que los directorios existan
+async function ensureDirs() {
+    try {
+        await fs.access(uploadsDir);
+    } catch {
+        await fs.mkdir(uploadsDir, { recursive: true });
+    }
+    try {
+        await fs.access(tempUploadsDir);
+    } catch {
+        await fs.mkdir(tempUploadsDir, { recursive: true });
+    }
 }
 
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, uploadsDir);
-    },
-    filename: function (req, file, cb) {
-        if (!req.verifiedUser || !req.verifiedUser.nick) {
-            return cb(new Error("Usuario no verificado para subir archivo."));
-        }
-        const safeNick = req.verifiedUser.nick.toLowerCase().replace(/[^a-z0-9]/gi, '_');
-        const uniqueSuffix = Date.now() + '-' + safeNick;
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
+// =========================================================================
+// ===       NUEVA RUTA UNIVERSAL PARA SUBIR AVATARES (BASE64)           ===
+// =========================================================================
+router.post('/avatar', async (req, res) => {
+    const { avatarBase64 } = req.body;
+    const { id, nick, role } = req.verifiedUser; // Esto viene del middleware isCurrentUser
+    const io = req.io;
 
-const upload = multer({ 
-    storage: storage,
-    limits: { fileSize: 2 * 1024 * 1024 },
-    fileFilter: function (req, file, cb) {
-        const filetypes = /jpeg|jpg|png|gif|webp/;
-        if (filetypes.test(file.mimetype)) {
-            return cb(null, true);
-        }
-        cb(new Error('Solo se permiten archivos de imagen.'));
-    }
-}).single('avatarFile');
-
-
-// --- RUTA DE SUBIDA DE AVATAR ---
-router.post('/avatar', upload, async (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: 'No se ha subido ningún archivo válido.' });
+    if (!avatarBase64) {
+        return res.status(400).json({ error: 'No se ha proporcionado ninguna imagen.' });
     }
 
-    const { id: userId, nick: userNick } = req.verifiedUser;
+    const match = avatarBase64.match(/^data:(image\/(\w+));base64,(.+)$/);
+    if (!match) {
+        return res.status(400).json({ error: 'Formato de imagen inválido.' });
+    }
+
+    const imageType = match[2];
+    const base64Data = match[3];
+    const imageBuffer = Buffer.from(base64Data, 'base64');
     
-    // LÍNEA ELIMINADA: Se ha quitado la comprobación estricta 'typeof userId !== "number"'
-    // La base de datos manejará la conversión si es necesario.
-    if (!userId) {
-         return res.status(400).json({ error: 'ID de usuario inválido en la sesión.' });
+    const MAX_SIZE_MB = 5;
+    if (imageBuffer.length > MAX_SIZE_MB * 1024 * 1024) {
+        return res.status(413).json({ error: `La imagen es demasiado grande (máx ${MAX_SIZE_MB}MB).` });
     }
-
-    const avatarUrl = `data/avatars/${req.file.filename}`;
 
     try {
-        const success = await userService.setAvatarUrl(userId, avatarUrl);
+        await ensureDirs();
 
-        if (success) {
-            const targetSocketId = roomService.findSocketIdByNick(userNick);
-            if (targetSocketId) {
-                const targetSocket = req.io.sockets.sockets.get(targetSocketId);
-                if (targetSocket) {
-                    targetSocket.userData.avatar_url = avatarUrl;
-                    req.io.emit('user_data_updated', { nick: userNick, avatar_url: avatarUrl });
+        const isGuest = role === 'guest';
+        const fileName = `${uuidv4()}.${imageType}`;
+        const targetDir = isGuest ? tempUploadsDir : uploadsDir;
+        const filePath = path.join(targetDir, fileName);
+        const avatarUrl = `data/${isGuest ? 'temp_avatars' : 'avatars'}/${fileName}`;
+
+        await fs.writeFile(filePath, imageBuffer);
+        
+        const targetSocket = roomService.findSocketIdByNick(nick) ? io.sockets.sockets.get(roomService.findSocketIdByNick(nick)) : null;
+
+        if (isGuest) {
+            // Para invitados, solo actualizamos el estado en el socket
+            if (targetSocket) {
+                if (targetSocket.userData.temp_avatar_path) {
+                    await fs.unlink(targetSocket.userData.temp_avatar_path).catch(err => console.error("No se pudo borrar el avatar temporal antiguo:", err));
                 }
+                targetSocket.userData.avatar_url = avatarUrl;
+                targetSocket.userData.temp_avatar_path = filePath;
             }
-            res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
         } else {
-            res.status(404).json({ error: 'Usuario no encontrado en la base de datos (ID inválido).' });
+            // Para usuarios registrados, actualizamos la DB
+            await userService.setAvatarUrl(id, avatarUrl);
+            if (targetSocket) {
+                targetSocket.userData.avatar_url = avatarUrl;
+            }
         }
+        
+        io.emit('user_data_updated', { nick: nick, avatar_url: avatarUrl });
+        res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
+
     } catch (error) {
-        console.error('Error al guardar avatar en la DB:', error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
+        console.error('Error al guardar avatar Base64:', error);
+        res.status(500).json({ error: 'Error interno del servidor al procesar la imagen.' });
     }
 });
 
 
-// --- RUTA DE CAMBIO DE NICK (COMPLETADA) ---
+// RUTA DE CAMBIO DE NICK (se mantiene igual)
 router.post('/nick', async (req, res) => {
+    // ... (el código de esta ruta no cambia)
     const oldNick = req.verifiedUser.nick;
     const { newNick } = req.body;
     const io = req.io;

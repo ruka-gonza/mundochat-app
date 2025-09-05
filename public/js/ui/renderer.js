@@ -84,7 +84,10 @@ export function createMessageElement(msg, isPrivate = false) {
         headerDiv.style.cursor = 'pointer';
     }
     contentDiv.appendChild(headerDiv);
-    
+
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
@@ -125,6 +128,9 @@ export function createMessageElement(msg, isPrivate = false) {
         textSpan.innerHTML = replaceEmoticons(msg.text);
         contentDiv.appendChild(textSpan);
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
 
     const linkPreview = createPreviewCard(msg.preview);
     if (linkPreview) {

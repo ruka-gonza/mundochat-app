@@ -83,8 +83,6 @@ export function createMessageElement(msg, isPrivate = false) {
         headerDiv.dataset.messageId = msg.id;
         headerDiv.style.cursor = 'pointer';
     }
-    contentDiv.appendChild(headerDiv);
-
     // =========================================================================
     // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
@@ -106,6 +104,8 @@ export function createMessageElement(msg, isPrivate = false) {
         contentDiv.appendChild(quoteDiv);
     }
     
+    contentDiv.appendChild(headerDiv);
+
     if (isMediaOnly) {
         if (msg.preview.type === 'image') {
             const img = document.createElement('img');

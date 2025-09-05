@@ -57,12 +57,11 @@ function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
-            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";
-            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            
             if (state.socket) {
                 state.socket.emit('logout');
             }
+            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";
+            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             
             setTimeout(() => {
                 location.reload();
@@ -70,8 +69,6 @@ function initLogoutButton() {
         });
     }
 }
-
-// LA FUNCIÓN startKeepAlive HA SIDO ELIMINADA
 
 document.addEventListener('DOMContentLoaded', () => {
     state.socket = io({
@@ -139,6 +136,14 @@ document.addEventListener('DOMContentLoaded', () => {
         connectionOverlay.innerHTML = '❌ No se pudo reconectar. Por favor, recarga la página.';
     });
 
+    // Nuevo listener para forzar el logout desde el servidor
+    state.socket.on('reauth_failed', () => {
+        console.warn("Re-authentication failed by server. Clearing session.");
+        document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";
+        document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+        location.reload();
+    });
+
     initializeSocketEvents(state.socket);
     initAuth();
     initChatInput();
@@ -148,7 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initResponsiveHandlers();
     initThemeSwitcher();
     initLogoutButton();
-    // LA LLAMADA A startKeepAlive HA SIDO ELIMINADA
 
     console.log("Cliente de MundoChat inicializado correctamente.");
 });

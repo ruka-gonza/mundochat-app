@@ -1,4 +1,5 @@
 const userService = require('../services/userService');
+const { closedSessions } = require('../socketManager');
 
 const isCurrentUser = async (req, res, next) => {
     try {
@@ -12,6 +13,12 @@ const isCurrentUser = async (req, res, next) => {
             return res.status(401).json({ error: 'No autenticado: Cookie con formato inválido.' });
         }
 
+        // Si el ID de la cookie está en la lista de sesiones cerradas, la invalidamos.
+        if (closedSessions.has(sessionData.id)) {
+            res.clearCookie('user_auth');
+            return res.status(401).json({ error: 'Sesión expirada. Por favor, inicia sesión de nuevo.' });
+        }
+
         if (sessionData.role !== 'guest') {
              const userInDb = await userService.findUserById(sessionData.id);
              if (!userInDb || userInDb.nick.toLowerCase() !== sessionData.nick.toLowerCase()) {
@@ -22,7 +29,6 @@ const isCurrentUser = async (req, res, next) => {
         
         req.verifiedUser = sessionData;
         next();
-
     } catch (e) {
         console.error('Error en middleware isCurrentUser (probablemente cookie corrupta):', e);
         return res.status(400).json({ error: 'Cookie o token de sesión corrupto o inválido.' });

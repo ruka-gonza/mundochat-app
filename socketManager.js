@@ -10,7 +10,10 @@ const db = require('./services/db-connection');
 const fs = require('fs');
 const fetch = require('node-fetch');
 
-// La variable fileChunks ya no es necesaria y ha sido eliminada.
+// Almacenamiento en memoria de sesiones que han sido cerradas.
+const closedSessions = new Set();
+// Exportamos el set para que otros módulos (como el middleware) puedan acceder a él.
+module.exports.closedSessions = closedSessions;
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -94,8 +97,6 @@ function handlePrivateMessage(io, socket, { to, text }) {
         socket.emit('system message', { text: `El usuario '${to}' no se encuentra conectado.`, type: 'error' });
     }
 }
-
-// Las funciones handleFileStart, handlePrivateFileStart, handleFileChunk y clearUserFileChunks han sido eliminadas.
 
 function handleEditMessage(io, socket, { messageId, newText, roomName }) {
     const senderNick = socket.userData.nick;
@@ -220,7 +221,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.updateUserList(io, roomName);
     
-    db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 25', [roomName], (err, rows) => {
+    db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
         if (err) return console.error("Error al cargar historial:", err);
         const history = rows.reverse().map(row => ({ id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId, preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null }));
         socket.emit('load history', { roomName, history });
@@ -232,6 +233,11 @@ async function handleJoinRoom(io, socket, { roomName }) {
 function handleDefinitiveDisconnect(io, socketData) {
     if (!socketData.userData || !socketData.userData.nick) return;
 
+    // Añadimos el ID a la lista de sesiones cerradas
+    closedSessions.add(socketData.userData.id);
+    // Programamos su borrado para no llenar la memoria
+    setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000); // 5 minutos
+
     logActivity('DISCONNECT', socketData.userData);
     io.emit('user disconnected', { nick: socketData.userData.nick });
 
@@ -242,8 +248,7 @@ function handleDefinitiveDisconnect(io, socketData) {
             roomService.updateUserList(io, roomName);
         }
     });
-
-    // clearUserFileChunks ya no es necesaria.
+    
     roomService.updateRoomData(io);
 
     if (socketData.userData.role === 'guest') {
@@ -260,7 +265,6 @@ function initializeSocket(io) {
     global.io = io;
     io.on('connection', async (socket) => {
         
-        console.log(`[SocketManager] Usuario conectado: ${socket.id}`);
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
 
@@ -269,15 +273,18 @@ function initializeSocket(io) {
         vpnCheckService.isVpn(userIP).catch(err => console.error("Error en VPN Check:", err));
 
         socket.on('reauthenticate', async (cookieData) => {
-            console.log(`Intento de re-autenticación para el nick: ${cookieData.nick}`);
-            const userInDb = await userService.findUserById(cookieData.id);
-            
-            if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
-                console.warn(`Fallo en la re-autenticación para ${cookieData.nick} (datos no coinciden).`);
+            if (closedSessions.has(cookieData.id)) {
+                console.log(`Re-autenticación rechazada para ${cookieData.nick} (sesión cerrada).`);
                 return socket.emit('reauth_failed');
             }
-
-            socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: socket.handshake.address, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
+            
+            const userInDb = await userService.findUserById(cookieData.id);
+            if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
+                return socket.emit('reauth_failed');
+            }
+            
+            socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: userIP, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
+            closedSessions.delete(userInDb.id);
             console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
             socket.emit('reauth_success');
         });
@@ -286,9 +293,10 @@ function initializeSocket(io) {
             const { nick, roomName, id } = data;
             if (!nick || !roomName) return; 
             if (await checkBanStatus(socket, null, userIP)) return;
-
+            
             socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
             roomService.guestSocketMap.set(id, socket.id);
+            closedSessions.delete(id);
             logActivity('CONNECT', socket.userData);
             await handleJoinRoom(io, socket, { roomName });
         });
@@ -298,9 +306,10 @@ function initializeSocket(io) {
             if (await checkBanStatus(socket, id, userIP)) return;
             const registeredData = await userService.findUserById(id);
             if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
-
+            
             socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
             await userService.updateUserIP(registeredData.nick, userIP);
+            closedSessions.delete(id);
             logActivity('CONNECT', socket.userData);
             await handleJoinRoom(io, socket, { roomName });
         });
@@ -331,30 +340,11 @@ function initializeSocket(io) {
         });
 
         socket.on('disconnect', () => {
-            const socketData = {
+            handleDefinitiveDisconnect(io, {
                 id: socket.id,
                 userData: socket.userData,
                 joinedRooms: Array.from(socket.joinedRooms || [])
-            };
-
-            if (!socketData.userData || !socketData.userData.nick) return;
-
-            socketData.joinedRooms.forEach(roomName => {
-                if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socketData.id]) {
-                    delete roomService.rooms[roomName].users[socketData.id];
-                    roomService.updateUserList(io, roomName);
-                }
             });
-
-            setTimeout(() => {
-                const newSocketIdForUser = roomService.findSocketIdByNick(socketData.userData.nick);
-                if (newSocketIdForUser) {
-                    console.log(`[Graceful Disconnect] ${socketData.userData.nick} se reconectó rápidamente. Se cancela el mensaje de salida.`);
-                    return;
-                }
-                
-                handleDefinitiveDisconnect(io, socketData);
-            }, 5000);
         });
         
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
@@ -397,8 +387,6 @@ function initializeSocket(io) {
                 socket.emit('load private history', { withNick, history });
             });
         });
-        
-        // Los listeners para file-start, private-file-start y file-chunk han sido eliminados.
         
         socket.on('typing', ({ context, to }) => {
             const sender = socket.userData;

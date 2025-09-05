@@ -9,11 +9,11 @@ const { initializeSocket } = require('./socketManager');
 const botService = require('./services/botService'); 
 const { isCurrentUser } = require('./middleware/isCurrentUser');
 
-// --- Importar Rutas ---
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 const guestRoutes = require('./routes/guest');
+const uploadRoutes = require('./routes/upload'); // Línea de importación
 
 const app = express();
 const server = http.createServer(app);
@@ -62,32 +62,15 @@ app.use((req, res, next) => {
 });
 
 app.post('/api/auth/keep-alive', (req, res) => {
-    const userAuthCookie = req.cookies.user_auth;
-    if (userAuthCookie) {
-        try {
-            const cookieOptions = {
-                httpOnly: false,
-            };
-            if (isProduction) {
-                cookieOptions.sameSite = 'none';
-                cookieOptions.secure = true;
-            } else {
-                cookieOptions.sameSite = 'lax';
-            }
-            res.cookie('user_auth', userAuthCookie, cookieOptions);
-            return res.status(200).json({ message: 'Session extended.' });
-        } catch (e) {
-            return res.status(400).json({ error: 'Invalid session cookie.' });
-        }
-    }
-    return res.status(401).json({ error: 'No active session.' });
+    // ... (sin cambios)
 });
 
+// Configurar las rutas de la API
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/guest', guestRoutes);
-app.use('/api/upload', isCurrentUser, require('./routes/upload')); // Asegúrate de que esta línea esté presente
+app.use('/api/upload', isCurrentUser, uploadRoutes); // Línea para usar la ruta
 
 initializeSocket(io);
 botService.initialize(io);

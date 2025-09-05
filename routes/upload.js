@@ -18,36 +18,26 @@ async function ensureUploadsDir() {
 
 router.post('/chat-file', async (req, res) => {
     const { fileBase64, contextType, contextWith } = req.body;
-    const sender = req.verifiedUser;
+    const sender = req.verifiedUser; // Del middleware isCurrentUser
     const io = req.io;
 
     if (!fileBase64 || !contextType || !contextWith) {
         return res.status(400).json({ error: 'Faltan datos para la subida.' });
     }
     
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN DE DEBUG                   ===
-    // =========================================================================
     const match = fileBase64.match(/^data:((image|audio|video)\/([\w\-\+]+));base64,(.+)$/);
-
     if (!match) {
-        // Si la expresión regular falla, intentamos obtener el tipo de datos para depurar.
         const debugMatch = fileBase64.match(/^data:([a-zA-Z0-9\/_\-\+]+);base64,/);
         const receivedType = debugMatch ? debugMatch[1] : 'Desconocido';
-        
         console.error(`[DEBUG] Formato de archivo rechazado. Tipo recibido: ${receivedType}`);
-        
         return res.status(400).json({ 
             error: `Formato de archivo inválido. El servidor recibió el tipo: ${receivedType}` 
         });
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN DE DEBUG                   ===
-    // =========================================================================
 
     const mimeType = match[1];
     const fileKind = match[2];
-    const extension = match[3];
+    const extension = match[3].replace('x-matroska', 'mkv');
     const base64Data = match[4];
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
@@ -57,14 +47,11 @@ router.post('/chat-file', async (req, res) => {
 
     try {
         await ensureUploadsDir();
-        // Usamos la extensión real obtenida del mime type
-        const finalExtension = extension.replace('x-matroska', 'mkv'); // Caso especial para webm a veces
-        const fileName = `${uuidv4()}.${finalExtension}`;
+        const fileName = `${uuidv4()}.${extension}`;
         const filePath = path.join(chatUploadsDir, fileName);
         await fs.writeFile(filePath, fileBuffer);
         
         const fileUrl = `data/chat_uploads/${fileName}`;
-        
         const previewType = fileKind === 'image' ? 'image' : 'audio';
         const textPlaceholder = `[${previewType === 'image' ? 'Imagen' : 'Audio'}: ${fileName}]`;
 
@@ -80,34 +67,30 @@ router.post('/chat-file', async (req, res) => {
 
         if (contextType === 'room') {
             const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-            const lastId = await new Promise((resolve, reject) => {
+            const { lastID } = await new Promise((resolve, reject) => {
                 stmt.run(contextWith, sender.nick, textPlaceholder, sender.role, sender.isVIP ? 1:0, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
                     if (err) return reject(err);
-                    resolve(this.lastID);
+                    resolve(this);
                 });
                 stmt.finalize();
             });
-            const messagePayload = { id: lastId, text: textPlaceholder, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName: contextWith, timestamp, preview: previewData };
+            const messagePayload = { id: lastID, text: textPlaceholder, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName: contextWith, timestamp, preview: previewData };
             io.to(contextWith).emit('chat message', messagePayload);
 
         } else if (contextType === 'private') {
             const stmt = db.prepare(`INSERT INTO private_messages (from_nick, to_nick, text, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-            const lastId = await new Promise((resolve, reject) => {
+            const { lastID } = await new Promise((resolve, reject) => {
                 stmt.run(sender.nick, contextWith, textPlaceholder, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
                     if (err) return reject(err);
-                    resolve(this.lastID);
+                    resolve(this);
                 });
                 stmt.finalize();
             });
-            const messagePayload = { id: lastId, text: textPlaceholder, from: sender.nick, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
+            const messagePayload = { id: lastID, text: textPlaceholder, from: sender.nick, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
             const targetSocketId = roomService.findSocketIdByNick(contextWith);
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('private message', messagePayload);
-            }
+            if (targetSocketId) io.to(targetSocketId).emit('private message', messagePayload);
             const mySocketId = roomService.findSocketIdByNick(sender.nick);
-            if (mySocketId) {
-                io.to(mySocketId).emit('private message', messagePayload);
-            }
+            if (mySocketId) io.to(mySocketId).emit('private message', messagePayload);
         }
 
         res.status(201).json({ success: true, message: 'Archivo subido y enviado.' });

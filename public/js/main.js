@@ -57,15 +57,12 @@ function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
-            // Borra la cookie de sesión de forma robusta para producción y desarrollo
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";
-            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"; // Respaldo para localhost
+            document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             
             if (state.socket) {
                 state.socket.emit('logout');
             }
-            // Limpiamos el token del estado del cliente
-            state.authToken = null;
             
             setTimeout(() => {
                 location.reload();
@@ -73,6 +70,8 @@ function initLogoutButton() {
         });
     }
 }
+
+// LA FUNCIÓN startKeepAlive HA SIDO ELIMINADA
 
 document.addEventListener('DOMContentLoaded', () => {
     state.socket = io({
@@ -120,7 +119,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (userData && userData.id && userData.nick) {
                     console.log("Found session cookie, attempting to re-authenticate...");
-                    state.authToken = null; 
                     state.socket.emit('reauthenticate', userData);
                 }
             } catch (e) {
@@ -150,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initResponsiveHandlers();
     initThemeSwitcher();
     initLogoutButton();
+    // LA LLAMADA A startKeepAlive HA SIDO ELIMINADA
 
     console.log("Cliente de MundoChat inicializado correctamente.");
 });

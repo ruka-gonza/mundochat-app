@@ -60,7 +60,13 @@ app.use((req, res, next) => {
     next();
 });
 
-// La ruta /api/auth/keep-alive ha sido eliminada.
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+// LA RUTA '/api/auth/keep-alive' HA SIDO ELIMINADA POR COMPLETO
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);

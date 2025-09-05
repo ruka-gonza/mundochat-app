@@ -57,14 +57,14 @@ function initLogoutButton() {
     const logoutButton = document.getElementById('logout-button');
     if (logoutButton) {
         logoutButton.addEventListener('click', () => {
-            // Borra la cookie de sesión de forma robusta
+            // Borra la cookie de sesión de forma robusta para producción y desarrollo
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";
             document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;"; // Respaldo para localhost
             
             if (state.socket) {
                 state.socket.emit('logout');
             }
-            // Limpiamos el token del estado
+            // Limpiamos el token del estado del cliente
             state.authToken = null;
             
             setTimeout(() => {
@@ -72,22 +72,6 @@ function initLogoutButton() {
             }, 100); 
         });
     }
-}
-
-function startKeepAlive() {
-    setInterval(() => {
-        if (state.socket && state.socket.connected && state.myNick) {
-            fetch('/api/auth/keep-alive', { method: 'POST' })
-                .then(res => {
-                    if (res.ok) {
-                        console.log('Session keep-alive ping successful.');
-                    } else {
-                        console.warn('Keep-alive ping failed. Session might expire.');
-                    }
-                })
-                .catch(err => console.error('Error sending keep-alive ping:', err));
-        }
-    }, 15 * 60 * 1000); // Cada 15 minutos
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -127,25 +111,20 @@ document.addEventListener('DOMContentLoaded', () => {
         isConnectedBefore = true;
         
         const authCookie = document.cookie.split('; ').find(row => row.startsWith('user_auth='));
+        
         if (authCookie) {
             try {
-                // =========================================================================
-                // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-                // =========================================================================
                 const cookieValue = authCookie.split('=')[1];
                 const decodedCookie = decodeURIComponent(cookieValue);
                 const userData = JSON.parse(decodedCookie);
-                // =========================================================================
-                // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-                // =========================================================================
 
                 if (userData && userData.id && userData.nick) {
-                    // No guardamos el token aquí, esperamos a que el login/join nos dé uno nuevo.
+                    console.log("Found session cookie, attempting to re-authenticate...");
+                    state.authToken = null; 
                     state.socket.emit('reauthenticate', userData);
                 }
             } catch (e) {
-                console.error("Error parsing auth cookie:", e);
-                // Si la cookie está corrupta, la borramos para evitar bucles de errores.
+                console.error("Error parsing auth cookie, clearing it:", e);
                 document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
             }
         }
@@ -171,7 +150,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initResponsiveHandlers();
     initThemeSwitcher();
     initLogoutButton();
-    startKeepAlive();
 
     console.log("Cliente de MundoChat inicializado correctamente.");
 });

@@ -20,30 +20,31 @@ const server = http.createServer(app);
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
-// Simplificamos la configuración de CORS. Esto es más estándar y robusto.
+const allowedOrigins = [
+    'https://mundochat.me',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000'
+];
+
 const corsOptions = {
-    origin: [
-        'https://mundochat.me',
-        'http://localhost:3000',
-        'http://127.0.0.1:3000'
-    ],
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+            callback(null, true);
+        } else {
+            callback(new Error('El acceso a esta API no está permitido por la política de CORS.'));
+        }
+    },
     credentials: true,
 };
 
-app.use(cors(corsOptions)); // Aplicamos a Express
-
 const io = new Server(server, {
-  cors: corsOptions, // Aplicamos LAS MISMAS opciones a Socket.IO
+  cors: corsOptions,
   maxHttpBufferSize: 20 * 1024 * 1024,
   pingInterval: 10000,
   pingTimeout: 5000
 });
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
+
+app.use(cors(corsOptions));
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
@@ -59,27 +60,7 @@ app.use((req, res, next) => {
     next();
 });
 
-app.post('/api/auth/keep-alive', (req, res) => {
-    const userAuthCookie = req.cookies.user_auth;
-    if (userAuthCookie) {
-        try {
-            const cookieOptions = {
-                httpOnly: false,
-            };
-            if (isProduction) {
-                cookieOptions.sameSite = 'none';
-                cookieOptions.secure = true;
-            } else {
-                cookieOptions.sameSite = 'lax';
-            }
-            res.cookie('user_auth', userAuthCookie, cookieOptions);
-            return res.status(200).json({ message: 'Session extended.' });
-        } catch (e) {
-            return res.status(400).json({ error: 'Invalid session cookie.' });
-        }
-    }
-    return res.status(401).json({ error: 'No active session.' });
-});
+// La ruta /api/auth/keep-alive ha sido eliminada.
 
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);

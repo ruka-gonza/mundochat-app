@@ -23,11 +23,10 @@ router.post('/join', async (req, res) => {
     };
     
     const authToken = uuidv4();
-    req.activeTokens.set(authToken, sessionData); // Usa el token desde req
+    req.activeTokens.set(authToken, sessionData);
 
     const cookieOptions = {
         httpOnly: false,
-        maxAge: 3600 * 1000,
     };
 
     if (isProduction) {
@@ -36,6 +35,7 @@ router.post('/join', async (req, res) => {
     } else {
         cookieOptions.sameSite = 'lax';
     }
+    // Al no especificar maxAge, la cookie se borrará al cerrar el navegador.
     res.cookie('user_auth', JSON.stringify(sessionData), cookieOptions);
 
     res.status(200).json({ 

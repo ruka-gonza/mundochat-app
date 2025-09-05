@@ -13,7 +13,6 @@ const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
 const guestRoutes = require('./routes/guest');
-const uploadRoutes = require('./routes/upload');
 
 const app = express();
 const server = http.createServer(app);
@@ -43,9 +42,6 @@ const io = new Server(server, {
   pingInterval: 10000,
   pingTimeout: 5000
 });
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 
 app.use(cors(corsOptions));
 
@@ -53,11 +49,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
 app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
 app.use('/data/chat_uploads', express.static(path.join(__dirname, 'data', 'chat_uploads')));
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 app.use(cookieParser());
 
-// Centralizamos el mapa de tokens y lo inyectamos en cada petición.
 const activeTokens = new Map();
 app.use((req, res, next) => {
     req.io = io;
@@ -71,7 +67,6 @@ app.post('/api/auth/keep-alive', (req, res) => {
         try {
             const cookieOptions = {
                 httpOnly: false,
-                maxAge: 3600 * 1000,
             };
             if (isProduction) {
                 cookieOptions.sameSite = 'none';
@@ -79,6 +74,7 @@ app.post('/api/auth/keep-alive', (req, res) => {
             } else {
                 cookieOptions.sameSite = 'lax';
             }
+            // Al no especificar maxAge, la cookie se mantiene como de sesión.
             res.cookie('user_auth', userAuthCookie, cookieOptions);
             return res.status(200).json({ message: 'Session extended.' });
         } catch (e) {
@@ -88,12 +84,10 @@ app.post('/api/auth/keep-alive', (req, res) => {
     return res.status(401).json({ error: 'No active session.' });
 });
 
-// Configurar las rutas de la API
 app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/guest', guestRoutes);
-app.use('/api/upload', isCurrentUser, uploadRoutes);
 
 initializeSocket(io);
 botService.initialize(io);

@@ -10,6 +10,9 @@ const { v4: uuidv4 } = require('uuid');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+const activeTokens = new Map();
+module.exports.activeTokens = activeTokens;
+
 router.post('/register', async (req, res) => {
     const { nick, email, password } = req.body;
     const ip = req.ip;
@@ -62,11 +65,10 @@ router.post('/login', async (req, res) => {
         
         const sessionData = { id: user.id, nick: user.nick, role: user.role };
         const authToken = uuidv4();
-        req.activeTokens.set(authToken, sessionData); // Usa el token desde req
+        req.activeTokens.set(authToken, sessionData);
 
         const cookieOptions = {
             httpOnly: false,
-            maxAge: 3600 * 1000,
         };
 
         if (isProduction) {
@@ -75,6 +77,7 @@ router.post('/login', async (req, res) => {
         } else {
             cookieOptions.sameSite = 'lax';
         }
+        // Al no especificar maxAge, la cookie se borrará al cerrar el navegador.
         res.cookie('user_auth', JSON.stringify(sessionData), cookieOptions);
 
         res.status(200).json({ 

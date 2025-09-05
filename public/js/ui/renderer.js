@@ -88,7 +88,18 @@ export function createMessageElement(msg, isPrivate = false) {
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
-        quoteDiv.innerHTML = `<strong>${msg.replyTo.nick}</strong><p>${replaceEmoticons(msg.replyTo.text)}</p>`;
+        
+        const quoteNick = document.createElement('strong');
+        quoteNick.textContent = msg.replyTo.nick;
+        
+        const quoteText = document.createElement('p');
+        const previewText = msg.replyTo.text.length > 70 
+            ? msg.replyTo.text.substring(0, 70) + '...' 
+            : msg.replyTo.text;
+        quoteText.textContent = replaceEmoticons(previewText);
+
+        quoteDiv.appendChild(quoteNick);
+        quoteDiv.appendChild(quoteText);
         contentDiv.appendChild(quoteDiv);
     }
     
@@ -109,10 +120,9 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(audioPlayer);
         }
     } else {
-        const textPrefix = isPrivate ? '' : ':&nbsp;';
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
-        textSpan.innerHTML = textPrefix + replaceEmoticons(msg.text);
+        textSpan.innerHTML = replaceEmoticons(msg.text);
         contentDiv.appendChild(textSpan);
     }
 

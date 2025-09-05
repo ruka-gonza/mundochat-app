@@ -21,9 +21,6 @@ router.post('/join', async (req, res) => {
         nick: nick,
         role: 'guest'
     };
-    
-    const authToken = uuidv4();
-    req.activeTokens.set(authToken, sessionData);
 
     const cookieOptions = {
         httpOnly: false,
@@ -35,13 +32,11 @@ router.post('/join', async (req, res) => {
     } else {
         cookieOptions.sameSite = 'lax';
     }
-    // Al no especificar maxAge, la cookie se borrará al cerrar el navegador.
     res.cookie('user_auth', JSON.stringify(sessionData), cookieOptions);
 
     res.status(200).json({ 
         message: "Guest join successful", 
-        userData: sessionData,
-        token: authToken 
+        userData: sessionData
     });
 });
 

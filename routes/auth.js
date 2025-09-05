@@ -10,9 +10,6 @@ const { v4: uuidv4 } = require('uuid');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
-const activeTokens = new Map();
-module.exports.activeTokens = activeTokens;
-
 router.post('/register', async (req, res) => {
     const { nick, email, password } = req.body;
     const ip = req.ip;
@@ -64,8 +61,6 @@ router.post('/login', async (req, res) => {
         }
         
         const sessionData = { id: user.id, nick: user.nick, role: user.role };
-        const authToken = uuidv4();
-        req.activeTokens.set(authToken, sessionData);
 
         const cookieOptions = {
             httpOnly: false,
@@ -77,13 +72,11 @@ router.post('/login', async (req, res) => {
         } else {
             cookieOptions.sameSite = 'lax';
         }
-        // Al no especificar maxAge, la cookie se borrará al cerrar el navegador.
         res.cookie('user_auth', JSON.stringify(sessionData), cookieOptions);
 
         res.status(200).json({ 
             message: "Login successful", 
-            userData: sessionData, 
-            token: authToken 
+            userData: sessionData
         });
     } catch (error) {
         console.error("Error en la ruta /api/auth/login:", error);
@@ -114,7 +107,6 @@ router.post('/forgot-password', async (req, res) => {
         } else {
             res.status(500).json({ error: 'No se pudo enviar el correo de restablecimiento. Inténtalo de nuevo más tarde.' });
         }
-
     } catch (error) {
         console.error('Error en /forgot-password:', error);
         res.status(500).json({ error: 'Error interno del servidor.' });
@@ -162,5 +154,4 @@ router.post('/reset-password', async (req, res) => {
     }
 });
 
-const authRouter = router;
-module.exports = authRouter;
+module.exports = router;

@@ -9,6 +9,7 @@ const { initializeSocket } = require('./socketManager');
 const botService = require('./services/botService'); 
 const { isCurrentUser } = require('./middleware/isCurrentUser');
 
+// --- Importar Rutas ---
 const adminRoutes = require('./routes/admin');
 const userRoutes = require('./routes/user');
 const authRoutes = require('./routes/auth');
@@ -54,10 +55,9 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ limit: '20mb', extended: true }));
 app.use(cookieParser());
 
-const activeTokens = new Map();
+// Middleware simple para inyectar io
 app.use((req, res, next) => {
     req.io = io;
-    req.activeTokens = activeTokens;
     next();
 });
 
@@ -74,7 +74,6 @@ app.post('/api/auth/keep-alive', (req, res) => {
             } else {
                 cookieOptions.sameSite = 'lax';
             }
-            // Al no especificar maxAge, la cookie se mantiene como de sesión.
             res.cookie('user_auth', userAuthCookie, cookieOptions);
             return res.status(200).json({ message: 'Session extended.' });
         } catch (e) {
@@ -88,6 +87,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/user', isCurrentUser, userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/guest', guestRoutes);
+app.use('/api/upload', isCurrentUser, require('./routes/upload')); // Asegúrate de que esta línea esté presente
 
 initializeSocket(io);
 botService.initialize(io);

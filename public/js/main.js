@@ -5,7 +5,7 @@ import { initAuth } from './ui/auth.js';
 import { initChatInput, switchToChat } from './ui/chatInput.js';
 import { initConversations } from './ui/conversations.js';
 import { initModals } from './ui/modals.js';
-import { initUserInteractions } from './ui/userInteractions.js';
+import { initUserInteractions, renderUserList } from './ui/userInteractions.js';
 
 function initResponsiveHandlers() {
     const { conversationsPanel, userListContainer, mobileOverlay } = dom;
@@ -28,6 +28,9 @@ function initResponsiveHandlers() {
         conversationsPanel.classList.remove('show'); 
         userListContainer.classList.toggle('show');
         mobileOverlay.classList.toggle('show', userListContainer.classList.contains('show'));
+        if (userListContainer.classList.contains('show')) {
+            renderUserList();
+        }
     });
     mobileOverlay.addEventListener('click', closePanels);
     privateChatBackButton.addEventListener('click', () => {

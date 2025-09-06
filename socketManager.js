@@ -282,7 +282,7 @@ function initializeSocket(io) {
     io.on('connection', (socket) => {
         
         socket.joinedRooms = new Set();
-        const userIP = socket.handshake.address;
+        const userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
 
         socket.emit('update room data', roomService.getActiveRoomsWithUserCount());
         

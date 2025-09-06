@@ -16,6 +16,7 @@ const guestRoutes = require('./routes/guest');
 const uploadRoutes = require('./routes/upload');
 
 const app = express();
+app.set('trust proxy', 1); // Confía en el primer proxy (ej. Nginx, Cloudflare)
 const server = http.createServer(app);
 
 const isProduction = process.env.NODE_ENV === 'production';

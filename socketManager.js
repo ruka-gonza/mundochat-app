@@ -221,11 +221,13 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.updateUserList(io, roomName);
     
+        /*
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
         if (err) return console.error("Error al cargar historial:", err);
         const history = rows.reverse().map(row => ({ id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId, preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null }));
         socket.emit('load history', { roomName, history });
     });
+    */
     
     roomService.updateRoomData(io);
 }

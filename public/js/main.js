@@ -105,24 +105,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Successfully connected to server for the first time.");
         }
         isConnectedBefore = true;
-        
-        const authCookie = document.cookie.split('; ').find(row => row.startsWith('user_auth='));
-        
-        if (authCookie) {
-            try {
-                const cookieValue = authCookie.split('=')[1];
-                const decodedCookie = decodeURIComponent(cookieValue);
-                const userData = JSON.parse(decodedCookie);
-
-                if (userData && userData.id && userData.nick) {
-                    console.log("Found session cookie, attempting to re-authenticate...");
-                    state.socket.emit('reauthenticate', userData);
-                }
-            } catch (e) {
-                console.error("Error parsing auth cookie, clearing it:", e);
-                document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-            }
-        }
     });
 
     state.socket.on('disconnect', (reason) => {

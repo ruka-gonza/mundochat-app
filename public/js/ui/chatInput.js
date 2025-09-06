@@ -259,7 +259,7 @@ export function initChatInput() {
     let recordingStartTime;
     let recordingInterval;
     let sendButton = document.getElementById('send-icon-button');
-    let hasMicPermission = false;
+    let supportedMimeType = ''; // Variable to store the supported MIME type
 
     function resetAudioRecorderUI() {
         if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
@@ -324,7 +324,24 @@ export function initChatInput() {
             if(imageUploadInput) imageUploadInput.disabled = true;
             dom.emojiButton.disabled = true;
             
-            const options = { mimeType: 'audio/webm; codecs=opus' };
+            // Robust MimeType checking
+            const MimeTypes = [
+                'audio/webm; codecs=opus',
+                'audio/webm',
+                'audio/ogg; codecs=opus',
+                'audio/ogg',
+                'audio/mp4'
+            ];
+            supportedMimeType = MimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+
+            if (!supportedMimeType) {
+                alert('Tu navegador no soporta la grabación de audio o ningún formato compatible.');
+                resetAudioRecorderUI();
+                return;
+            }
+            
+            console.log(`Usando formato de audio: ${supportedMimeType}`);
+            const options = { mimeType: supportedMimeType };
             state.mediaRecorder = new MediaRecorder(stream, options);
             state.audioChunks = [];
 
@@ -333,8 +350,8 @@ export function initChatInput() {
             };
 
             state.mediaRecorder.onstop = () => {
-                const blobOptions = { type: 'audio/webm' };
-                state.audioBlob = new Blob(state.audioChunks, blobOptions);
+                // Use the detected mimeType when creating the Blob
+                state.audioBlob = new Blob(state.audioChunks, { type: supportedMimeType });
                 if (stopBtn) stopBtn.classList.add('hidden');
                 if (sendBtn) sendBtn.classList.remove('hidden');
             };
@@ -376,7 +393,9 @@ export function initChatInput() {
     if (cancelRecordingButton) cancelRecordingButton.addEventListener('click', resetAudioRecorderUI);
     if (sendAudioButton) sendAudioButton.addEventListener('click', () => {
         if (state.audioBlob) {
-            const fileName = `audio-${Date.now()}.webm`;
+            // Dynamically set the file extension based on the supported mimeType
+            const extension = (supportedMimeType || 'audio/webm').split('/')[1].split(';')[0];
+            const fileName = `audio-${Date.now()}.${extension}`;
             handleFileUpload(new File([state.audioBlob], fileName, { type: state.audioBlob.type }));
             resetAudioRecorderUI();
         }

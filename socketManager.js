@@ -75,7 +75,7 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     io.to(roomName).emit('chat message', messagePayload);
 }
 
-function handlePrivateMessage(io, socket, { to, text }) {
+async function handlePrivateMessage(io, socket, { to, text }) {
     const sender = socket.userData;
     if (!sender || !sender.nick) return;
     if (sender.nick.toLowerCase() === to.toLowerCase()) {
@@ -86,62 +86,78 @@ function handlePrivateMessage(io, socket, { to, text }) {
         const timestamp = new Date().toISOString();
         const messagePayload = { text, from: sender.nick, to: to, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
         const stmt = db.prepare('INSERT INTO private_messages (from_nick, to_nick, text, timestamp) VALUES (?, ?, ?, ?)');
-        stmt.run(sender.nick, to, text, timestamp, function(err) {
-            if (err) { console.error("Error guardando mensaje privado:", err); return; }
-            messagePayload.id = this.lastID;
-            io.to(targetSocketId).emit('private message', messagePayload);
-            socket.emit('private message', messagePayload);
+        await new Promise((resolve, reject) => {
+            stmt.run(sender.nick, to, text, timestamp, function(err) {
+                if (err) { console.error("Error guardando mensaje privado:", err); return reject(err); }
+                messagePayload.id = this.lastID;
+                io.to(targetSocketId).emit('private message', messagePayload);
+                socket.emit('private message', messagePayload);
+                resolve();
+            });
+            stmt.finalize();
         });
-        stmt.finalize();
     } else {
         socket.emit('system message', { text: `El usuario '${to}' no se encuentra conectado.`, type: 'error' });
     }
 }
 
-function handleEditMessage(io, socket, { messageId, newText, roomName }) {
+async function handleEditMessage(io, socket, { messageId, newText, roomName }) {
     const senderNick = socket.userData.nick;
     if (!messageId || !newText || !roomName) return;
-    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
-        if (err || !row) return;
-        if (row.nick.toLowerCase() === senderNick.toLowerCase()) {
+    const row = await new Promise((resolve, reject) => {
+        db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
+    });
+    if (row && row.nick.toLowerCase() === senderNick.toLowerCase()) {
+        await new Promise((resolve, reject) => {
             const stmt = db.prepare('UPDATE messages SET text = ?, editedAt = ? WHERE id = ?');
             stmt.run(newText, new Date().toISOString(), messageId, function(err) {
-                if (err) return;
+                if (err) return reject(err);
                 io.to(roomName).emit('message edited', { messageId, newText, roomName });
+                resolve();
             });
             stmt.finalize();
-        }
-    });
+        });
+    }
 }
 
-function handleDeleteMessage(io, socket, { messageId, roomName }) {
+async function handleDeleteMessage(io, socket, { messageId, roomName }) {
     const senderNick = socket.userData.nick;
     if (!messageId || !roomName) return;
-    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
-        if (err || !row) return;
-        if (row.nick.toLowerCase() === senderNick.toLowerCase()) {
-            db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
-                if (err) return;
-                io.to(roomName).emit('message deleted', { messageId, roomName });
-            });
-        }
+    const row = await new Promise((resolve, reject) => {
+        db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
     });
+    if (row && row.nick.toLowerCase() === senderNick.toLowerCase()) {
+        await new Promise((resolve, reject) => {
+            db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
+                if (err) return reject(err);
+                io.to(roomName).emit('message deleted', { messageId, roomName });
+                resolve();
+            });
+        });
+    }
 }
 
-function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
+async function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
     const sender = socket.userData;
-    if (!['owner', 'admin'].includes(sender.role)) { return socket.emit('system message', { text: 'No tienes permiso para realizar esta acción.', type: 'error', roomName }); }
+    if (!['owner', 'admin'].includes(sender.role)) { 
+        return socket.emit('system message', { text: 'No tienes permiso para realizar esta acción.', type: 'error', roomName }); 
+    }
     if (!messageId || !roomName) return;
-    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
-        if (err || !row) return;
-        const originalAuthor = row.nick;
-        db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
-            if (err) { console.error("Error al borrar mensaje por moderador:", err); return; }
-            io.to(roomName).emit('message deleted', { messageId, roomName });
-            const logMessage = `[MOD_DELETE] ${sender.nick} ha borrado un mensaje de ${originalAuthor} en la sala ${roomName}.`;
-            io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
-        });
+    const row = await new Promise((resolve, reject) => {
+        db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
     });
+    if (row) {
+        const originalAuthor = row.nick;
+        await new Promise((resolve, reject) => {
+            db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
+                if (err) { console.error("Error al borrar mensaje por moderador:", err); return reject(err); }
+                io.to(roomName).emit('message deleted', { messageId, roomName });
+                const logMessage = `[MOD_DELETE] ${sender.nick} ha borrado un mensaje de ${originalAuthor} en la sala ${roomName}.`;
+                io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+                resolve();
+            });
+        });
+    }
 }
 
 async function checkBanStatus(socket, idToCheck, ip) {
@@ -221,7 +237,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.updateUserList(io, roomName);
     
-        /*
+    /*
     db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
         if (err) return console.error("Error al cargar historial:", err);
         const history = rows.reverse().map(row => ({ id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId, preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null }));
@@ -235,10 +251,8 @@ async function handleJoinRoom(io, socket, { roomName }) {
 function handleDefinitiveDisconnect(io, socketData) {
     if (!socketData.userData || !socketData.userData.nick) return;
 
-    // Añadimos el ID a la lista de sesiones cerradas
     closedSessions.add(socketData.userData.id);
-    // Programamos su borrado para no llenar la memoria
-    setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000); // 5 minutos
+    setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000);
 
     logActivity('DISCONNECT', socketData.userData);
     io.emit('user disconnected', { nick: socketData.userData.nick });
@@ -265,7 +279,7 @@ function handleDefinitiveDisconnect(io, socketData) {
 
 function initializeSocket(io) {
     global.io = io;
-    io.on('connection', async (socket) => {
+    io.on('connection', (socket) => {
         
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.address;
@@ -275,48 +289,67 @@ function initializeSocket(io) {
         vpnCheckService.isVpn(userIP).catch(err => console.error("Error en VPN Check:", err));
 
         socket.on('reauthenticate', async (cookieData) => {
-            if (closedSessions.has(cookieData.id)) {
-                console.log(`Re-autenticación rechazada para ${cookieData.nick} (sesión cerrada).`);
-                return socket.emit('reauth_failed');
+            try {
+                if (closedSessions.has(cookieData.id)) {
+                    return socket.emit('reauth_failed');
+                }
+                
+                const userInDb = await userService.findUserById(cookieData.id);
+                if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
+                    return socket.emit('reauth_failed');
+                }
+                
+                socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: userIP, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
+                closedSessions.delete(userInDb.id);
+                socket.emit('reauth_success');
+            } catch (error) {
+                console.error(`Error en el evento 'reauthenticate':`, error);
             }
-            
-            const userInDb = await userService.findUserById(cookieData.id);
-            if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
-                return socket.emit('reauth_failed');
-            }
-            
-            socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: userIP, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
-            closedSessions.delete(userInDb.id);
-            console.log(`Usuario ${userInDb.nick} re-autenticado con éxito.`);
-            socket.emit('reauth_success');
         });
 
         socket.on('guest_join', async (data) => {
-            const { nick, roomName, id } = data;
-            if (!nick || !roomName) return; 
-            if (await checkBanStatus(socket, null, userIP)) return;
-            
-            socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
-            roomService.guestSocketMap.set(id, socket.id);
-            closedSessions.delete(id);
-            logActivity('CONNECT', socket.userData);
-            await handleJoinRoom(io, socket, { roomName });
+            try {
+                const { nick, roomName, id } = data;
+                if (!nick || !roomName) return; 
+                if (await checkBanStatus(socket, null, userIP)) return;
+                
+                socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
+                roomService.guestSocketMap.set(id, socket.id);
+                closedSessions.delete(id);
+                logActivity('CONNECT', socket.userData);
+                await handleJoinRoom(io, socket, { roomName });
+            } catch (error) {
+                console.error(`Error en el evento 'guest_join':`, error);
+                socket.emit('system message', { text: 'Ocurrió un error al intentar unirte como invitado.', type: 'error' });
+            }
         });
 
         socket.on('login', async (data) => {
-            const { nick, id, roomName } = data;
-            if (await checkBanStatus(socket, id, userIP)) return;
-            const registeredData = await userService.findUserById(id);
-            if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
-            
-            socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
-            await userService.updateUserIP(registeredData.nick, userIP);
-            closedSessions.delete(id);
-            logActivity('CONNECT', socket.userData);
-            await handleJoinRoom(io, socket, { roomName });
+            try {
+                const { nick, id, roomName } = data;
+                if (await checkBanStatus(socket, id, userIP)) return;
+                const registeredData = await userService.findUserById(id);
+                if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
+                
+                socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
+                await userService.updateUserIP(registeredData.nick, userIP);
+                closedSessions.delete(id);
+                logActivity('CONNECT', socket.userData);
+                await handleJoinRoom(io, socket, { roomName });
+            } catch (error) {
+                console.error(`Error en el evento 'login':`, error);
+                socket.emit('auth_error', { message: 'Ocurrió un error interno al iniciar sesión.' });
+            }
         });
         
-        socket.on('join room', (data) => handleJoinRoom(io, socket, data));
+        socket.on('join room', async (data) => {
+            try {
+                await handleJoinRoom(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'join room':`, error);
+                socket.emit('system message', { text: 'Ocurrió un error al unirte a la sala.', type: 'error' });
+            }
+        });
         
         socket.on('leave room', (data) => {
             const { roomName } = data;
@@ -350,11 +383,49 @@ function initializeSocket(io) {
         });
         
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
-        socket.on('chat message', (data) => handleChatMessage(io, socket, data));
-        socket.on('edit message', (data) => handleEditMessage(io, socket, data));
-        socket.on('delete message', (data) => handleDeleteMessage(io, socket, data));
-        socket.on('delete any message', (data) => handleDeleteAnyMessage(io, socket, data));
-        socket.on('private message', (data) => handlePrivateMessage(io, socket, data));
+        
+        socket.on('chat message', async (data) => {
+            try {
+                await handleChatMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'chat message':`, error);
+                socket.emit('system message', { text: 'Ocurrió un error al procesar tu mensaje.', type: 'error', roomName: data.roomName || '' });
+            }
+        });
+
+        socket.on('edit message', async (data) => {
+            try {
+                await handleEditMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'edit message':`, error);
+            }
+        });
+
+        socket.on('delete message', async (data) => {
+            try {
+                await handleDeleteMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'delete message':`, error);
+            }
+        });
+
+        socket.on('delete any message', async (data) => {
+            try {
+                await handleDeleteAnyMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'delete any message':`, error);
+            }
+        });
+
+        socket.on('private message', async (data) => {
+            try {
+                await handlePrivateMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'private message':`, error);
+                socket.emit('system message', { text: 'Ocurrió un error al enviar tu mensaje privado.', type: 'error' });
+            }
+        });
+
         socket.on('request private chat', ({ targetNick }) => {
             const sender = socket.userData;
             if (!sender || !sender.nick) return;
@@ -368,26 +439,30 @@ function initializeSocket(io) {
         });
         
         socket.on('request private history', ({ withNick }) => {
-            const myNick = socket.userData.nick;
-            if (!myNick || !withNick) return;
-            const query = `
-                SELECT id, from_nick, to_nick, text, timestamp, 
-                       preview_type, preview_url, preview_title, preview_description, preview_image 
-                FROM private_messages 
-                WHERE (from_nick = ? AND to_nick = ?) OR (from_nick = ? AND to_nick = ?) 
-                ORDER BY timestamp DESC LIMIT 50`;
-            db.all(query, [myNick, withNick, withNick, myNick], (err, rows) => {
-                if (err) { console.error("Error al cargar historial privado:", err); return; }
-                const history = rows.reverse().map(row => ({ 
-                    id: row.id, 
-                    text: row.text, 
-                    from: row.from_nick, 
-                    to: row.to_nick, 
-                    timestamp: row.timestamp,
-                    preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null
-                }));
-                socket.emit('load private history', { withNick, history });
-            });
+            try {
+                const myNick = socket.userData.nick;
+                if (!myNick || !withNick) return;
+                const query = `
+                    SELECT id, from_nick, to_nick, text, timestamp, 
+                           preview_type, preview_url, preview_title, preview_description, preview_image 
+                    FROM private_messages 
+                    WHERE (from_nick = ? AND to_nick = ?) OR (from_nick = ? AND to_nick = ?) 
+                    ORDER BY timestamp DESC LIMIT 50`;
+                db.all(query, [myNick, withNick, withNick, myNick], (err, rows) => {
+                    if (err) { console.error("Error al cargar historial privado:", err); return; }
+                    const history = rows.reverse().map(row => ({
+                        id: row.id, 
+                        text: row.text, 
+                        from: row.from_nick, 
+                        to: row.to_nick, 
+                        timestamp: row.timestamp,
+                        preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null
+                    }));
+                    socket.emit('load private history', { withNick, history });
+                });
+            } catch (error) {
+                console.error(`Error en el evento 'request private history':`, error);
+            }
         });
         
         socket.on('typing', ({ context, to }) => {

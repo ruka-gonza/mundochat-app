@@ -77,6 +77,13 @@ function setupForgotPasswordModal() {
 export function initAuth() {
     setupAuthTabs();
     setupForgotPasswordModal();
+
+    dom.togglePassword.addEventListener('click', () => {
+        const passwordInput = dom.loginPasswordInput;
+        const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+        passwordInput.setAttribute('type', type);
+        dom.togglePassword.textContent = type === 'password' ? '👁️' : '🙈';
+    });
     
     dom.guestJoinButton.addEventListener('click', async () => {
         unlockAudioContext();

@@ -26,7 +26,10 @@
             </div>
             <div id="login-form" class="auth-form hidden">
                 <input type="text" id="login-nick-input" placeholder="Tu Nick Registrado" autocomplete="username" maxlength="15">
-                <input type="password" id="login-password-input" placeholder="Contraseña" autocomplete="current-password">
+                <div class="password-container">
+                    <input type="password" id="login-password-input" placeholder="Contraseña" autocomplete="current-password">
+                    <span id="toggle-password">👁️</span>
+                </div>
                 <label for="login-room-select" class="room-label">Selecciona una sala:</label>
                 <select id="login-room-select"></select>
                 <button id="login-button">Entrar al Chat</button>

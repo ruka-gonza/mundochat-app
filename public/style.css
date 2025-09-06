@@ -328,3 +328,15 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
 #form.is-recording #input, #form.is-recording #emoji-button, #form.is-recording .file-label, #form.is-recording #send-icon-button, #form.is-recording #record-audio-button { display: none; }
 #audio-recording-controls { display: flex; align-items: center; gap: 8px; background-color: var(--bg-hover); padding: 4px 8px; border-radius: 20px; flex-grow: 1; justify-content: space-between; }
 #recording-timer { font-weight: 600; color: var(--text-secondary); font-family: monospace; font-size: 0.9em; margin: 0 10px; }
+
+.password-container {
+    position: relative;
+}
+
+#toggle-password {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    cursor: pointer;
+}

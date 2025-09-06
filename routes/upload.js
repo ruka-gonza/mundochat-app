@@ -25,9 +25,9 @@ router.post('/chat-file', async (req, res) => {
         return res.status(400).json({ error: 'Faltan datos para la subida.' });
     }
     
-    const match = fileBase64.match(/^data:((image|audio|video)\/([\w\-\+]+));base64,(.+)$/);
+    const match = fileBase64.match(/^data:((image|audio|video)\/([a-zA-Z0-9\w\-\+]+)(;[a-zA-Z0-9\w\-\+=;.\s]*)?);base64,(.+)$/);
     if (!match) {
-        const debugMatch = fileBase64.match(/^data:([a-zA-Z0-9\/_\-\+]+);base64,/);
+        const debugMatch = fileBase64.match(/^data:([a-zA-Z0-9\/_\-\+;=\s]+);base64,/);
         const receivedType = debugMatch ? debugMatch[1] : 'Desconocido';
         console.error(`[DEBUG] Formato de archivo rechazado. Tipo recibido: ${receivedType}`);
         return res.status(400).json({ 
@@ -37,8 +37,9 @@ router.post('/chat-file', async (req, res) => {
 
     const mimeType = match[1];
     const fileKind = match[2];
-    const extension = match[3].replace('x-matroska', 'mkv');
-    const base64Data = match[4];
+    // Tomar solo la parte principal de la extensión, antes de cualquier ';'
+    const extension = match[3].split(';')[0].replace('x-matroska', 'mkv'); 
+    const base64Data = match[5];
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
     if (fileBuffer.length > 15 * 1024 * 1024) {

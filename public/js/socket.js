@@ -341,10 +341,7 @@ export function initializeSocketEvents(socket) {
             if (messageElement) {
                 const textSpan = messageElement.querySelector('.message-text');
                 if (textSpan) {
-                    const nickElement = textSpan.querySelector('.message-nick');
-                    textSpan.innerHTML = '';
-                    if (nickElement) textSpan.appendChild(nickElement);
-                    textSpan.append(replaceEmoticons(newText));
+                    textSpan.innerHTML = replaceEmoticons(newText);
                 }
                 let editedIndicator = messageElement.querySelector('.edited-indicator');
                 if (!editedIndicator) {

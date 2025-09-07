@@ -3,7 +3,7 @@ const router = express.Router();
 const banService = require('../services/banService');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
-const db = require('../services/db-connection');
+const db = require('../services/db-connection').getInstance();
 
 // =========================================================================
 // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===

@@ -1,4 +1,5 @@
 const userService = require('../services/userService');
+const { closedSessions } = require('../socketManager');
 
 const isCurrentUser = async (req, res, next) => {
     try {

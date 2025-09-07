@@ -1,6 +1,6 @@
 import state from './state.js';
 import * as dom from './domElements.js';
-import { showNotification } from './utils.js';
+import { showNotification, replaceEmoticons } from './utils.js';
 import { addPrivateChat, updateConversationList } from './ui/conversations.js'; 
 import { renderUserList } from './ui/userInteractions.js';
 import { appendMessageToView, createMessageElement } from './ui/renderer.js';

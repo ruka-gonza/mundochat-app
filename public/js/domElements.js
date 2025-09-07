@@ -9,6 +9,7 @@ export const guestRoomSelect = document.getElementById('guest-room-select');
 export const guestJoinButton = document.getElementById('guest-join-button');
 export const loginNickInput = document.getElementById('login-nick-input');
 export const loginPasswordInput = document.getElementById('login-password-input');
+export const togglePassword = document.getElementById('toggle-password');
 export const loginRoomSelect = document.getElementById('login-room-select');
 export const loginButton = document.getElementById('login-button');
 export const registerNickInput = document.getElementById('register-nick-input');

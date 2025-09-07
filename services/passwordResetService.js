@@ -1,4 +1,4 @@
-const db = require('./db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
+const db = require('./db-connection').getInstance(); // <-- USA LA CONEXIÓN COMPARTIDA
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const config = require('../config');

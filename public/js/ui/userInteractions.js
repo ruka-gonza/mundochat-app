@@ -1,32 +1,27 @@
 import state from '../state.js';
 import * as dom from '../domElements.js';
-import { getUserIcons, replaceEmoticons } from '../utils.js';
+import { getUserIcons } from '../utils.js';
 import { switchToChat, showReplyContextBar } from './chatInput.js';
+import { openImageModal, fetchWithCredentials } from './modals.js';
 
 function showSelfContextMenu(event) {
-    // --- INICIO DE LA CORRECCIÓN CRÍTICA ---
-    // Solo prevenimos la acción por defecto si es un clic derecho (contextmenu)
     if (event.type === 'contextmenu') {
         event.preventDefault();
     }
-    // --- FIN DE LA CORRECCIÓN CRÍTICA ---
     event.stopPropagation();
 
     const menu = document.getElementById('self-context-menu');
     const afkButton = document.getElementById('self-afk-button');
     const avatarLabel = document.getElementById('self-avatar-label-guest');
 
-    // Lógica del botón AFK
     afkButton.textContent = state.isAFK ? 'Volver' : 'Ausentar';
     afkButton.onclick = () => {
         state.socket.emit('toggle afk');
         menu.classList.add('hidden');
     };
 
-    // Lógica para el botón de avatar de invitado
     if (state.myUserData.role === 'guest') {
         avatarLabel.classList.remove('hidden');
-        // El clic en la label ya abre el input, no necesita un .onclick
     } else {
         avatarLabel.classList.add('hidden');
     }
@@ -36,43 +31,50 @@ function showSelfContextMenu(event) {
     menu.classList.remove('hidden');
 }
 
-// Nueva función para manejar la subida del archivo del invitado
 async function handleGuestAvatarUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Ocultar el menú contextual si sigue abierto
     document.getElementById('self-context-menu').classList.add('hidden');
 
-    const formData = new FormData();
-    formData.append('avatarFile', file);
-    formData.append('guestId', state.myUserData.id); // Enviamos el UUID del invitado
-
-    try {
-        const response = await fetch('/api/guest/avatar', {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await response.json();
-        
-        if (!response.ok) {
-            alert(`Error: ${result.error || 'No se pudo subir la imagen.'}`);
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+        const avatarBase64 = reader.result;
+        try {
+            await fetchWithCredentials('/api/user/avatar', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ avatarBase64 })
+            });
+        } catch (error) {
+            console.error('Error al subir avatar de invitado:', error);
+            alert('Hubo un error de conexión al subir el avatar: ' + error.message);
+        } finally {
+            event.target.value = '';
         }
-        // No es necesario hacer nada más, el evento 'user_data_updated' del servidor se encargará
-        
-    } catch (error) {
-        console.error('Error al subir avatar de invitado:', error);
-        alert('Hubo un error de conexión al subir el avatar.');
-    } finally {
-        // Limpiar el input para permitir subir la misma imagen de nuevo si se desea
-        event.target.value = '';
-    }
+    };
+    reader.onerror = error => {
+        console.error('Error al leer el archivo para Base64:', error);
+        alert('No se pudo procesar el archivo seleccionado.');
+    };
 }
 
 export function renderUserList() {
     const searchTerm = dom.userSearchInput.value.toLowerCase().trim();
-    const filteredUsers = state.currentRoomUsers.filter(user => user.nick.toLowerCase().includes(searchTerm));
+    
+    const uniqueUsers = [];
+    const seenNicks = new Set();
+    state.currentRoomUsers.forEach(user => {
+        const lowerNick = user.nick.toLowerCase();
+        if (!seenNicks.has(lowerNick)) {
+            seenNicks.add(lowerNick);
+            uniqueUsers.push(user);
+        }
+    });
+
+    const filteredUsers = uniqueUsers.filter(user => user.nick.toLowerCase().includes(searchTerm));
+    
     dom.userList.innerHTML = '';
     dom.userCount.textContent = filteredUsers.length;
 
@@ -82,6 +84,8 @@ export function renderUserList() {
         const item = document.createElement('li');
         item.className = 'user-list-item';
         
+        item.dataset.socketId = user.socketId;
+
         if (state.ignoredNicks.has(user.nick.toLowerCase())) {
             item.classList.add('ignored');
         }
@@ -97,8 +101,8 @@ export function renderUserList() {
 
         if (user.nick === state.myNick) {
             item.classList.add('self');
-            item.addEventListener('contextmenu', (e) => showSelfContextMenu(e)); // Clic derecho
-            item.addEventListener('click', (e) => showSelfContextMenu(e));       // Clic izquierdo
+            item.addEventListener('contextmenu', (e) => showSelfContextMenu(e));
+            item.addEventListener('click', (e) => showSelfContextMenu(e));
         } else {
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -169,7 +173,8 @@ function showNickContextMenu(event, nick, messageId) {
         const textElement = messageElement.querySelector('.message-text');
         if (textElement) {
             const textContentClone = textElement.cloneNode(true);
-            textContentClone.querySelector('.message-nick').remove();
+            const nickElementInClone = textContentClone.querySelector('.message-nick');
+            if (nickElementInClone) nickElementInClone.remove();
             
             state.replyingTo = {
                 id: messageId,
@@ -243,18 +248,27 @@ function hideAvatarPopup() {
     }, 200);
 }
 
-function openImageModal(imageSrc) {
-    if (dom.modalImage && dom.imageModalOverlay) {
-        dom.modalImage.src = imageSrc;
-        dom.imageModalOverlay.classList.remove('hidden');
-    }
-}
-
 function closeImageModal() {
     if (dom.imageModalOverlay) {
         dom.imageModalOverlay.classList.add('hidden');
         dom.modalImage.src = '';
     }
+}
+
+function createYoutubeEmbed(youtubeId, targetContainer) {
+    const embedWrapper = document.createElement('div');
+    embedWrapper.className = 'youtube-embed-wrapper';
+    
+    const iframe = document.createElement('iframe');
+    iframe.src = `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1`;
+    iframe.title = "Reproductor de video de YouTube";
+    iframe.frameBorder = "0";
+    iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+    iframe.allowFullscreen = true;
+    
+    embedWrapper.appendChild(iframe);
+    
+    targetContainer.parentNode.replaceChild(embedWrapper, targetContainer);
 }
 
 export function initUserInteractions() {
@@ -285,29 +299,35 @@ export function initUserInteractions() {
             e.stopPropagation();
             showAvatarPopup(avatar);
         }
-    });
 
-    dom.messagesContainer.addEventListener('click', (e) => {
-        if (e.target.classList.contains('image-thumbnail')) {
-            e.stopPropagation();
-            openImageModal(e.target.src);
+        const chatImage = e.target.closest('.media-message.image-message');
+        if (chatImage) {
+            e.preventDefault();
+            openImageModal(chatImage.src);
             return;
         }
+        
+        const previewCard = e.target.closest('.link-preview-card');
+        if (previewCard && previewCard.dataset.previewType === 'youtube') {
+            e.preventDefault();
+            createYoutubeEmbed(previewCard.dataset.youtubeId, previewCard);
+            return;
+        }
+        
+        const currentlyVisible = document.querySelector('#messages > li.actions-visible, #private-chat-window li.actions-visible');
+        if (currentlyVisible && !e.target.closest('li')) {
+            currentlyVisible.classList.remove('actions-visible');
+        }
 
+        const messageItem = e.target.closest('li[id^="message-"]');
+        if (messageItem && currentlyVisible && currentlyVisible !== messageItem) {
+            currentlyVisible.classList.remove('actions-visible');
+        }
+        if (messageItem) {
+            messageItem.classList.toggle('actions-visible');
+        }
+        
         const actionButton = e.target.closest('.action-btn');
-        const nickElement = e.target.closest('.message-nick');
-
-        if (nickElement && nickElement.dataset.nick) {
-            const nick = nickElement.dataset.nick;
-            const messageId = nickElement.dataset.messageId;
-            if (nick === state.myNick) {
-                showSelfContextMenu(e);
-            } else {
-                showNickContextMenu(e, nick, messageId);
-            }
-            return;
-        }
-
         if (actionButton) {
             e.stopPropagation();
             const messageId = actionButton.dataset.messageId;
@@ -325,24 +345,14 @@ export function initUserInteractions() {
             return;
         }
 
-        const messageContentClicked = e.target.closest('.message-content');
-        const currentlyVisible = document.querySelector('#messages > li.actions-visible');
-
-        if (messageContentClicked) {
+        const headerElement = e.target.closest('.message-header');
+        if (headerElement && headerElement.dataset.nick) {
             e.stopPropagation();
-            const messageItem = messageContentClicked.closest('li');
-
-            if (currentlyVisible && currentlyVisible !== messageItem) {
-                currentlyVisible.classList.remove('actions-visible');
-            }
-
-            if (messageItem) {
-                messageItem.classList.toggle('actions-visible');
-            }
-        } else {
-            if (currentlyVisible) {
-                currentlyVisible.classList.remove('actions-visible');
-            }
+            const nick = headerElement.dataset.nick;
+            const messageId = headerElement.dataset.messageId;
+            if (nick === state.myNick) showSelfContextMenu(e);
+            else showNickContextMenu(e, nick, messageId);
+            return;
         }
     });
 

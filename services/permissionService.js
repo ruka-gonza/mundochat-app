@@ -1,5 +1,5 @@
 const userService = require('./userService');
-const db = require('./db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
+const db = require('./db-connection').getInstance(); // <-- USA LA CONEXIÓN COMPARTIDA
 
 /**
  * Determina el rol efectivo de un usuario en una sala específica.

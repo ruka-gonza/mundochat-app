@@ -1,4 +1,4 @@
-const db = require('./db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
+const db = require('./db-connection').getInstance(); // <-- USA LA CONEXIÓN COMPARTIDA
 
 function isUserBanned(persistentId) {
     return new Promise((resolve, reject) => {

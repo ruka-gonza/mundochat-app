@@ -2,10 +2,8 @@ const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
-// La base de datos vivirá en un directorio 'data' dentro de tu proyecto
 const dbPath = './data/chat.db';
 
-// Crear el directorio 'data' si no existe antes de intentar conectar
 const dataDir = path.dirname(dbPath);
 if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -14,10 +12,24 @@ if (!fs.existsSync(dataDir)) {
 
 const db = new sqlite3.Database(dbPath);
 
-db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
+db.serialize(async () => {
     console.log('Creando/actualizando tablas para la base de datos...');
 
-    // Crear la tabla 'users'
+    // Función auxiliar para añadir columnas si no existen
+    const addColumn = async (tableName, columnName, columnDef) => {
+        return new Promise(resolve => {
+            db.run(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDef}`, (err) => {
+                if (err && !err.message.includes("duplicate column name")) {
+                    console.error(`Error añadiendo columna '${columnName}' a '${tableName}':`, err.message);
+                } else if (!err) {
+                    console.log(`Columna '${columnName}' añadida a la tabla '${tableName}'.`);
+                }
+                resolve();
+            });
+        });
+    };
+
+    // --- Tabla 'users' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS users (
@@ -39,20 +51,9 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
             resolve();
         });
     });
+    await addColumn('users', 'email', 'TEXT UNIQUE');
 
-    // Añadir columna 'email' de forma asíncrona y esperar que termine
-    await new Promise(resolve => {
-        db.run("ALTER TABLE users ADD COLUMN email TEXT UNIQUE", (alterErr) => {
-            if (alterErr && !alterErr.message.includes("duplicate column name")) {
-                console.error("Error al añadir columna 'email' a la tabla users:", alterErr.message);
-            } else if (!alterErr) {
-                console.log("Columna 'email' añadida a la tabla 'users'.");
-            }
-            resolve();
-        });
-    });
-
-    // Nueva tabla para almacenar los roles específicos de cada sala
+    // --- Tabla 'room_staff' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS room_staff (
@@ -72,7 +73,7 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
         });
     });
 
-    // Nueva tabla 'rooms'
+    // --- Tabla 'rooms' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS rooms (
@@ -90,7 +91,7 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
         });
     });
 
-    // Resto de las tablas
+    // --- Tabla 'banned_users' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS banned_users (
@@ -108,6 +109,7 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
         });
     });
 
+    // --- Tabla 'messages' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS messages (
@@ -118,8 +120,8 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
                 role TEXT NOT NULL,
                 isVIP INTEGER NOT NULL,
                 timestamp TEXT NOT NULL,
-                editedAt TEXT DEFAULT NULL,
-                replyToId INTEGER DEFAULT NULL 
+                editedAt TEXT DEFAULT NULL, 
+                replyToId INTEGER DEFAULT NULL
             )
         `, (err) => {
             if (err) console.error("Error creando tabla messages:", err.message);
@@ -127,25 +129,34 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
             resolve();
         });
     });
-    
-    await new Promise(resolve => {
-        db.run("ALTER TABLE messages ADD COLUMN replyToId INTEGER DEFAULT NULL", (alterErr) => {
-            if (alterErr && !alterErr.message.includes("duplicate column name")) {
-                console.error("Error al añadir columna 'replyToId' a la tabla messages:", alterErr.message);
-            } else if (!alterErr) {
-                console.log("Columna 'replyToId' añadida a la tabla 'messages'.");
-            }
+    // Añadir columnas de previsualización
+    await addColumn('messages', 'preview_type', 'TEXT');
+    await addColumn('messages', 'preview_url', 'TEXT');
+    await addColumn('messages', 'preview_title', 'TEXT');
+    await addColumn('messages', 'preview_description', 'TEXT');
+    await addColumn('messages', 'preview_image', 'TEXT');
+    await addColumn('messages', 'replyToId', 'INTEGER DEFAULT NULL');
+
+     await new Promise(resolve => {
+        db.run(`
+            CREATE INDEX IF NOT EXISTS idx_messages_room_timestamp 
+            ON messages (roomName, timestamp DESC)
+        `, (err) => {
+            if (err) console.error("Error creando índice para messages:", err.message);
+            else console.log("Índice 'idx_messages_room_timestamp' creado o ya existente.");
             resolve();
         });
     });
-
+  
+    
+    // --- Tabla 'private_messages' (MODIFICADA) ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS private_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 from_nick TEXT NOT NULL,
                 to_nick TEXT NOT NULL,
-                text TEXT NOT NULL,
+                text TEXT,
                 timestamp TEXT NOT NULL
             )
         `, (err) => {
@@ -154,7 +165,15 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
             resolve();
         });
     });
-
+    
+    // Añadimos las columnas de previsualización para archivos en mensajes privados
+    await addColumn('private_messages', 'preview_type', 'TEXT');
+    await addColumn('private_messages', 'preview_url', 'TEXT');
+    await addColumn('private_messages', 'preview_title', 'TEXT');
+    await addColumn('private_messages', 'preview_description', 'TEXT');
+    await addColumn('private_messages', 'preview_image', 'TEXT');
+    
+    // --- Tabla 'activity_logs' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS activity_logs (
@@ -174,6 +193,7 @@ db.serialize(async () => { // <--- Añadido 'async' aquí para permitir 'await'
         });
     });
 
+    // --- Tabla 'password_reset_tokens' ---
     await new Promise(resolve => {
         db.run(`
             CREATE TABLE IF NOT EXISTS password_reset_tokens (

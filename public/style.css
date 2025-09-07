@@ -85,7 +85,7 @@ body {
 #action-buttons-container { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 5px; }
 #profile-button, #admin-panel-button { width: 100%; background: var(--bg-content); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; cursor: pointer; font-weight: 600; transition: background-color 0.2s, border-color 0.2s; }
 #profile-button:hover { background-color: var(--bg-hover); border-color: #ccc; }
-#admin-panel-button { background-color: #c0392b; color: white; border: none; }
+#admin-panel-button { background-color: #5604fa; color: white; border: none; }
 #admin-panel-button:hover { background-color: #a53125; }
 
 .user-search-wrapper { position: relative; margin: 0 10px 15px 10px; }

@@ -361,7 +361,7 @@ function initializeSocket(io) {
             if (roomService.rooms[roomName].users[socket.id]) delete roomService.rooms[roomName].users[socket.id];
             socket.emit('leave_success', { roomName, joinedRooms: Array.from(socket.joinedRooms) });
             socket.to(roomName).emit('system message', { text: `${socket.userData.nick} ha abandonado la sala.`, type: 'leave', roomName });
-            if (Object.keys(roomService.rooms[roomName].users).length === 0 && !roomService.DEFAULT_ROOMS.includes(roomName) && roomName !== roomService.MOD_LOG_ROOM) { delete roomService.rooms[roomName]; } else { roomService.updateUserList(io, roomName); }
+            roomService.updateUserList(io, roomName);
             roomService.updateRoomData(io);
         });
 

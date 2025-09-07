@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../services/db-connection');
+const db = require('../services/db-connection').getInstance();
 const fs = require('fs').promises;
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');

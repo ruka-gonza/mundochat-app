@@ -361,6 +361,24 @@
     </div>
     <div id="mobile-overlay"></div>
 
+    <!-- MODAL DE AYUDA PARA CREADOR DE SALA -->
+    <div id="room-creator-help-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <span class="modal-close-button">×</span>
+            <h2>¡Felicidades, has creado una sala!</h2>
+            <div class="popup-body">
+                <p>Como creador de la sala, tienes permisos de <strong>Operador</strong> en ella. Esto te permite mantener el orden y la buena convivencia.</p>
+                <p>Estos son los comandos que puedes usar en tu sala:</p>
+                <ul>
+                    <li><strong>/kick &lt;nick&gt; [razón]</strong> - Expulsa a un usuario de la sala.</li>
+                    <li><strong>/mute &lt;nick&gt;</strong> - Silencia o des-silencia a un usuario.</li>
+                    <li><strong>/ban &lt;nick&gt; [razón]</strong> - Banea a un usuario (impide su reingreso).</li>
+                </ul>
+                <p style="margin-top: 15px;">Para ver la lista completa de comandos disponibles para tu rango, escribe <strong>/help</strong> en el chat.</p>
+            </div>
+        </div>
+    </div>
+
     <input type="file" id="guest-avatar-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
 
     <script type="module" src="js/main.js"></script>

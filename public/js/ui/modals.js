@@ -309,4 +309,26 @@ export function initModals() {
             dom.changeNickButton.textContent = 'Cambiar';
         }
     });
+
+    const roomCreatorHelpModal = document.getElementById('room-creator-help-modal');
+    if (roomCreatorHelpModal) {
+        const closeBtn = roomCreatorHelpModal.querySelector('.modal-close-button');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                roomCreatorHelpModal.classList.add('hidden');
+            });
+        }
+        roomCreatorHelpModal.addEventListener('click', (e) => {
+            if (e.target === roomCreatorHelpModal) {
+                roomCreatorHelpModal.classList.add('hidden');
+            }
+        });
+    }
+}
+
+export function showRoomCreatorHelpModal() {
+    const modal = document.getElementById('room-creator-help-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
 }

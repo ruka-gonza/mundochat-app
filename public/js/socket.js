@@ -5,7 +5,7 @@ import { addPrivateChat, updateConversationList } from './ui/conversations.js';
 import { renderUserList } from './ui/userInteractions.js';
 import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
-import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports } from './ui/modals.js';
+import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal } from './ui/modals.js';
 
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
@@ -399,5 +399,9 @@ export function initializeSocketEvents(socket) {
         console.error("La re-autenticación falló. Forzando recarga de página.");
         document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
         location.reload();
+    });
+
+    socket.on('room_created_success', () => {
+        showRoomCreatorHelpModal();
     });
 }

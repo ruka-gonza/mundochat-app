@@ -190,6 +190,7 @@ async function handleCommand(io, socket, text, currentRoom) {
 
         io.to(currentRoom).emit('system message', { text: `¡${sender.nick} ha creado una nueva sala: ${newRoomName}!`, type: 'highlight', roomName: currentRoom });
         socket.emit('join room', { roomName: newRoomName });
+        socket.emit('room_created_success'); // <-- Evento para mostrar el popup de ayuda
         io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[SALA CREADA] ${sender.nick} ha creado la sala: ${newRoomName}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
         return;
     }

@@ -145,16 +145,29 @@ export async function handleFileUpload(file) {
     reader.onload = async () => {
         const fileBase64 = reader.result;
         try {
-            const result = await fetchWithCredentials('/api/upload/chat-file', {
+            const options = {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${state.authToken}`
+                },
                 body: JSON.stringify({
                     fileBase64,
                     contextType: state.currentChatContext.type,
                     contextWith: state.currentChatContext.with
                 })
-            });
+            };
+
+            const response = await fetch('/api/upload/chat-file', options);
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detalle || errorData.error || 'Error desconocido del servidor');
+            }
+
+            const result = await response.json();
             console.log(result.message);
+
         } catch (error) {
             console.error('Error al subir archivo:', error);
             alert(`Error al subir archivo: ${error.message}`);

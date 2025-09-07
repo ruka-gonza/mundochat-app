@@ -98,7 +98,10 @@ router.post('/chat-file', async (req, res) => {
 
     } catch (error) {
         console.error('Error al subir archivo de chat:', error);
-        res.status(500).json({ error: 'Error interno del servidor.' });
+        res.status(500).json({ 
+            error: 'Error interno del servidor.',
+            detalle: error.message
+        });
     }
 });
 

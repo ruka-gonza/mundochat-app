@@ -1,14 +1,15 @@
 const permissionService = require('./permissionService');
-const dbConnection = require('./db-connection');
+const db = require('./db-connection').getInstance(); // Obtiene la instancia de la BD
 
 let rooms = {};
 const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Romance", "Chile", "Argentina", "Brasil", "España", "México"];
 const MOD_LOG_ROOM = '#Staff-Logs';
 const guestSocketMap = new Map();
 
+// --- Inicialización en Memoria y desde BD ---
 function initializeRooms() {
-    const db = dbConnection.getInstance();
-    if (!db) {
+    const dbInstance = require('./db-connection').getInstance();
+    if (!dbInstance) {
         console.error("La base de datos no está inicializada. No se pueden cargar las salas.");
         return;
     }
@@ -22,7 +23,7 @@ function initializeRooms() {
         rooms[MOD_LOG_ROOM] = { users: {} };
     }
 
-    db.all('SELECT name FROM rooms', [], (err, rows) => {
+    dbInstance.all('SELECT name FROM rooms', [], (err, rows) => {
         if (err) {
             console.error("Error al cargar salas desde la base de datos:", err.message);
             return;
@@ -36,6 +37,8 @@ function initializeRooms() {
         console.log("Salas por defecto y de BD listas:", Object.keys(rooms));
     });
 }
+
+// --- Funciones de Gestión de Salas ---
 
 function getActiveRoomsWithUserCount() {
     const roomListArray = Object.keys(rooms).map(roomName => ({
@@ -70,9 +73,11 @@ async function createRoom(roomName, creator, io) {
     if (rooms[roomName]) {
         return false; // La sala ya existe en memoria
     }
-    const db = dbConnection.getInstance();
+    const dbInstance = require('./db-connection').getInstance();
+
     return new Promise((resolve, reject) => {
-        const roomStmt = db.prepare('INSERT OR IGNORE INTO rooms (name, creatorId, creatorNick, createdAt) VALUES (?, ?, ?, ?)');
+        // Usamos INSERT OR IGNORE para máxima seguridad anti-crash
+        const roomStmt = dbInstance.prepare('INSERT OR IGNORE INTO rooms (name, creatorId, creatorNick, createdAt) VALUES (?, ?, ?, ?)');
         roomStmt.run(roomName, creator.id, creator.nick, new Date().toISOString(), function(err) {
             roomStmt.finalize();
             if (err) {
@@ -80,44 +85,47 @@ async function createRoom(roomName, creator, io) {
                 return reject(err);
             }
             if (this.changes === 0) {
+                // La sala ya existía en la BD pero no en memoria (caso raro), la cargamos
                 if (!rooms[roomName]) {
                     rooms[roomName] = { users: {} };
                 }
-                return resolve(false);
+                return resolve(false); // Indicamos que no se creó porque ya existía
             }
+
+            // Si se insertó correctamente, la creamos en memoria y notificamos
             rooms[roomName] = { users: {} };
             updateRoomData(io);
-            resolve(true);
+            resolve(true); // Indicamos que se creó con éxito
         });
     });
 }
 
-async function updateUserList(io, roomName) {
-    if (!rooms[roomName]) {
-        return;
+function updateUserList(io, roomName) {
+    if (rooms[roomName]) {
+        const uniqueUsers = {};
+        // Recorremos todos los sockets en la sala
+        for (const socketId in rooms[roomName].users) {
+            const user = rooms[roomName].users[socketId];
+            // Si el usuario ya está en nuestra lista de únicos, no hacemos nada.
+            // Esto previene duplicados si un usuario tiene múltiples conexiones.
+            if (!uniqueUsers[user.nick]) {
+                uniqueUsers[user.nick] = user;
+            }
+        }
+
+        // Convertimos el objeto de usuarios únicos a un array y lo ordenamos
+        const userList = Object.values(uniqueUsers).sort((a, b) => {
+            const roleA = permissionService.getRolePriority(a.role);
+            const roleB = permissionService.getRolePriority(b.role);
+            if (roleA !== roleB) {
+                return roleA - roleB; // Ordena por prioridad de rol
+            }
+            return a.nick.localeCompare(b.nick); // Luego por orden alfabético
+        });
+
+        // Emitimos la lista de usuarios limpia y ordenada
+        io.to(roomName).emit('update user list', { roomName, users: userList });
     }
-    const usersInRoom = Object.values(rooms[roomName].users);
-    const userListPromises = usersInRoom.map(async (u) => {
-        const effectiveRole = await permissionService.getUserEffectiveRole(u.id, roomName);
-        return {
-            id: u.id,
-            nick: u.nick,
-            role: effectiveRole,
-            isVIP: u.isVIP,
-            avatar_url: u.avatar_url,
-            isAFK: u.isAFK
-        };
-    });
-    const finalUserList = await Promise.all(userListPromises);
-    const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
-    finalUserList.sort((a, b) => {
-        const roleA = roleOrder[a.role] ?? 99;
-        const roleB = roleOrder[b.role] ?? 99;
-        if (roleA < roleB) return -1;
-        if (roleA > roleB) return 1;
-        return a.nick.localeCompare(b.nick);
-    });
-    io.to(roomName).emit('update user list', { roomName, users: finalUserList });
 }
 
 module.exports = {
@@ -125,11 +133,11 @@ module.exports = {
     DEFAULT_ROOMS,
     MOD_LOG_ROOM,
     guestSocketMap,
+    initializeRooms,
     createRoom,
     findSocketIdByNick,
     isNickInUse,
     updateUserList,
     updateRoomData,
-    getActiveRoomsWithUserCount,
-    initializeRooms
+    getActiveRoomsWithUserCount
 };

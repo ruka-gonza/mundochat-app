@@ -3,7 +3,11 @@ const config = require('../config');
 
 async function isVpn(ip) {
     if (!config.proxyCheckApiKey) {
-        console.warn('PROXYCHECK_API_KEY no está configurada. Se omitirá la verificación de VPN.');
+        console.error('*******************************************************************');
+        console.error('* ADVERTENCIA: PROXYCHECK_API_KEY no está configurada.             *');
+        console.error('* La verificación de VPN está DESACTIVADA.                        *');
+        console.error('* Añade tu clave de API de proxycheck.io a tu archivo .env        *');
+        console.error('*******************************************************************');
         return false;
     }
 

@@ -38,6 +38,9 @@ async function isVpn(ip) {
             }
         } else if (data.status === 'error') {
             console.error('[VPN Check Error]', data.message);
+        } else if (data.status === 'denied') {
+            console.error(`[VPN Check Error] Límite de API excedido o clave inválida. Bloqueando conexión para IP: ${ip}`);
+            return true; // Bloquea la conexión para estar seguros
         } else {
             // Cubre casos donde el status es 'ok' pero la IP no viene en la respuesta.
             console.warn(`[VPN Check Warning] La respuesta de la API para la IP ${ip} fue inesperada:`, data);

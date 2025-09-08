@@ -284,6 +284,8 @@ function initializeSocket(io) {
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
 
+        console.log(`[CONEXIÓN ENTRANTE] IP registrada: ${userIP}`);
+
         socket.emit('update room data', roomService.getActiveRoomsWithUserCount());
         
         (async () => {

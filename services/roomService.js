@@ -123,6 +123,13 @@ function updateUserList(io, roomName) {
             return a.nick.localeCompare(b.nick); // Luego por orden alfabético
         });
 
+        // Mensaje de depuración temporal
+        io.to(roomName).emit('system message', { 
+            text: `[DEBUG] Actualizando lista para ${userList.length} usuarios en ${roomName}.`,
+            type: 'info',
+            roomName
+        });
+
         // Emitimos la lista de usuarios limpia y ordenada
         io.to(roomName).emit('update user list', { roomName, users: userList });
     }

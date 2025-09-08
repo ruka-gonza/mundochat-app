@@ -42,4 +42,4 @@ async function getUserEffectiveRole(userId, roomName) {
     return user.role;
 }
 
-module.exports = { getUserEffectiveRole };
+module.exports = { getUserEffectiveRole, getRolePriority };

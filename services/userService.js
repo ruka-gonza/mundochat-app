@@ -12,10 +12,9 @@ function getRole(nick) {
     return 'user';
 }
 
-function findUserByNick(identifier) { // 'identifier' puede ser un nick o un email
+function findUserByNick(identifier) {
     return new Promise((resolve, reject) => {
         const lowerCaseIdentifier = identifier.toLowerCase();
-        // La consulta SQL busca en ambas columnas
         db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
             if (err) return reject(err);
             if (row) {
@@ -31,7 +30,7 @@ function findUserById(id) {
         db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                row.role = getRole(row.nick); // Asignamos el rol dinámicamente
+                row.role = getRole(row.nick);
             }
             resolve(row);
         });
@@ -94,10 +93,6 @@ function setMuteStatus(nick, isMuted, moderatorNick = null) {
     });
 }
 
-// ==========================================================
-// INICIO DE LA CORRECCIÓN CLAVE
-// ==========================================================
-// La función ahora acepta 'userId' en lugar de 'nick' y busca por 'id'.
 function setAvatarUrl(userId, avatarUrl) {
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, userId], function(err) {
@@ -106,9 +101,6 @@ function setAvatarUrl(userId, avatarUrl) {
         });
     });
 }
-// ==========================================================
-// FIN DE LA CORRECCIÓN CLAVE
-// ==========================================================
 
 function setUserRole(nick, role) {
     return new Promise((resolve, reject) => {
@@ -132,7 +124,7 @@ module.exports = {
     setVipStatus,
     setMuteStatus,
     updateUserIP,
-    setAvatarUrl, // <-- La función corregida sigue exportándose
+    setAvatarUrl,
     updateUserNick,
     setUserRole
 };

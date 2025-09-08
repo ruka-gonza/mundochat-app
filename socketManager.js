@@ -195,7 +195,14 @@ async function handleJoinRoom(io, socket, { roomName }) {
         sid => roomService.rooms[roomName].users[sid].id === socket.userData.id && sid !== socket.id
     );
     if (existingSocketId) {
-        delete roomService.rooms[roomName].users[existingSocketId];
+        const oldSocket = io.sockets.sockets.get(existingSocketId);
+        if (oldSocket) {
+            oldSocket.emit('system message', { text: 'Has iniciado sesión en otra ubicación. Esta sesión se cerrará.', type: 'error', roomName });
+            oldSocket.disconnect(true);
+        } else {
+            // Fallback por si el objeto socket ya no existe pero el estado persiste
+            delete roomService.rooms[roomName].users[existingSocketId];
+        }
     }
     
     socket.join(roomName);

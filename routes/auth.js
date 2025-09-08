@@ -5,7 +5,7 @@ const passwordResetService = require('../services/passwordResetService');
 const emailService = require('../services/emailService');
 const bcrypt = require('bcrypt');
 const config = require('../config');
-const db = require('../services/db-connection');
+const db = require('../services/db-connection').getInstance();
 
 const isProduction = process.env.NODE_ENV === 'production';
 

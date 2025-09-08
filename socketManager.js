@@ -286,7 +286,18 @@ function initializeSocket(io) {
 
         socket.emit('update room data', roomService.getActiveRoomsWithUserCount());
         
-        vpnCheckService.isVpn(userIP).catch(err => console.error("Error en VPN Check:", err));
+        (async () => {
+            try {
+                const isVpn = await vpnCheckService.isVpn(userIP);
+                if (isVpn) {
+                    console.log(`[VPN DETECTADO] Conexión rechazada para la IP: ${userIP}`);
+                    socket.emit('auth_error', { message: 'El uso de VPNs o proxies no está permitido.' });
+                    return socket.disconnect(true);
+                }
+            } catch (err) {
+                console.error("Error en VPN Check:", err);
+            }
+        })();
 
         socket.on('reauthenticate', async (cookieData) => {
             try {

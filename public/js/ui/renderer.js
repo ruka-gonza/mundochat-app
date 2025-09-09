@@ -39,6 +39,7 @@ function createPreviewCard(preview) {
 }
 
 export function createMessageElement(msg, isPrivate = false) {
+    console.log(msg);
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
         item.className = `system-message ${msg.type || ''}`;

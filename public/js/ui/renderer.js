@@ -38,6 +38,11 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
+function processMessageText(text) {
+    const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
+    return text.replace(imageRegex, '<img src="$1" class="chat-image" alt="Image" loading="lazy">');
+}
+
 export function createMessageElement(msg, isPrivate = false) {
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
@@ -108,7 +113,8 @@ export function createMessageElement(msg, isPrivate = false) {
 
     const textSpan = document.createElement('span');
     textSpan.className = 'message-text';
-    textSpan.innerHTML = twemoji.parse(replaceEmoticons(msg.text));
+    const processedText = processMessageText(msg.text);
+    textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
     contentDiv.appendChild(textSpan);
 
     if (isMediaOnly) {

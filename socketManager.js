@@ -17,30 +17,45 @@ module.exports.closedSessions = closedSessions;
 
 async function generateLinkPreview(text) {
     if (!text) return null;
-    const urlRegex = /(https?:\/\/[^\s]+)/;
+    const urlRegex = /(https?:\[^\s]+)/;
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
-    const imageRegex = /\.(jpg|jpeg|png|gif|webp|bmp)(\?.*)?$/i;
-    if (imageRegex.test(url)) {
-        return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
-    }
-    const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-    const youtubeMatch = url.match(youtubeRegex);
-    if (youtubeMatch && youtubeMatch[1]) {
-        try {
-            const videoId = youtubeMatch[1];
-            const response = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
-            if (!response.ok) return null;
-            const data = await response.json();
-            return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
-        } catch (error) {
-            console.error("Error al obtener datos de YouTube oEmbed:", error);
-            return null;
+
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) return null;
+
+        const contentType = response.headers.get('content-type');
+
+        // 1. If it's an image content-type, treat as direct image
+        if (contentType && contentType.startsWith('image/')) {
+             return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
         }
-    }
-    return null;
-}
+
+        // 2. If it's a YouTube link (check before fetching html)
+        const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const youtubeMatch = url.match(youtubeRegex);
+        if (youtubeMatch && youtubeMatch[1]) {
+            const videoId = youtubeMatch[1];
+            // Use the oembed endpoint
+            const oembedRes = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (!oembedRes.ok) return null;
+            const data = await oembedRes.json();
+            return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
+        }
+
+        // 3. If it's HTML, parse for metadata
+        if (contentType && contentType.includes('text/html')) {
+            const html = await response.text();
+            const titleMatch = html.match(/<title>(.*?)<\/title>/);
+            const title = titleMatch ? titleMatch[1] : url;
+
+            const descriptionMatch = html.match(/<meta\s+(?:name=[\
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) return;

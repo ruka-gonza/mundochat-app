@@ -4,8 +4,10 @@ const emoticonMap = {
     ':)': '🙂',
     ':-)': '😊',
     ':D': '😄',
-    'XD': '🤣',
+    ':/': '😕',
+    'XD': '😂',
     '(y)': '👍',
+    '(n)': '👎',
     ':P': '😛',
     ':p': '😛',
     ':O': '😮',
@@ -19,7 +21,7 @@ const emoticonMap = {
 
 const emoticonRegex = new RegExp(
     Object.keys(emoticonMap)
-        .map(key => key.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'))
+        .map(key => key.replace(/[-\/\\^$*+?.()|[\\\]{}\\]/g, '\\$&'))
         .join('|'),
     'g'
 );
@@ -28,7 +30,17 @@ export function replaceEmoticons(text) {
     if (!text || typeof text !== 'string') {
         return text;
     }
-    return text.replace(emoticonRegex, (match) => emoticonMap[match]);
+
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+
+    return parts.map(part => {
+        if (part.match(urlRegex)) {
+            return part;
+        } else {
+            return part.replace(emoticonRegex, (match) => emoticonMap[match]);
+        }
+    }).join('');
 }
 
 

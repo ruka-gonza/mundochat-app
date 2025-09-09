@@ -1,5 +1,5 @@
 const userService = require('./userService');
-const db = require('./db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
+const db = require('./db-connection').getInstance(); // <-- USA LA CONEXIÓN COMPARTIDA
 
 /**
  * Determina el rol efectivo de un usuario en una sala específica.
@@ -42,4 +42,18 @@ async function getUserEffectiveRole(userId, roomName) {
     return user.role;
 }
 
-module.exports = { getUserEffectiveRole };
+const rolePriorities = {
+    owner: 0,
+    admin: 1,
+    mod: 2,
+    operator: 3,
+    vip: 4,
+    user: 5,
+    guest: 6
+};
+
+function getRolePriority(role) {
+    return rolePriorities[role] !== undefined ? rolePriorities[role] : 99;
+}
+
+module.exports = { getUserEffectiveRole, getRolePriority };

@@ -4,8 +4,8 @@ import { createMessageElement } from './renderer.js';
 import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
+import { fetchWithCredentials } from './modals.js';
 
-// --- INICIO DE LA MODIFICACIÓN: Funciones para manejar la barra de respuesta ---
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
     const { nick, text } = state.replyingTo;
@@ -20,7 +20,6 @@ export function hideReplyContextBar() {
     state.replyingTo = null;
     dom.replyContextBar.classList.add('hidden');
 }
-// --- FIN DE LA MODIFICACIÓN ---
 
 function handleTypingIndicator() {
     if (state.currentChatContext.type === 'none') return;
@@ -96,21 +95,6 @@ function autocompleteNick(nick) {
     dom.input.setSelectionRange(newCursorPosition, newCursorPosition);
 }
 
-function resetAudioRecorderUI() {
-    dom.audioRecordButton.classList.remove('hidden', 'recording');
-    dom.audioRecordButton.innerHTML = '🎤';
-    dom.audioSendButton.classList.add('hidden');
-    dom.audioCancelButton.classList.add('hidden');
-    dom.input.classList.remove('hidden');
-    state.audioChunks = [];
-    state.audioBlob = null;
-    state.mediaRecorder = null;
-    if (state.audioStream) {
-        state.audioStream.getTracks().forEach(track => track.stop());
-        state.audioStream = null;
-    }
-}
-
 export function sendMessage() {
     const text = dom.input.value.trim();
     if (!text) return;
@@ -123,51 +107,78 @@ export function sendMessage() {
     }
     const { type, with: contextWith } = state.currentChatContext;
     if (type === 'room') {
-        // --- INICIO DE LA MODIFICACIÓN: Enviar el ID de la respuesta ---
         const payload = { 
             text, 
             roomName: contextWith,
             replyToId: state.replyingTo ? state.replyingTo.id : null
         };
         state.socket.emit('chat message', payload);
-        // --- FIN DE LA MODIFICACIÓN ---
     } else if (type === 'private') {
         state.socket.emit('private message', { to: contextWith, text: text });
     }
     dom.input.value = '';
     dom.emojiPicker.classList.add('hidden');
-    // --- INICIO DE LA MODIFICACIÓN: Ocultar la barra de respuesta al enviar ---
     hideReplyContextBar();
-    // --- FIN DE LA MODIFICACIÓN ---
 }
 
-export function handleFileUpload(file) {
-    if (!file || !state.currentChatContext.with) {
-        state.socket.emit('system message', { text: 'No hay archivo o chat activo para enviar.', type: 'error' });
+export async function handleFileUpload(file) {
+    if (!file || !state.currentChatContext.with || state.currentChatContext.type === 'none') {
+        alert('Por favor, selecciona una sala o chat privado para enviar el archivo.');
         return;
     }
-    if (file.size > 10 * 1024 * 1024) { // Límite de 10MB
-        state.socket.emit('system message', { text: 'El archivo es demasiado grande (máx 10MB).', type: 'error' });
+    if (file.size > 15 * 1024 * 1024) {
+        alert('El archivo es demasiado grande (máx 15MB).');
         return;
     }
 
-    const fileId = `${Date.now()}-${file.name}`;
-    const chunkSize = 64 * 1024;
-    let offset = 0;
-    const eventName = state.currentChatContext.type === 'room' ? 'file-start' : 'private-file-start';
-    const payload = { id: fileId, name: file.name, type: file.type, size: file.size, ...(state.currentChatContext.type === 'room' ? { roomName: state.currentChatContext.with } : { to: state.currentChatContext.with }) };
-    state.socket.emit(eventName, payload);
+    const indicator = document.createElement('li');
+    indicator.className = 'system-message';
+    indicator.textContent = `Subiendo ${file.name}...`;
+    const container = state.currentChatContext.type === 'room' ? dom.messagesContainer : dom.privateChatWindow.querySelector('ul');
+    if(container) {
+        container.appendChild(indicator);
+        container.scrollTop = container.scrollHeight;
+    }
+
     const reader = new FileReader();
-    reader.onload = (e) => {
-        state.socket.emit('file-chunk', { id: fileId, data: e.target.result });
-        offset += e.target.result.byteLength;
-        if (offset < file.size) readSlice(offset);
+    reader.readAsDataURL(file);
+    reader.onload = async () => {
+        const fileBase64 = reader.result;
+        try {
+            const options = {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${state.authToken}`
+                },
+                body: JSON.stringify({
+                    fileBase64,
+                    contextType: state.currentChatContext.type,
+                    contextWith: state.currentChatContext.with
+                })
+            };
+
+            const response = await fetch('/api/upload/chat-file', options);
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detalle || errorData.error || 'Error desconocido del servidor');
+            }
+
+            const result = await response.json();
+            console.log(result.message);
+
+        } catch (error) {
+            console.error('Error al subir archivo:', error);
+            alert(`Error al subir archivo: ${error.message}`);
+        } finally {
+            if(indicator) indicator.remove();
+        }
     };
-    const readSlice = o => {
-        const slice = file.slice(o, o + chunkSize);
-        reader.readAsArrayBuffer(slice);
+    reader.onerror = () => {
+        alert('No se pudo leer el archivo seleccionado.');
+        if(indicator) indicator.remove();
     };
-    readSlice(0);
 };
 
 export function switchToChat(contextId, contextType) {
@@ -176,7 +187,20 @@ export function switchToChat(contextId, contextType) {
         if (state.currentChatContext.type === 'room') {
             state.lastActiveRoom = state.currentChatContext.with;
         }
+    } else if (contextType === 'room') {
+        state.lastActiveRoom = contextId;
+        if (!state.joinedRooms.has(contextId)) {
+            state.pendingRoomJoin = contextId;
+        }
     }
+    
+    if (!state.socket.connected) {
+        console.warn(`Socket desconectado. Intento de unirse a '${contextId}' pendiente.`);
+        return;
+    }
+    
+    state.pendingRoomJoin = null;
+
     state.usersTyping.clear();
     updateTypingIndicator();
     state.currentChatContext = { type: contextType, with: contextId };
@@ -187,60 +211,48 @@ export function switchToChat(contextId, contextType) {
     updateUnreadCounts();
     
     dom.userSearchInput.value = '';
-    let history = [];
-    let view, container;
 
-    if (contextType === 'room') {
-        if (!state.publicMessageHistories[contextId]) {
-            state.publicMessageHistories[contextId] = [];
-        }
-        history = state.publicMessageHistories[contextId];
-        view = dom.mainChatArea;
-        container = dom.messagesContainer;
-        dom.roomNameHeader.textContent = `Sala: ${contextId}`;
-        dom.privateChatView.classList.add('hidden');
-        view.classList.remove('hidden');
-        
-        state.socket.emit('request user list', { roomName: contextId });
-        
-        container.innerHTML = '';
-        history.forEach(msg => container.appendChild(createMessageElement(msg, false)));
-        container.scrollTop = container.scrollHeight;
+    if (contextType === 'room' && !state.joinedRooms.has(contextId)) {
+        state.socket.emit('join room', { roomName: contextId });
     } else {
-        view = dom.privateChatView;
-        container = dom.privateChatWindow;
-        dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
-        dom.mainChatArea.classList.add('hidden');
-        view.classList.remove('hidden');
-        state.currentRoomUsers = [];
-        renderUserList();
-        container.innerHTML = '';
-        if (!state.privateMessageHistories[contextId]) {
-            state.socket.emit('request private history', { withNick: contextId });
+        if (contextType === 'room') {
+            dom.mainChatArea.classList.remove('hidden');
+            dom.privateChatView.classList.add('hidden');
+            dom.roomNameHeader.textContent = `Sala: ${contextId}`;
+            dom.messagesContainer.innerHTML = '';
+            const history = state.publicMessageHistories[contextId] || [];
+            history.forEach(msg => dom.messagesContainer.appendChild(createMessageElement(msg, false)));
+            dom.messagesContainer.scrollTop = dom.messagesContainer.scrollHeight;
+            renderUserList();
         } else {
+            dom.mainChatArea.classList.add('hidden');
+            dom.privateChatView.classList.remove('hidden');
+            dom.privateChatWithUser.textContent = `Chat con ${contextId}`;
+            dom.privateChatWindow.innerHTML = '';
             const ul = document.createElement('ul');
-            state.privateMessageHistories[contextId].forEach(msg => {
-                ul.appendChild(createMessageElement(msg, true));
-            });
-            container.appendChild(ul);
+            const history = state.privateMessageHistories[contextId] || [];
+            history.forEach(msg => ul.appendChild(createMessageElement(msg, true)));
+            dom.privateChatWindow.appendChild(ul);
             ul.scrollTop = ul.scrollHeight;
+            if (!state.privateMessageHistories[contextId]) {
+                state.socket.emit('request private history', { withNick: contextId });
+            }
         }
     }
 }
 
 export function updateTypingIndicator() {
-    dom.typingIndicator.textContent = '';
-    dom.typingIndicator.classList.add('hidden');
-    dom.privateTypingIndicator.textContent = '';
-    dom.privateTypingIndicator.classList.add('hidden');
-
-    if (state.usersTyping.size === 0) {
-        return;
-    }
-
     const targetIndicator = state.currentChatContext.type === 'room'
         ? dom.typingIndicator
         : dom.privateTypingIndicator;
+    
+    if (!targetIndicator) return;
+    
+    if (state.usersTyping.size === 0) {
+        targetIndicator.textContent = '';
+        targetIndicator.classList.add('hidden');
+        return;
+    }
 
     const users = Array.from(state.usersTyping);
     let text;
@@ -257,6 +269,151 @@ export function updateTypingIndicator() {
 }
 
 export function initChatInput() {
+    let recordingStartTime;
+    let recordingInterval;
+    let sendButton = document.getElementById('send-icon-button');
+    let supportedMimeType = ''; // Variable to store the supported MIME type
+
+    function resetAudioRecorderUI() {
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            state.mediaRecorder.stop();
+        }
+        if (state.audioStream) {
+            state.audioStream.getTracks().forEach(track => track.stop());
+        }
+        clearInterval(recordingInterval);
+        
+        dom.form.classList.remove('is-recording');
+        const recordingControls = document.getElementById('audio-recording-controls');
+        const recordButton = document.getElementById('record-audio-button');
+        
+        if (recordButton) recordButton.classList.remove('hidden');
+        if (recordingControls) recordingControls.classList.add('hidden');
+
+        dom.input.disabled = false;
+        if(sendButton) sendButton.disabled = false;
+        
+        const imageUploadInput = document.getElementById('image-upload');
+        if(imageUploadInput) imageUploadInput.disabled = false;
+        dom.emojiButton.disabled = false;
+
+        state.audioChunks = [];
+        state.audioBlob = null;
+        state.mediaRecorder = null;
+        state.audioStream = null;
+    }
+
+    async function handleMicClick() {
+        if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
+            alert('Selecciona una sala o chat privado para enviar notas de voz.');
+            return;
+        }
+
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            stopRecording();
+            return;
+        }
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            state.audioStream = stream;
+
+            const recordingControls = document.getElementById('audio-recording-controls');
+            const recordButton = document.getElementById('record-audio-button');
+            const stopBtn = document.getElementById('stop-recording-button');
+            const sendBtn = document.getElementById('send-audio-button');
+            const cancelBtn = document.getElementById('cancel-recording-button');
+            
+            dom.form.classList.add('is-recording');
+            if (recordButton) recordButton.classList.add('hidden');
+            if (recordingControls) recordingControls.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            if (sendBtn) sendBtn.classList.add('hidden');
+            if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+            dom.input.disabled = true;
+            if (sendButton) sendButton.disabled = true;
+            const imageUploadInput = document.getElementById('image-upload');
+            if(imageUploadInput) imageUploadInput.disabled = true;
+            dom.emojiButton.disabled = true;
+            
+            // Robust MimeType checking
+            const MimeTypes = [
+                'audio/webm; codecs=opus',
+                'audio/webm',
+                'audio/ogg; codecs=opus',
+                'audio/ogg',
+                'audio/mp4'
+            ];
+            supportedMimeType = MimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+
+            if (!supportedMimeType) {
+                alert('Tu navegador no soporta la grabación de audio o ningún formato compatible.');
+                resetAudioRecorderUI();
+                return;
+            }
+            
+            console.log(`Usando formato de audio: ${supportedMimeType}`);
+            const options = { mimeType: supportedMimeType };
+            state.mediaRecorder = new MediaRecorder(stream, options);
+            state.audioChunks = [];
+
+            state.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) state.audioChunks.push(event.data);
+            };
+
+            state.mediaRecorder.onstop = () => {
+                // Use the detected mimeType when creating the Blob
+                state.audioBlob = new Blob(state.audioChunks, { type: supportedMimeType });
+                if (stopBtn) stopBtn.classList.add('hidden');
+                if (sendBtn) sendBtn.classList.remove('hidden');
+            };
+
+            state.mediaRecorder.start();
+
+            recordingStartTime = Date.now();
+            const timer = document.getElementById('recording-timer');
+            if (timer) timer.textContent = '00:00';
+            recordingInterval = setInterval(() => {
+                if (!timer) return;
+                const elapsed = Date.now() - recordingStartTime;
+                const seconds = String(Math.floor(elapsed / 1000) % 60).padStart(2, '0');
+                const minutes = String(Math.floor(elapsed / (1000 * 60))).padStart(2, '0');
+                timer.textContent = `${minutes}:${seconds}`;
+            }, 1000);
+            
+        } catch (err) {
+            console.error('Error al solicitar permiso o iniciar grabación:', err);
+            alert('No se pudo acceder al micrófono. Asegúrate de haber concedido el permiso en la configuración de tu navegador.');
+            resetAudioRecorderUI();
+        }
+    }
+
+    function stopRecording() {
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            state.mediaRecorder.stop();
+            clearInterval(recordingInterval);
+        }
+    }
+
+    const recordButton = document.getElementById('record-audio-button');
+    const stopRecordingButton = document.getElementById('stop-recording-button');
+    const cancelRecordingButton = document.getElementById('cancel-recording-button');
+    const sendAudioButton = document.getElementById('send-audio-button');
+
+    if (recordButton) recordButton.addEventListener('click', handleMicClick);
+    if (stopRecordingButton) stopRecordingButton.addEventListener('click', stopRecording);
+    if (cancelRecordingButton) cancelRecordingButton.addEventListener('click', resetAudioRecorderUI);
+    if (sendAudioButton) sendAudioButton.addEventListener('click', () => {
+        if (state.audioBlob) {
+            // Dynamically set the file extension based on the supported mimeType
+            const extension = (supportedMimeType || 'audio/webm').split('/')[1].split(';')[0];
+            const fileName = `audio-${Date.now()}.${extension}`;
+            handleFileUpload(new File([state.audioBlob], fileName, { type: state.audioBlob.type }));
+            resetAudioRecorderUI();
+        }
+    });
+
     dom.input.addEventListener('input', () => {
         handleTypingIndicator();
         handleNickSuggestions();
@@ -274,17 +431,7 @@ export function initChatInput() {
         }
         if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
             e.preventDefault();
-            state.suggestionState.index = (state.suggestionState.index + 1) % state.suggestionState.list.length;
-            const selectedUser = state.suggestionState.list[state.suggestionState.index];
-            const text = dom.input.value;
-            const textToReplace = state.suggestionState.originalWord;
-            const lastIndex = text.toLowerCase().lastIndexOf(textToReplace.toLowerCase());
-            if (lastIndex !== -1) {
-                const before = text.substring(0, lastIndex);
-                dom.input.value = before + selectedUser.nick;
-                state.suggestionState.originalWord = selectedUser.nick;
-            }
-            renderSuggestions();
+            autocompleteNick(state.suggestionState.list[0].nick);
         }
     });
 
@@ -293,90 +440,33 @@ export function initChatInput() {
         e.target.value = '';
     });
     
-     const emojis = [
-        // Caras y emociones
-        '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', 
-        // Personas y gestos
-        '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝',
-        // Comida y objetos
-        '❤️', '💔', '🔥', '✨', '⭐', '🎉', '🎈', '🎁', '🎂', '🍕', '🍔', '🍟', '🍿', '☕', '🍺', '🍷',
-        // Símbolos y otros
-        '💯', '✅', '❌', '⚠️', '❓', '❗', '💀', '💩', '🤡', '👻', '👽', '👾', '🤖'
-    ];
-    dom.emojiPicker.innerHTML = '';
-    emojis.forEach(emoji => {
-        const span = document.createElement('span');
-        span.textContent = emoji;
-        span.addEventListener('click', () => { dom.input.value += emoji; dom.input.focus(); });
-        dom.emojiPicker.appendChild(span);
-    });
-    dom.emojiButton.addEventListener('click', (e) => { e.stopPropagation(); dom.emojiPicker.classList.toggle('hidden'); });
-    document.addEventListener('click', (e) => { if (!dom.emojiPicker.contains(e.target) && e.target !== dom.emojiButton) dom.emojiPicker.classList.add('hidden'); }, true);
-
-    dom.audioRecordButton.addEventListener('click', async () => {
-        if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
-            state.socket.emit('system message', { text: 'Selecciona una sala o chat privado para enviar notas de voz.', type: 'error' });
-            return;
+    let emojisInitialized = false;
+    dom.emojiButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!emojisInitialized) {
+            const emojis = [
+                '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '🤑', '🤠', 
+                '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙', '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊', '🤛', '🤜', '👏', '🙌', '🤲', '🙏', '🤝',
+                '❤️', '💔', '🔥', '✨', '⭐', '🎉', '🎈', '🎁', '🎂', '🍕', '🍔', '🍟', '🍿', '☕', '🍺', '🍷',
+                '💯', '✅', '❌', '⚠️', '❓', '❗', '💀', '💩', '🤡', '👻', '👽', '👾', '🤖'
+            ];
+            dom.emojiPicker.innerHTML = '';
+            emojis.forEach(emoji => {
+                const span = document.createElement('span');
+                span.textContent = emoji;
+                span.addEventListener('click', () => { dom.input.value += emoji; dom.input.focus(); });
+                dom.emojiPicker.appendChild(span);
+            });
+            emojisInitialized = true;
         }
-
-        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-            state.mediaRecorder.stop();
-        } else {
-            try {
-                state.audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                const options = MediaRecorder.isTypeSupported('audio/webm; codecs=opus') ? { mimeType: 'audio/webm; codecs=opus' } : {};
-                state.mediaRecorder = new MediaRecorder(state.audioStream, options);
-                state.audioChunks = [];
-                state.audioBlob = null;
-
-                state.mediaRecorder.ondataavailable = (event) => {
-                    state.audioChunks.push(event.data);
-                };
-
-                state.mediaRecorder.onstop = () => {
-                    state.audioBlob = new Blob(state.audioChunks, { type: state.mediaRecorder.mimeType });
-                    dom.audioRecordButton.classList.add('hidden');
-                    dom.audioRecordButton.classList.remove('recording');
-                    dom.audioSendButton.classList.remove('hidden');
-                    dom.audioCancelButton.classList.remove('hidden');
-                    dom.input.classList.add('hidden');
-                
-                    if (state.audioStream) {
-                        state.audioStream.getTracks().forEach(track => track.stop());
-                    }
-                    state.socket.emit('system message', { text: 'Grabación detenida. Haz clic en "Enviar" para enviar o "Cancelar" para cancelar.', type: 'highlight' });
-                };
-
-                state.mediaRecorder.start();
-                dom.audioRecordButton.classList.add('recording');
-                state.socket.emit('system message', { text: 'Grabando audio... Haz clic en el micrófono de nuevo para detener.', type: 'highlight' });
-
-            } catch (err) {
-                console.error('Error al acceder al micrófono:', err);
-                state.socket.emit('system message', { text: 'No se pudo acceder al micrófono. Asegúrate de dar permiso.', type: 'error' });
-            }
-        }
+        dom.emojiPicker.classList.toggle('hidden');
     });
-    dom.audioSendButton.addEventListener('click', () => {
-        if (state.audioBlob && state.currentChatContext.with) {
-            const fileName = `audio-${Date.now()}.${state.audioBlob.type.split('/')[1].split(';')[0] || 'ogg'}`;
-            handleFileUpload(new File([state.audioBlob], fileName, { type: state.audioBlob.type }));
-            
-            resetAudioRecorderUI();
-            state.socket.emit('system message', { text: 'Nota de voz enviada.', type: 'highlight' });
-        } else {
-            state.socket.emit('system message', { text: 'No hay audio grabado o no hay chat activo.', type: 'error' });
+    
+    document.addEventListener('click', (e) => { 
+        if (dom.emojiPicker && !dom.emojiPicker.contains(e.target) && e.target !== dom.emojiButton) {
+            dom.emojiPicker.classList.add('hidden');
         }
-    });
-    dom.audioCancelButton.addEventListener('click', () => {
-        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
-            state.mediaRecorder.stop();
-        }
-        resetAudioRecorderUI();
-        state.socket.emit('system message', { text: 'Grabación de audio cancelada.', type: 'warning' });
-    });
+    }, true);
 
-    // --- INICIO DE LA MODIFICACIÓN: Listener para cancelar respuesta ---
     dom.cancelReplyButton.addEventListener('click', hideReplyContextBar);
-    // --- FIN DE LA MODIFICACIÓN ---
 }

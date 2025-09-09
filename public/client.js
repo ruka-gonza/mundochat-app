@@ -426,7 +426,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- MANEJADORES DE EVENTOS DE SOCKET.IO ---
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
     socket.on('update user list', ({ roomName, users }) => { if (currentChatContext.type === 'room' && currentChatContext.with === roomName) { currentRoomUsers = users; users.forEach(user => { const lowerNick = user.nick.toLowerCase(); if (!allUsersData[lowerNick]) { allUsersData[lowerNick] = {}; } allUsersData[lowerNick] = { ...allUsersData[lowerNick], ...user }; }); renderUserList(); if (!commandSuggestions.classList.contains('hidden')) { handleNickSuggestions(); } } });
-    socket.on('user_data_updated', (data) => { const lowerNick = data.nick.toLowerCase(); if (allUsersData[lowerNick]) { Object.assign(allUsersData[lowerNick], data); } if (myNick.toLowerCase() === lowerNick) { Object.assign(myUserData, data); } renderUserList(); });
+    socket.on('user_data_updated', (data) => { const lowerNick = data.nick.toLowerCase(); if (allUsersData[lowerNick]) { Object.assign(allUsersData[lowerNick], data); } if (myNick.toLowerCase() === lowerNick) {             Object.assign(myUserData, data);
+            // Re-evaluate admin panel button visibility
+            if (['owner', 'admin', 'mod'].includes(myUserData.role)) {
+                adminPanelButton.classList.remove('hidden');
+            } else {
+                adminPanelButton.classList.add('hidden');
+            } } renderUserList(); });
     socket.on('open private chat', ({ with: partnerNick }) => { if (partnerNick === myNick) return; switchToChat(partnerNick, 'private'); });
     
     socket.on('private chat requested', ({ from: partnerNick }) => {

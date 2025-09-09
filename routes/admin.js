@@ -1,52 +1,48 @@
-// routes/admin.js (ACTUALIZADO CON ROL OPERADOR Y PERMISOS DE BAN)
-
 const express = require('express');
 const router = express.Router();
 const banService = require('../services/banService');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
-const db = require('../services/db-connection'); // <-- USA LA CONEXIÓN COMPARTIDA
+const db = require('../services/db-connection').getInstance();
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 const isStaff = async (req, res, next) => {
     try {
-        const adminUserCookie = req.cookies.adminUser ? JSON.parse(req.cookies.adminUser) : null;
-        if (!adminUserCookie || !adminUserCookie.nick) {
-            return res.status(403).send('Acceso denegado: Cookie de sesión no encontrada.');
-        }
-
-        const user = await userService.findUserByNick(adminUserCookie.nick);
-        if (!user) {
-            return res.status(403).send('Acceso denegado: Usuario no encontrado.');
-        }
-
-        // --- INICIO DE LA MODIFICACIÓN: Añadir 'operator' a la lista de staff ---
-        let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
-        // --- FIN DE LA MODIFICACIÓN ---
-
-        if (!isAnyStaff) {
-            const staffRooms = await new Promise((resolve, reject) => {
-                db.all('SELECT 1 FROM room_staff WHERE userId = ? LIMIT 1', [user.id], (err, rows) => {
-                    if (err) return reject(err);
-                    resolve(rows);
-                });
-            });
-            if (staffRooms.length > 0) {
-                isAnyStaff = true;
-            }
-        }
+        // 1. Buscamos la cookie universal 'user_auth', no 'adminUser'.
+        const userAuthCookie = req.cookies.user_auth ? JSON.parse(req.cookies.user_auth) : null;
         
-        if (!isAnyStaff) {
-            return res.status(403).send('Acceso denegado: No tienes permisos de moderación.');
+        if (!userAuthCookie || !userAuthCookie.nick) {
+            return res.status(403).json({ error: 'Acceso denegado: Cookie de sesión no encontrada.' });
         }
 
+        const user = await userService.findUserByNick(userAuthCookie.nick);
+        if (!user) {
+            return res.status(403).json({ error: 'Acceso denegado: Usuario no encontrado.' });
+        }
+
+        // Solo permitir roles de staff global para acceder al panel de administración
+        // Eliminar la verificación de la membresía de room_staff para el acceso al panel de administración global
+        let isGlobalStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
+        
+        if (!isGlobalStaff) {
+            return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación global.' });
+        }
+
+        // Adjuntamos los datos del moderador a la petición para su uso posterior.
         req.moderator = { nick: user.nick, role: user.role };
         return next();
 
     } catch (e) {
         console.error("Error en middleware isStaff:", e);
-        res.status(500).send('Error interno del servidor al verificar permisos.');
+        res.status(500).json({ error: 'Error interno del servidor al verificar permisos.' });
     }
 };
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+
 
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
@@ -93,11 +89,9 @@ router.get('/banned', isStaff, async (req, res) => {
                 console.error("Error al obtener baneados:", err);
                 return res.status(500).json({ error: 'Error del servidor' });
             }
-            // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
             if (['mod', 'operator'].includes(req.moderator.role)) {
                 rows.forEach(user => { user.ip = obfuscateIP(user.ip); });
             }
-            // --- FIN DE LA MODIFICACIÓN ---
             res.json(rows);
         });
     } catch (error) {
@@ -132,13 +126,11 @@ router.get('/muted', isStaff, async (req, res) => {
             }
         }
         
-        // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
         if (['mod', 'operator'].includes(req.moderator.role)) {
             mutedUsers.forEach(user => {
                 user.lastIP = obfuscateIP(user.lastIP);
             });
         }
-        // --- FIN DE LA MODIFICACIÓN ---
 
         res.json(mutedUsers);
 
@@ -159,11 +151,9 @@ router.get('/online-users', isStaff, async (req, res) => {
                 if (socket.userData) {
                     const user = { ...socket.userData };
                     user.rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-                    // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
                     if (req.moderator && ['mod', 'operator'].includes(req.moderator.role)) {
                         user.ip = obfuscateIP(user.ip);
                     }
-                    // --- FIN DE LA MODIFICACIÓN ---
                     onlineUsers.push(user);
                 }
             } catch (e) {
@@ -186,11 +176,9 @@ router.get('/activity-logs', isStaff, (req, res) => {
             console.error("Error al obtener logs de actividad:", err);
             return res.status(500).json({ error: 'Error del servidor' });
         }
-        // --- INICIO DE LA MODIFICACIÓN: Ofuscar IP para 'mod' y 'operator' ---
         if (['mod', 'operator'].includes(req.moderator.role)) {
             rows.forEach(log => { log.ip = obfuscateIP(log.ip); });
         }
-        // --- FIN DE LA MODIFICACIÓN ---
         res.json(rows);
     });
 });
@@ -200,15 +188,7 @@ router.post('/unban', isStaff, async (req, res) => {
     if (!userId) {
         return res.status(400).json({ error: 'Se requiere el ID del usuario.' });
     }
-
-    // --- INICIO DE LA MODIFICACIÓN: Se elimina el bloqueo para moderadores ---
-    /*
-    if (req.moderator.role === 'mod') {
-        return res.status(403).json({ error: 'Los moderadores no pueden quitar baneos.' });
-    }
-    */
-    // --- FIN DE LA MODIFICACIÓN ---
-
+    
     try {
         const success = await banService.unbanUser(userId.toLowerCase());
         if (success) {

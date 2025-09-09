@@ -1,10 +1,11 @@
-
+<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MundoChat</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://twemoji.maxcdn.com/v/latest/twemoji.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -26,7 +27,10 @@
             </div>
             <div id="login-form" class="auth-form hidden">
                 <input type="text" id="login-nick-input" placeholder="Tu Nick Registrado" autocomplete="username" maxlength="15">
-                <input type="password" id="login-password-input" placeholder="Contraseña" autocomplete="current-password">
+                <div class="password-container">
+                    <input type="password" id="login-password-input" placeholder="Contraseña" autocomplete="current-password">
+                    <span id="toggle-password">👁️</span>
+                </div>
                 <label for="login-room-select" class="room-label">Selecciona una sala:</label>
                 <select id="login-room-select"></select>
                 <button id="login-button">Entrar al Chat</button>
@@ -70,6 +74,9 @@
 
             <div id="action-buttons-container">
             </div>
+            
+            <button id="logout-button" class="action-button-logout">Salir del Chat</button>
+
         </div>
         
         <div id="chat-area-wrapper">
@@ -116,10 +123,14 @@
                 <label for="image-upload" class="file-label chat-action-button">📷</label>
                 <input type="file" id="image-upload" accept="image/*" style="display: none;">
                 
-                <button type="button" id="audio-record-button" class="chat-action-button">🎤</button>
-                <button type="button" id="audio-send-button" class="chat-action-button hidden">▶️</button>
-                <button type="button" id="audio-cancel-button" class="chat-action-button hidden">✖️</button>
-                
+                <button type="button" id="record-audio-button" class="chat-action-button">🎤</button>
+                <div id="audio-recording-controls" class="hidden">
+                    <span id="recording-timer">00:00</span>
+                    <button type="button" id="stop-recording-button" class="chat-action-button">⏹️</button>
+                    <button type="button" id="send-audio-button" class="chat-action-button hidden">▶️</button>
+                    <button type="button" id="cancel-recording-button" class="chat-action-button">✖️</button>
+                </div>
+
                 <button type="submit" id="send-icon-button" class="chat-action-button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg); margin-left: -2px; margin-top: 2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
@@ -340,11 +351,9 @@
 
     <div id="self-context-menu" class="hidden">
         <button id="self-afk-button">Ausentar</button>
-        <!-- === INICIO DE LA MODIFICACIÓN === -->
         <label for="guest-avatar-input" id="self-avatar-label-guest" class="hidden context-menu-button">
             Cambiar Avatar
         </label>
-        <!-- === FIN DE LA MODIFICACIÓN === -->
     </div>
 
      <div id="image-modal-overlay" class="modal-overlay hidden">
@@ -353,9 +362,25 @@
     </div>
     <div id="mobile-overlay"></div>
 
-    <!-- === INICIO DE LA MODIFICACIÓN === -->
+    <!-- MODAL DE AYUDA PARA CREADOR DE SALA -->
+    <div id="room-creator-help-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <span class="modal-close-button">×</span>
+            <h2>¡Felicidades, has creado una sala!</h2>
+            <div class="popup-body">
+                <p>Como creador de la sala, tienes permisos de <strong>Operador</strong> en ella. Esto te permite mantener el orden y la buena convivencia.</p>
+                <p>Estos son los comandos que puedes usar en tu sala:</p>
+                <ul>
+                    <li><strong>/kick &lt;nick&gt; [razón]</strong> - Expulsa a un usuario de la sala.</li>
+                    <li><strong>/mute &lt;nick&gt;</strong> - Silencia o des-silencia a un usuario.</li>
+                    <li><strong>/ban &lt;nick&gt; [razón]</strong> - Banea a un usuario (impide su reingreso).</li>
+                </ul>
+                <p style="margin-top: 15px;">Para ver la lista completa de comandos disponibles para tu rango, escribe <strong>/help</strong> en el chat.</p>
+            </div>
+        </div>
+    </div>
+
     <input type="file" id="guest-avatar-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
-    <!-- === FIN DE LA MODIFICACIÓN === -->
 
     <script type="module" src="js/main.js"></script>
 </body>

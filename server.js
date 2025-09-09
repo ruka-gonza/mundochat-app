@@ -3,66 +3,114 @@ const http = require('http');
 const { Server } = require("socket.io");
 const path = require('path'); 
 const cookieParser = require('cookie-parser');
+const cors = require('cors');
 const config = require('./config');
-const { initializeSocket } = require('./socketManager');
-const botService = require('./services/botService'); 
-const { isCurrentUser } = require('./middleware/isCurrentUser');
+const { connectDb } = require('./services/db-connection');
 
-// --- Importar Rutas ---
-const adminRoutes = require('./routes/admin');
-const userRoutes = require('./routes/user');
-const authRoutes = require('./routes/auth');
-const guestRoutes = require('./routes/guest');
+async function startServer() {
+    try {
+        // 1. Conectar a la base de datos y esperar a que esté lista
+        await connectDb();
+        console.log('La base de datos está conectada, procediendo con el arranque del servidor...');
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server, {
-  maxHttpBufferSize: 1e7 // Límite de 10MB para subidas
-});
+        // 2. Una vez conectado, requerir los módulos que dependen de la BD
+        const { initializeRooms } = require('./services/roomService');
+        const { initializeSocket } = require('./socketManager');
+        const botService = require('./services/botService'); 
+        const { isCurrentUser } = require('./middleware/isCurrentUser');
 
+        const adminRoutes = require('./routes/admin');
+        const userRoutes = require('./routes/user');
+        const authRoutes = require('./routes/auth');
+        const guestRoutes = require('./routes/guest');
+        const uploadRoutes = require('./routes/upload');
 
-// ==========================================================
-// CONFIGURACIÓN DE EXPRESS (LA PARTE QUE FALTABA)
-// ==========================================================
+        // 3. Inicializar las salas (ahora con la BD disponible)
+        initializeRooms();
 
-// LÍNEA CLAVE 1: Servir archivos estáticos desde la carpeta 'public'
-// Esto resuelve el error "Cannot GET /" al servir tu index.html
-app.use(express.static(path.join(__dirname, 'public')));
+        const app = express();
+        app.set('trust proxy', 1);
+        const server = http.createServer(app);
 
-// LÍNEAS ADICIONALES para servir avatares de las carpetas 'data'
-// Esto es importante para que las imágenes de perfil se vean
-app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
-app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
+        const isProduction = process.env.NODE_ENV === 'production';
+        const allowedOrigins = [
+            'https://mundochat.me',
+            'http://localhost:3000',
+            'http://127.0.0.1:3000'
+        ];
 
+        const corsOptions = {
+            origin: function (origin, callback) {
+                if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+                    callback(null, true);
+                } else {
+                    callback(new Error('El acceso a esta API no está permitido por la política de CORS.'));
+                }
+            },
+            credentials: true,
+        };
 
-// LÍNEA CLAVE 2: Middlewares para procesar datos de formularios y JSON
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
+        const io = new Server(server, {
+          cors: corsOptions,
+          maxHttpBufferSize: 20 * 1024 * 1024,
+          pingInterval: 10000,
+          pingTimeout: 20000
+        });
 
-// LÍNEA CLAVE 3: Pasar la instancia 'io' a las rutas
-app.use((req, res, next) => {
-    req.io = io;
-    next();
-});
+        app.use(cors(corsOptions));
+        app.use(express.static(path.join(__dirname, 'public')));
+        app.use('/data/avatars', express.static(path.join(__dirname, 'data', 'avatars')));
+        app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
+        app.use('/data/chat_uploads', express.static(path.join(__dirname, 'data', 'chat_uploads')));
 
-// LÍNEA CLAVE 4: Configurar las rutas de la API
-app.use('/api/admin', adminRoutes);
-app.use('/api/user', isCurrentUser, userRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/api/guest', guestRoutes);
+        app.use(express.json({ limit: '20mb' }));
+        app.use(express.urlencoded({ limit: '20mb', extended: true }));
+        app.use(cookieParser());
 
+        app.use((req, res, next) => {
+            req.io = io;
+            next();
+        });
 
-// ==========================================================
-// FIN DE LA CONFIGURACIÓN
-// ==========================================================
+        app.post('/api/auth/keep-alive', (req, res) => {
+            const userAuthCookie = req.cookies.user_auth;
+            if (userAuthCookie) {
+                try {
+                    const cookieOptions = {
+                        httpOnly: false,
+                    };
+                    if (isProduction) {
+                        cookieOptions.sameSite = 'none';
+                        cookieOptions.secure = true;
+                    } else {
+                        cookieOptions.sameSite = 'lax';
+                    }
+                    res.cookie('user_auth', userAuthCookie, cookieOptions);
+                    return res.status(200).json({ message: 'Session extended.' });
+                } catch (e) {
+                    return res.status(400).json({ error: 'Invalid session cookie.' });
+                }
+            }
+            return res.status(401).json({ error: 'No active session.' });
+        });
 
+        app.use('/api/admin', adminRoutes);
+        app.use('/api/user', isCurrentUser, userRoutes);
+        app.use('/api/auth', authRoutes);
+        app.use('/api/guest', guestRoutes);
+        app.use('/api/upload', isCurrentUser, uploadRoutes);
 
-// --- INICIALIZACIÓN DE SERVICIOS ---
-initializeSocket(io);
-botService.initialize(io);
+        initializeSocket(io);
+        botService.initialize(io);
 
-// --- INICIO DEL SERVIDOR ---
-server.listen(config.port, () => {
-  console.log(`Servidor escuchando en http://localhost:${config.port}`);
-});
+        server.listen(config.port, () => {
+          console.log(`Servidor escuchando en http://localhost:${config.port}`);
+        });
+
+    } catch (error) {
+        console.error("FALLO CRÍTICO AL INICIAR EL SERVIDOR:", error);
+        process.exit(1);
+    }
+}
+
+startServer();

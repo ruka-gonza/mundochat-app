@@ -18,7 +18,16 @@ function findUserByNick(identifier) {
         db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                row.role = getRole(row.nick);
+                // Prioritize the role from the database if it's a staff role
+                // Otherwise, determine the role based on hardcoded lists (for initial assignment or if DB role is 'user')
+                const dbRole = row.role;
+                const hardcodedRole = getRole(row.nick);
+
+                if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
+                    row.role = dbRole; // Use the role from the database if it's a staff role
+                } else {
+                    row.role = hardcodedRole; // Otherwise, use the role determined by getRole (which would be 'user' for non-staff)
+                }
             }
             resolve(row);
         });
@@ -30,7 +39,14 @@ function findUserById(id) {
         db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                row.role = getRole(row.nick);
+                const dbRole = row.role;
+                const hardcodedRole = getRole(row.nick);
+
+                if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
+                    row.role = dbRole;
+                } else {
+                    row.role = hardcodedRole;
+                }
             }
             resolve(row);
         });

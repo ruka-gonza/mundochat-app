@@ -114,7 +114,7 @@ export function createMessageElement(msg, isPrivate = false) {
     if (isMediaOnly) {
         if (msg.preview.type === 'image') {
             const img = document.createElement('img');
-            img.src = msg.preview.url;
+            img.src = msg.preview.image || msg.preview.url;
             img.alt = msg.preview.title;
             img.className = 'media-message image-message';
             img.loading = 'lazy';

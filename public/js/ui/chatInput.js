@@ -221,8 +221,15 @@ export function switchToChat(contextId, contextType) {
             dom.roomNameHeader.textContent = `Sala: ${contextId}`;
             dom.messagesContainer.innerHTML = '';
             const history = state.publicMessageHistories[contextId] || [];
-            history.forEach(msg => dom.messagesContainer.appendChild(createMessageElement(msg, false)));
+                        history.forEach(msg => dom.messagesContainer.appendChild(createMessageElement(msg, false)));
             dom.messagesContainer.scrollTop = dom.messagesContainer.scrollHeight;
+
+            if (state.roomUserLists && state.roomUserLists[contextId]) {
+                state.currentRoomUsers = state.roomUserLists[contextId];
+            } else {
+                state.currentRoomUsers = [];
+            }
+
             renderUserList();
         } else {
             dom.mainChatArea.classList.add('hidden');

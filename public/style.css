@@ -340,3 +340,11 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
     transform: translateY(-50%);
     cursor: pointer;
 }
+
+/* Estilo para emojis de Twemoji */
+.message-content img.emoji {
+    width: 1.5em;
+    height: 1.5em;
+    margin: 0 .05em 0 .1em;
+    vertical-align: -0.4em;
+}

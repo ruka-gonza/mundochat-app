@@ -339,9 +339,9 @@ export function initializeSocketEvents(socket) {
         if (state.currentChatContext.with === roomName) {
             const messageElement = document.getElementById(`message-${messageId}`);
             if (messageElement) {
-                const textSpan = messageElement.querySelector('.message-text');
+                                const textSpan = messageElement.querySelector('.message-text');
                 if (textSpan) {
-                    textSpan.innerHTML = replaceEmoticons(newText);
+                    textSpan.innerHTML = twemoji.parse(replaceEmoticons(newText));
                 }
                 let editedIndicator = messageElement.querySelector('.edited-indicator');
                 if (!editedIndicator) {

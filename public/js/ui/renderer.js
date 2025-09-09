@@ -97,7 +97,7 @@ export function createMessageElement(msg, isPrivate = false) {
         const previewText = msg.replyTo.text.length > 70 
             ? msg.replyTo.text.substring(0, 70) + '...' 
             : msg.replyTo.text;
-        quoteText.textContent = replaceEmoticons(previewText);
+        quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
 
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
@@ -125,7 +125,7 @@ export function createMessageElement(msg, isPrivate = false) {
     } else {
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
-        textSpan.innerHTML = replaceEmoticons(msg.text);
+        textSpan.innerHTML = twemoji.parse(replaceEmoticons(msg.text));
         contentDiv.appendChild(textSpan);
     }
     // =========================================================================

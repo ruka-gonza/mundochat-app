@@ -17,16 +17,22 @@ module.exports.closedSessions = closedSessions;
 
 async function generateLinkPreview(text) {
     if (!text) return null;
-    const urlRegex = /(https?:\[^\s]+)/;
+    const urlRegex = /(https?:\/\/[^\s]+)/;
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
 
+    const fetchWithTimeout = (url, options, timeout = 2000) => {
+        return Promise.race([
+            fetch(url, options),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), timeout)
+            )
+        ]);
+    };
+
     try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
-        const response = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
+        const response = await fetchWithTimeout(url);
 
         if (!response.ok) return null;
 
@@ -43,7 +49,7 @@ async function generateLinkPreview(text) {
         if (youtubeMatch && youtubeMatch[1]) {
             const videoId = youtubeMatch[1];
             // Use the oembed endpoint
-            const oembedRes = await fetch(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
+            const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
             if (!oembedRes.ok) return null;
             const data = await oembedRes.json();
             return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
@@ -55,7 +61,36 @@ async function generateLinkPreview(text) {
             const titleMatch = html.match(/<title>(.*?)<\/title>/);
             const title = titleMatch ? titleMatch[1] : url;
 
-            const descriptionMatch = html.match(/<meta\s+(?:name=[\
+            const descriptionMatch = html.match(/<meta\s+(?:name=[^'"']"description"['"]|property=[^'"']"og:description"['"])\s+content=[^'"']"(.*?)"['"]\s*\/?>/i);
+            const description = descriptionMatch ? descriptionMatch[1] : '';
+
+            const imageMatch = html.match(/<meta\s+property=[^'"']"og:image"['"]\s+content=[^'"']"(.*?)"['"]\s*\/?>/i);
+            const image = imageMatch ? imageMatch[1] : null;
+
+            if (image) {
+                // If the found image is a GIF, embed it directly
+                if (/\.gif(\?.*)?$/i.test(image)) {
+                    return { type: 'image', url: url, title: title, image: image, description: description };
+                }
+                // For other images, create a standard preview card
+                return { type: 'link', url: url, title: title, image: image, description: description };
+            }
+            
+            // If no og:image, but we have a title, return a simple card
+            if(title !== url) {
+                return { type: 'link', url: url, title: title, description: description, image: null };
+            }
+        }
+    } catch (error) {
+        // Ignore fetch errors (like timeouts or invalid URLs)
+        if (error.message !== 'timeout') {
+            console.error("Error al generar previsualización de enlace:", error);
+        }
+        return null;
+    }
+
+    return null;
+}
 
 async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) return;
@@ -68,7 +103,7 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!isMessageSafe) return;
     const previewData = await generateLinkPreview(text);
     const timestamp = new Date().toISOString();
-    const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, replyToId, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     const lastId = await new Promise((resolve, reject) => {
         stmt.run(roomName, sender.nick, text, sender.role, sender.isVIP ? 1 : 0, timestamp, replyToId || null, previewData?.type || null, previewData?.url || null, previewData?.title || null, previewData?.description || null, previewData?.image || null, function(err) {
             if (err) return reject(err);
@@ -189,7 +224,7 @@ async function checkBanStatus(socket, idToCheck, ip) {
 
 function logActivity(eventType, userData, details = null) {
     if (!userData || !userData.nick) return;
-    const stmt = db.prepare(`INSERT INTO activity_logs (timestamp, event_type, nick, userId, userRole, ip, details) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+    const stmt = db.prepare(`INSERT INTO activity_logs (timestamp, event_type, nick, userId, userRole, ip, details) VALUES (?, ?, ?, ?, ?, ?, ?)`)
     stmt.run(new Date().toISOString(), eventType, userData.nick, userData.id, userData.role, userData.ip, details);
     stmt.finalize();
     if (global.io) { global.io.emit('admin panel refresh'); }

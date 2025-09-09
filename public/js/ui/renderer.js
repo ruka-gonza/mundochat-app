@@ -111,12 +111,6 @@ export function createMessageElement(msg, isPrivate = false) {
     
     contentDiv.appendChild(headerDiv);
 
-    const textSpan = document.createElement('span');
-    textSpan.className = 'message-text';
-    const processedText = processMessageText(msg.text);
-    textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
-    contentDiv.appendChild(textSpan);
-
     if (isMediaOnly) {
         if (msg.preview.type === 'image') {
             const img = document.createElement('img');
@@ -133,6 +127,12 @@ export function createMessageElement(msg, isPrivate = false) {
             audioPlayer.className = 'media-message audio-message';
             contentDiv.appendChild(audioPlayer);
         }
+    } else {
+        const textSpan = document.createElement('span');
+        textSpan.className = 'message-text';
+        const processedText = processMessageText(msg.text);
+        textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
+        contentDiv.appendChild(textSpan);
     }
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===

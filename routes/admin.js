@@ -22,23 +22,12 @@ const isStaff = async (req, res, next) => {
             return res.status(403).json({ error: 'Acceso denegado: Usuario no encontrado.' });
         }
 
-        // 2. Verificamos si el usuario tiene un rol de staff global o de sala.
-        let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
+        // Solo permitir roles de staff global para acceder al panel de administración
+        // Eliminar la verificación de la membresía de room_staff para el acceso al panel de administración global
+        let isGlobalStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
         
-        if (!isAnyStaff) {
-            const staffRooms = await new Promise((resolve, reject) => {
-                db.all('SELECT 1 FROM room_staff WHERE userId = ? LIMIT 1', [user.id], (err, rows) => {
-                    if (err) return reject(err);
-                    resolve(rows);
-                });
-            });
-            if (staffRooms.length > 0) {
-                isAnyStaff = true;
-            }
-        }
-        
-        if (!isAnyStaff) {
-            return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación.' });
+        if (!isGlobalStaff) {
+            return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación global.' });
         }
 
         // Adjuntamos los datos del moderador a la petición para su uso posterior.

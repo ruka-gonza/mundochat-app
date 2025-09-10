@@ -100,27 +100,7 @@ async function createRoom(roomName, creator, io) {
     });
 }
 
-// MEJORADA: Función updateUserList más robusta con verificación de sockets activos
 async function updateUserList(io, roomName) {
-    if (roomName === MOD_LOG_ROOM) {
-        try {
-            const staffList = await userService.getAllStaff();
-            const sortedStaff = staffList.sort((a, b) => {
-                const roleA = permissionService.getRolePriority(a.role);
-                const roleB = permissionService.getRolePriority(b.role);
-                if (roleA !== roleB) {
-                    return roleA - roleB;
-                }
-                return a.nick.localeCompare(b.nick);
-            });
-            io.to(roomName).emit('update user list', { roomName, users: sortedStaff });
-            console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${sortedStaff.length} usuarios de staff cargados`);
-        } catch (error) {
-            console.error(`Error al cargar la lista de staff para ${roomName}:`, error);
-        }
-        return;
-    }
-
     if (rooms[roomName]) {
         const uniqueUsers = {};
         const activeSocketIds = new Set();
@@ -161,7 +141,7 @@ async function updateUserList(io, roomName) {
 
         const userList = Object.values(uniqueUsers).sort((a, b) => {
             const roleA = permissionService.getRolePriority(a.role);
-            const roleB = permissionService.getRolePriority(b.role);
+            const roleB = permissionSservice.getRolePriority(b.role);
             if (roleA !== roleB) {
                 return roleA - roleB;
             }

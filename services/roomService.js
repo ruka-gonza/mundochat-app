@@ -100,31 +100,77 @@ async function createRoom(roomName, creator, io) {
     });
 }
 
-function updateUserList(io, roomName) {
+// MEJORADA: Función updateUserList más robusta con verificación de sockets activos
+async function updateUserList(io, roomName) {
+    if (roomName === MOD_LOG_ROOM) {
+        try {
+            const staffList = await userService.getAllStaff();
+            const sortedStaff = staffList.sort((a, b) => {
+                const roleA = permissionService.getRolePriority(a.role);
+                const roleB = permissionService.getRolePriority(b.role);
+                if (roleA !== roleB) {
+                    return roleA - roleB;
+                }
+                return a.nick.localeCompare(b.nick);
+            });
+            io.to(roomName).emit('update user list', { roomName, users: sortedStaff });
+            console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${sortedStaff.length} usuarios de staff cargados`);
+        } catch (error) {
+            console.error(`Error al cargar la lista de staff para ${roomName}:`, error);
+        }
+        return;
+    }
+
     if (rooms[roomName]) {
         const uniqueUsers = {};
-        // Recorremos todos los sockets en la sala
+        const activeSocketIds = new Set();
+        
+        if (global.io && global.io.sockets && global.io.sockets.sockets) {
+            global.io.sockets.sockets.forEach((socket, socketId) => {
+                activeSocketIds.add(socketId);
+            });
+        }
+        
+        const socketsToRemove = [];
+        for (const socketId in rooms[roomName].users) {
+            if (!activeSocketIds.has(socketId)) {
+                socketsToRemove.push(socketId);
+            }
+        }
+        
+        socketsToRemove.forEach(socketId => {
+            console.log(`[CLEANUP] Eliminando socket fantasma ${socketId} de la sala ${roomName}`);
+            delete rooms[roomName].users[socketId];
+        });
+        
         for (const socketId in rooms[roomName].users) {
             const user = rooms[roomName].users[socketId];
-            // Si el usuario ya está en nuestra lista de únicos, no hacemos nada.
-            // Esto previene duplicados si un usuario tiene múltiples conexiones.
-            if (!uniqueUsers[user.nick]) {
-                uniqueUsers[user.nick] = user;
+            
+            if (!user || !user.nick) {
+                console.log(`[CLEANUP] Usuario sin nick encontrado en ${roomName}, eliminando...`);
+                delete rooms[roomName].users[socketId];
+                continue;
+            }
+            
+            if (!uniqueUsers[user.nick.toLowerCase()]) {
+                uniqueUsers[user.nick.toLowerCase()] = user;
+            } else {
+                console.log(`[CLEANUP] Usuario duplicado encontrado: ${user.nick}, manteniendo conexión más reciente`);
             }
         }
 
-        // Convertimos el objeto de usuarios únicos a un array y lo ordenamos
         const userList = Object.values(uniqueUsers).sort((a, b) => {
             const roleA = permissionService.getRolePriority(a.role);
             const roleB = permissionService.getRolePriority(b.role);
             if (roleA !== roleB) {
-                return roleA - roleB; // Ordena por prioridad de rol
+                return roleA - roleB;
             }
-            return a.nick.localeCompare(b.nick); // Luego por orden alfabético
+            return a.nick.localeCompare(b.nick);
         });
 
-        // Emitimos la lista de usuarios limpia y ordenada
         io.to(roomName).emit('update user list', { roomName, users: userList });
+        
+        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userList.length} usuarios activos`);
     }
 }
 

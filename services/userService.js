@@ -131,6 +131,22 @@ function setUserRole(nick, role) {
     });
 }
 
+function getAllStaff() {
+    return new Promise((resolve, reject) => {
+        const staffRoles = ['owner', 'admin', 'mod', 'operator'];
+        const placeholders = staffRoles.map(() => '?').join(',');
+        const query = `SELECT id, nick, role, isVIP, avatar_url FROM users WHERE role IN (${placeholders})`;
+
+        db.all(query, staffRoles, (err, rows) => {
+            if (err) {
+                console.error("Error fetching staff from database:", err);
+                return reject(err);
+            }
+            resolve(rows);
+        });
+    });
+}
+
 module.exports = {
     getRole,
     findUserByNick,
@@ -142,5 +158,6 @@ module.exports = {
     updateUserIP,
     setAvatarUrl,
     updateUserNick,
-    setUserRole
+    setUserRole,
+    getAllStaff
 };

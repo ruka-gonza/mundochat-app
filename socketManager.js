@@ -278,6 +278,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
         socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
         if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
+        roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
     
     if (!wasAlreadyInRoom) {

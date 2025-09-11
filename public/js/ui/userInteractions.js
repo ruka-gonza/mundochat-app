@@ -78,8 +78,6 @@ export function renderUserList() {
     dom.userList.innerHTML = '';
     dom.userCount.textContent = filteredUsers.length;
 
-    console.log('Rendering user list. Filtered users:', filteredUsers);
-
     filteredUsers.forEach(user => {
         const userData = state.allUsersData[user.nick.toLowerCase()] || user;
         const avatarUrl = userData.avatar_url || 'image/default-avatar.png';
@@ -102,7 +100,6 @@ export function renderUserList() {
         item.appendChild(nickSpan);
 
         if (user.nick === state.myNick) {
-            console.log('Rendering self user:', user, item);
             item.classList.add('self');
             item.addEventListener('contextmenu', (e) => showSelfContextMenu(e));
             item.addEventListener('click', (e) => showSelfContextMenu(e));

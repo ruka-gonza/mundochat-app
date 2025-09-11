@@ -124,7 +124,7 @@ body {
 
 .message-content { padding: 8px 12px; border-radius: 18px; line-height: 1.4; word-break: break-word; overflow-wrap: break-word; }
 #messages > li .message-content, #private-chat-window ul li.received .message-content { background-color: var(--other-message-bubble); border-radius: 4px 18px 18px 18px; }
-#messages > li.sent-by-me, #private-chat-window ul li.sent { align-self: flex-end; flex-direction: row-reverse; }
+#chat-window #messages > li.sent-by-me, #private-chat-window ul li.sent { align-self: flex-end; flex-direction: row-reverse; }
 #messages > li.sent-by-me .message-content, #private-chat-window ul li.sent .message-content { background-color: var(--my-message-bubble); border-radius: 18px 4px 18px 18px; }
 
 .message-content:not(.media-only-content) { display: flex; flex-wrap: wrap; align-items: baseline; }

@@ -141,7 +141,7 @@ async function updateUserList(io, roomName) {
 
         const userList = Object.values(uniqueUsers).sort((a, b) => {
             const roleA = permissionService.getRolePriority(a.role);
-            const roleB = permissionSservice.getRolePriority(b.role);
+            const roleB = permissionService.getRolePriority(b.role);
             if (roleA !== roleB) {
                 return roleA - roleB;
             }

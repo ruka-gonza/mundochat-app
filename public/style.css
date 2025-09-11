@@ -268,7 +268,7 @@ tbody tr:nth-child(even) { background-color: var(--bg-panel); }
 
     #input {
         padding: 8px 12px;
-        font-size: 0.9rem;
+        font-size: 16px;
     }
 
     .chat-action-button {

@@ -384,7 +384,7 @@ function initializeSocket(io) {
                 if (!nick || !roomName) return; 
                 if (await checkBanStatus(socket, null, userIP)) return;
                 
-                socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
+                socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isStaff: false, isAFK: false };
                 roomService.guestSocketMap.set(id, socket.id);
                 closedSessions.delete(id);
                 logActivity('CONNECT', socket.userData);

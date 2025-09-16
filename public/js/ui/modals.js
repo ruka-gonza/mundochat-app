@@ -124,6 +124,19 @@ export async function fetchAndShowActivityLogs() {
     }
 }
 
+// *** FUNCIÓN AÑADIDA PARA EVITAR EL 'ReferenceError' ***
+// Debes completarla con la lógica para obtener y mostrar los usuarios registrados.
+export async function fetchAndShowRegisteredUsers() {
+    console.log('fetchAndShowRegisteredUsers llamada. Implementar lógica aquí.');
+    // Ejemplo:
+    // try {
+    //     const users = await fetchWithCredentials('/api/admin/registered-users');
+    //     // ...lógica para mostrar los usuarios...
+    // } catch (error) {
+    //     console.error(error);
+    // }
+}
+
 export function openProfileModal() {
     dom.profileNickSpan.textContent = state.myNick;
     dom.newNickInput.value = state.myNick;

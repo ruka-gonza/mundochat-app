@@ -13,12 +13,10 @@ export function openImageModal(imageSrc) {
 export async function fetchWithCredentials(url, options = {}) {
     options.credentials = 'include';
     
-    // Si no hay cabeceras, las inicializamos
     if (!options.headers) {
         options.headers = {};
     }
 
-    // AÑADIMOS LA CABECERA DE AUTORIZACIÓN CON EL TOKEN
     if (state.authToken) {
         options.headers['Authorization'] = `Bearer ${state.authToken}`;
     }
@@ -209,136 +207,6 @@ export function initModals() {
 
     dom.closeProfileModalButton.addEventListener('click', () => dom.profileModal.classList.add('hidden'));
     dom.profileModal.addEventListener('click', (e) => { if (e.target === dom.profileModal) dom.profileModal.classList.add('hidden'); });
-
-    dom.avatarFileInput.addEventListener('change', () => {
-        const file = dom.avatarFileInput.files[0];
-        const fileNameDisplay = document.getElementById('file-name-display');
-
-        if (file) {
-            state.selectedAvatarFile = file;
-            if (fileNameDisplay) {
-                fileNameDisplay.textContent = file.name;
-            }
-            const reader = new FileReader();
-            reader.onload = (e) => { dom.profileAvatarPreview.src = e.target.result; };
-            reader.readAsDataURL(file);
-        } else {
-             if (fileNameDisplay) {
-                fileNameDisplay.textContent = 'Ningún archivo seleccionado';
-            }
-        }
-    });
-    
-    dom.saveProfileButton.addEventListener('click', async () => {
-        if (!state.selectedAvatarFile) {
-            alert('Por favor, selecciona una imagen para subir.');
-            return;
-        }
-        dom.saveProfileButton.disabled = true;
-        dom.saveProfileButton.textContent = 'Subiendo...';
-
-        const reader = new FileReader();
-        reader.readAsDataURL(state.selectedAvatarFile);
-        reader.onload = async () => {
-            const avatarBase64 = reader.result;
-            try {
-                const result = await fetchWithCredentials('/api/user/avatar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ avatarBase64 })
-                });
-                alert(result.message);
-                dom.profileModal.classList.add('hidden');
-            } catch (error) {
-                console.error('Error al guardar perfil:', error);
-                alert('Hubo un error al conectar con el servidor: ' + error.message);
-            } finally {
-                dom.saveProfileButton.disabled = false;
-                dom.saveProfileButton.textContent = 'Guardar Avatar';
-                state.selectedAvatarFile = null;
-                dom.avatarFileInput.value = '';
-            }
-        };
-        reader.onerror = (error) => {
-            console.error('Error al leer el archivo:', error);
-            alert('No se pudo leer el archivo de imagen.');
-            dom.saveProfileButton.disabled = false;
-            dom.saveProfileButton.textContent = 'Guardar Avatar';
-        };
-    });
-
-    dom.changeNickButton.addEventListener('click', async () => {
-        const newNick = dom.newNickInput.value.trim();
-        if (!isValidNick(newNick)) {
-            alert('Nick inválido. Debe tener entre 3-15 caracteres y solo puede contener letras, números, guiones y guiones bajos.'); return;
-        }
-        dom.changeNickButton.disabled = true; dom.changeNickButton.textContent = 'Cambiando...';
-        try {
-            const result = await fetchWithCredentials('/api/user/nick', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newNick }) });
-            alert(result.message);
-            dom.profileModal.classList.add('hidden');
-        } catch (error) {
-            console.error('Error al cambiar nick:', error);
-            alert('Hubo un error al conectar con el servidor: ' + error.message);
-        } finally {
-            dom.changeNickButton.disabled = false;
-            dom.changeNickButton.textContent = 'Cambiar';
-        }
-    });
-
-    const roomCreatorHelpModal = document.getElementById('room-creator-help-modal');
-    if (roomCreatorHelpModal) {
-        const closeBtn = roomCreatorHelpModal.querySelector('.modal-close-button');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => {
-                roomCreatorHelpModal.classList.add('hidden');
-            });
-        }
-        roomCreatorHelpModal.addEventListener('click', (e) => {
-            if (e.target === roomCreatorHelpModal) {
-                roomCreatorHelpModal.classList.add('hidden');
-            }
-        });
-    }
-}
-
-export function showRoomCreatorHelpModal() {
-    const modal = document.getElementById('room-creator-help-modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-    }
-}
-
-export function showAdminAgreementModal(targetNick, senderNick) {
-    console.log('[DEBUG] showAdminAgreementModal called.');
-    const modal = document.getElementById('admin-agreement-modal');
-    const agreementTextElement = document.getElementById('admin-agreement-text');
-    const acceptButton = document.getElementById('accept-agreement-button');
-    const declineButton = document.getElementById('decline-agreement-button');
-    const checkbox = document.getElementById('agreement-checkbox');
-
-    if (modal && agreementTextElement && acceptButton && declineButton && checkbox) {
-        checkbox.checked = false;
-        acceptButton.disabled = true;
-
-        checkbox.onchange = () => {
-            acceptButton.disabled = !checkbox.checked;
-        };
-
-        acceptButton.onclick = () => {
-            state.socket.emit('admin_agreement_accepted', { targetNick, senderNick });
-            modal.classList.add('hidden');
-        };
-
-        declineButton.onclick = () => {
-            modal.classList.add('hidden');
-        };
-
-        modal.classList.remove('hidden');
-    } else {
-        console.error('[DEBUG] Admin agreement modal elements not found.');
-    }
-}
 
     dom.avatarFileInput.addEventListener('change', () => {
         const file = dom.avatarFileInput.files[0];

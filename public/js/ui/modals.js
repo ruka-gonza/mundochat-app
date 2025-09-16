@@ -332,3 +332,34 @@ export function showRoomCreatorHelpModal() {
         modal.classList.remove('hidden');
     }
 }
+
+export function showAdminAgreementModal(targetNick, senderNick) {
+    console.log('[DEBUG] showAdminAgreementModal called.');
+    const modal = document.getElementById('admin-agreement-modal');
+    const agreementTextElement = document.getElementById('admin-agreement-text');
+    const acceptButton = document.getElementById('accept-agreement-button');
+    const declineButton = document.getElementById('decline-agreement-button');
+    const checkbox = document.getElementById('agreement-checkbox');
+
+    if (modal && agreementTextElement && acceptButton && declineButton && checkbox) {
+        checkbox.checked = false;
+        acceptButton.disabled = true;
+
+        checkbox.onchange = () => {
+            acceptButton.disabled = !checkbox.checked;
+        };
+
+        acceptButton.onclick = () => {
+            state.socket.emit('admin_agreement_accepted', { targetNick, senderNick });
+            modal.classList.add('hidden');
+        };
+
+        declineButton.onclick = () => {
+            modal.classList.add('hidden');
+        };
+
+        modal.classList.remove('hidden');
+    } else {
+        console.error('[DEBUG] Admin agreement modal elements not found.');
+    }
+}

@@ -124,7 +124,7 @@ body {
 
 .message-content { padding: 8px 12px; border-radius: 18px; line-height: 1.4; word-break: break-word; overflow-wrap: break-word; }
 #messages > li .message-content, #private-chat-window ul li.received .message-content { background-color: var(--other-message-bubble); border-radius: 4px 18px 18px 18px; }
-#messages > li.sent-by-me, #private-chat-window ul li.sent { align-self: flex-end; flex-direction: row-reverse; }
+#chat-window #messages > li.sent-by-me, #private-chat-window ul li.sent { align-self: flex-end; flex-direction: row-reverse; }
 #messages > li.sent-by-me .message-content, #private-chat-window ul li.sent .message-content { background-color: var(--my-message-bubble); border-radius: 18px 4px 18px 18px; }
 
 .message-content:not(.media-only-content) { display: flex; flex-wrap: wrap; align-items: baseline; }
@@ -260,6 +260,22 @@ tbody tr:nth-child(even) { background-color: var(--bg-panel); }
     #user-list-container { right: 0; transform: translateX(100%); border-left: none; }
     #conversations-panel.show, #user-list-container.show { transform: translateX(0); }
     #mobile-overlay.show { display: block; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 998; }
+
+    #form {
+        padding: 5px;
+        gap: 3px;
+    }
+
+    #input {
+        padding: 8px 12px;
+        font-size: 16px;
+    }
+
+    .chat-action-button {
+        width: 32px;
+        height: 32px;
+        font-size: 18px;
+    }
 }
 
 @media (min-width: 1025px) {
@@ -347,4 +363,37 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
     height: 1.5em;
     margin: 0 .05em 0 .1em;
     vertical-align: -0.4em;
+}
+
+.chat-image {
+    max-width: 100%;
+    max-height: 300px;
+    display: block;
+    margin-top: 5px;
+    border-radius: 8px;
+}
+
+#admin-agreement-text {
+    max-height: 40vh;
+    overflow-y: auto;
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    border-radius: 5px;
+    background-color: var(--bg-main);
+    margin-bottom: 15px;
+}
+
+#accept-agreement-button {
+    background-color: #28a745; /* Verde */
+    color: white;
+}
+
+#accept-agreement-button:disabled {
+    background-color: #8f8f8f;
+    cursor: not-allowed;
+}
+
+#decline-agreement-button {
+    background-color: #dc3545; /* Rojo */
+    color: white;
 }

@@ -227,7 +227,16 @@ async function handleCommand(io, socket, text, currentRoom) {
     }
     
     const targetSocketId = targetNick ? roomService.findSocketIdByNick(targetNick) : null;
-    const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
+    let targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
+    if (!targetSocket && targetNick) {
+        const allSockets = await io.fetchSockets();
+        for (const sock of allSockets) {
+            if (sock.userData && sock.userData.nick.toLowerCase() === targetNick.toLowerCase()) {
+                targetSocket = sock;
+                break;
+            }
+        }
+    }
     
     switch (command) {
         case '/help': {
@@ -472,13 +481,44 @@ async function handleCommand(io, socket, text, currentRoom) {
                     io.to(currentRoom).emit('system message', { text: successMsg, type: 'highlight' });
                     io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[PROMOTE-SALA] ${successMsg}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
                 } else {
-                    await userService.setUserRole(targetNick, newRole);
-                    const successMsg = `${targetNick} ha sido promovido a ${newRole} (global) por ${sender.nick}.`;
-                    io.emit('system message', { text: successMsg, type: 'highlight' });
-                    io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[PROMOTE-GLOBAL] ${successMsg}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
-                    if (targetSocket) {
-                        targetSocket.userData.role = newRole;
-                        io.emit('user_data_updated', { nick: dbUser.nick, role: newRole });
+                    if (newRole === 'admin') {
+                        if (targetSocket) {
+                            console.log(`[DEBUG] Found target socket for ${targetNick}. Socket ID: ${targetSocket.id}`);
+                            const agreementText = `ACUERDO DE CONFIDENCIALIDAD
+
+Entre: Owner (mundochat) y el usuario interesado (nuevo Admin)
+
+Ambas partes acuerdan lo siguiente:
+
+1. Toda la información compartida entre las partes de manera escrita o por cualquier medio (audio o imágenes), relacionada con el chat o con el resto de usuarios/as de las diferentes salas, será considerada confidencial.
+
+2. No se podrá divulgar, compartir ni utilizar dicha información para fines distintos que no sean los relacionados con el chat.
+
+3. El compromiso de confidencialidad permanecerá vigente mientras dure la actividad de dicho usuario (nuevo Admin) en el chat.
+
+4. En caso de incumplimiento, será cesado de su rol de Admin y expulsado inmediatamente dando por finalizada cualquier relación que tuviera en dicho chat.
+
+5. Y para que quede constancia de la aceptación de dicho contrato, si está de acuerdo, acepte las condiciones más abajo.`;
+                            io.emit('admin_agreement_required', {
+                                text: agreementText,
+                                targetNick: targetNick,
+                                senderNick: sender.nick
+                            });
+                            console.log(`[DEBUG] Emitted 'admin_agreement_required' to ${targetNick}.`);
+                            socket.emit('system message', { text: `Se ha enviado una solicitud de confirmación a ${targetNick} para el rol de admin.`, type: 'highlight' });
+                        } else {
+                            console.log(`[DEBUG] Could not find target socket for ${targetNick}.`);
+                            socket.emit('system message', { text: `El usuario ${targetNick} no está conectado para aceptar el acuerdo de confidencialidad.`, type: 'error' });
+                        }
+                    } else {
+                        await userService.setUserRole(targetNick, newRole);
+                        const successMsg = `${targetNick} ha sido promovido a ${newRole} (global) por ${sender.nick}.`;
+                        io.emit('system message', { text: successMsg, type: 'highlight' });
+                        io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[PROMOTE-GLOBAL] ${successMsg}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+                        if (targetSocket) {
+                            targetSocket.userData.role = newRole;
+                            io.emit('user_data_updated', { nick: dbUser.nick, role: newRole });
+                        }
                     }
                 }
             }

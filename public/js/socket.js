@@ -5,7 +5,7 @@ import { addPrivateChat, updateConversationList } from './ui/conversations.js';
 import { renderUserList } from './ui/userInteractions.js';
 import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
-import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal } from './ui/modals.js';
+import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal, showAdminAgreementModal } from './ui/modals.js';
 
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
@@ -92,6 +92,26 @@ export function initializeSocketEvents(socket) {
     });
 
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
+
+    socket.on('set session cookie', (data) => {
+        console.log('[DEBUG] Received set session cookie event:', data);
+        if (data.token) {
+            state.authToken = data.token;
+        }
+        if (data.nick) {
+            state.myNick = data.nick;
+        }
+        if (data.id && data.nick && data.role) { // Assuming userData contains id, nick, role
+            state.myUserData = {
+                ...state.myUserData, // Keep existing user data
+                id: data.id,
+                nick: data.nick,
+                role: data.role
+            };
+        }
+        // Optionally, update the cookie if it's a session cookie
+        // document.cookie = `user_auth=${JSON.stringify(data)}; path=/; max-age=86400`;
+    });
 
     socket.on('update user list', ({ roomName, users }) => {
         if (!state.roomUserLists) state.roomUserLists = {};
@@ -400,5 +420,12 @@ export function initializeSocketEvents(socket) {
 
     socket.on('room_created_success', () => {
         showRoomCreatorHelpModal();
+    });
+
+    socket.on('admin_agreement_required', (data) => {
+        console.log('[DEBUG] Received admin_agreement_required event for target:', data.targetNick);
+        if (data.targetNick.toLowerCase() === state.myNick.toLowerCase()) {
+            showAdminAgreementModal(data.targetNick, data.senderNick);
+        }
     });
 }

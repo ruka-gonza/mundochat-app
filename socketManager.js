@@ -232,6 +232,15 @@ function logActivity(eventType, userData, details = null) {
 
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
+
+    // Restrict access to Staff room
+    if (roomName.toLowerCase() === 'staff') {
+        const allowedRoles = ['owner', 'admin'];
+        if (!allowedRoles.includes(socket.userData.role)) {
+            socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error', roomName });
+            return;
+        }
+    }
     
     if (!roomService.rooms[roomName]) {
         roomService.rooms[roomName] = { users: {} };
@@ -278,6 +287,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
         socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
         if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
+        roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
     
     if (!wasAlreadyInRoom) {
@@ -358,6 +368,29 @@ function initializeSocket(io) {
             }
         })();
 
+        socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
+            try {
+                // Security check: only the user themselves can accept.
+                if (socket.userData.nick.toLowerCase() !== targetNick.toLowerCase()) {
+                    return;
+                }
+
+                await userService.setUserRole(targetNick, 'admin');
+
+                const successMsg = `${targetNick} ha sido promovido a admin (global) por ${senderNick}.`;
+                io.emit('system message', { text: successMsg, type: 'highlight' });
+                io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[PROMOTE-GLOBAL] ${successMsg}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+
+                const targetSocket = io.sockets.sockets.get(socket.id);
+                if (targetSocket) {
+                    targetSocket.userData.role = 'admin';
+                    io.emit('user_data_updated', { nick: targetNick, role: 'admin' });
+                }
+            } catch (error) {
+                console.error(`Error en el evento 'admin_agreement_accepted':`, error);
+            }
+        });
+
         socket.on('reauthenticate', async (cookieData) => {
             try {
                 if (closedSessions.has(cookieData.id)) {
@@ -383,7 +416,7 @@ function initializeSocket(io) {
                 if (!nick || !roomName) return; 
                 if (await checkBanStatus(socket, null, userIP)) return;
                 
-                socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isAFK: false };
+                socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isStaff: false, isAFK: false };
                 roomService.guestSocketMap.set(id, socket.id);
                 closedSessions.delete(id);
                 logActivity('CONNECT', socket.userData);

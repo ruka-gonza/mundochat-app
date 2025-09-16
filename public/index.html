@@ -171,6 +171,32 @@
         </div>
     </div>
 
+    <!-- Admin Agreement Modal -->
+    <div id="admin-agreement-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <h2 class="modal-title">ACUERDO DE CONFIDENCIALIDAD</h2>
+                        <div id="admin-agreement-text">
+                <p><strong>Entre:</strong> Owner (mundochat) y el usuario interesado (nuevo Admin)</p>
+                <p>Ambas partes acuerdan lo siguiente:</p>
+                <ol>
+                    <li>Toda la información compartida entre las partes de manera escrita o por cualquier medio (audio o imágenes), relacionada con el chat o con el resto de usuarios/as de las diferentes salas, será considerada confidencial.</li>
+                    <li>No se podrá divulgar, compartir ni utilizar dicha información para fines distintos que no sean los relacionados con el chat.</li>
+                    <li>El compromiso de confidencialidad permanecerá vigente mientras dure la actividad de dicho usuario (nuevo Admin) en el chat.</li>
+                    <li>En caso de incumplimiento, será cesado de su rol de Admin y expulsado inmediatamente dando por finalizada cualquier relación que tuviera en dicho chat.</li>
+                    <li>Y para que quede constancia de la aceptación de dicho contrato, si está de acuerdo, acepte las condiciones más abajo.</li>
+                </ol>
+            </div>
+            <div class="modal-actions">
+                <label for="agreement-checkbox">
+                    <input type="checkbox" id="agreement-checkbox">
+                    He leído y acepto los términos del acuerdo.
+                </label>
+                <button id="accept-agreement-button" class="action-button" disabled>Aceptar</button>
+                <button id="decline-agreement-button" class="action-button">Rechazar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DE RECUPERACIÓN DE CONTRASEÑA -->
     <div id="forgot-password-modal" class="modal-overlay hidden">
         <div class="modal-content">

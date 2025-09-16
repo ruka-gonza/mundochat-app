@@ -38,6 +38,11 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
+function processMessageText(text) {
+    const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
+    return text.replace(imageRegex, '<img src="$1" class="chat-image" alt="Image" loading="lazy">');
+}
+
 export function createMessageElement(msg, isPrivate = false) {
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
@@ -106,15 +111,10 @@ export function createMessageElement(msg, isPrivate = false) {
     
     contentDiv.appendChild(headerDiv);
 
-    const textSpan = document.createElement('span');
-    textSpan.className = 'message-text';
-    textSpan.innerHTML = twemoji.parse(replaceEmoticons(msg.text));
-    contentDiv.appendChild(textSpan);
-
     if (isMediaOnly) {
         if (msg.preview.type === 'image') {
             const img = document.createElement('img');
-            img.src = msg.preview.image || msg.preview.url;
+            img.src = msg.preview.url;
             img.alt = msg.preview.title;
             img.className = 'media-message image-message';
             img.loading = 'lazy';
@@ -127,6 +127,12 @@ export function createMessageElement(msg, isPrivate = false) {
             audioPlayer.className = 'media-message audio-message';
             contentDiv.appendChild(audioPlayer);
         }
+    } else {
+        const textSpan = document.createElement('span');
+        textSpan.className = 'message-text';
+        const processedText = processMessageText(msg.text);
+        textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
+        contentDiv.appendChild(textSpan);
     }
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===

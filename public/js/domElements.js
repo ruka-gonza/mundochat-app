@@ -69,6 +69,7 @@ export const mutedUsersList = document.getElementById('muted-users-list');
 export const reportsList = document.getElementById('reports-list');
 export const onlineUsersList = document.getElementById('online-users-list');
 export const activityLogsList = document.getElementById('activity-logs-list');
+export const registeredUsersList = document.getElementById('registered-users-list');
 
 export const welcomePopup = document.getElementById('welcome-popup-overlay');
 export const closeWelcomePopupButton = document.getElementById('close-welcome-popup');

@@ -228,8 +228,37 @@ export function initModals() {
             if (targetId === 'muted-users-panel') fetchAndShowMutedUsers();
             if (targetId === 'reports-panel') fetchAndShowReports();
             if (targetId === 'activity-monitor-panel') { fetchAndShowOnlineUsers(); fetchAndShowActivityLogs(); }
+            if (targetId === 'registered-users-panel') fetchAndShowRegisteredUsers();
         });
     });
+
+export async function fetchAndShowRegisteredUsers() {
+    try {
+        const users = await fetchWithCredentials('/api/admin/registered-users');
+        dom.registeredUsersList.innerHTML = '';
+        if (users.length === 0) {
+            dom.registeredUsersList.innerHTML = `<tr><td colspan="8">No hay usuarios registrados.</td></tr>`;
+            return;
+        }
+        users.forEach(user => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>${user.id}</td>
+                <td>${user.nick}</td>
+                <td>${user.email}</td>
+                <td>${user.role}</td>
+                <td>${new Date(user.registered_at).toLocaleString()}</td>
+                <td>${user.lastIP || 'N/A'}</td>
+                <td>${user.isVIP ? 'Sí' : 'No'}</td>
+                <td>${user.isMuted ? 'Sí' : 'No'}</td>
+            `;
+            dom.registeredUsersList.appendChild(row);
+        });
+    } catch (error) {
+        console.error(error);
+        dom.registeredUsersList.innerHTML = `<tr><td colspan="8">${error.message}</td></tr>`;
+    }
+}
 
     dom.closeProfileModalButton.addEventListener('click', () => dom.profileModal.classList.add('hidden'));
     dom.profileModal.addEventListener('click', (e) => { if (e.target === dom.profileModal) dom.profileModal.classList.add('hidden'); });

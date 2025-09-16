@@ -109,8 +109,8 @@ export function initializeSocketEvents(socket) {
                 role: data.role
             };
         }
-        // Optionally, update the cookie if it's a session cookie
-        // document.cookie = `user_auth=${JSON.stringify(data)}; path=/; max-age=86400`;
+        // Update the cookie to ensure the client-side session is refreshed
+        document.cookie = `user_auth=${JSON.stringify(data)}; path=/; max-age=86400`;
     });
 
     socket.on('update user list', ({ roomName, users }) => {

@@ -222,6 +222,7 @@
                 <button class="admin-tab" data-target="muted-users-panel">Silenciados</button>
                 <button class="admin-tab" data-target="reports-panel">Denuncias</button>
                 <button class="admin-tab" data-target="activity-monitor-panel">Monitor de Actividad</button>
+                <button class="admin-tab" data-target="registered-users-panel">Usuarios Registrados</button>
             </div>
 
             <div id="banned-users-panel" class="admin-panel">
@@ -295,6 +296,27 @@
                             </tr>
                         </thead>
                         <tbody id="activity-logs-list"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="registered-users-panel" class="admin-panel hidden">
+                <h3>Usuarios Registrados</h3>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nick</th>
+                                <th>Email</th>
+                                <th>Rol</th>
+                                <th>Registrado</th>
+                                <th>Última IP</th>
+                                <th>VIP</th>
+                                <th>Silenciado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="registered-users-list"></tbody>
                     </table>
                 </div>
             </div>

@@ -233,14 +233,15 @@ function logActivity(eventType, userData, details = null) {
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
 
-    // Restrict access to Staff room
-    if (roomName.toLowerCase() === 'staff') {
+    // --- INICIO DE LA MODIFICACIÓN 1: Restringir el acceso explícito a la sala de Staff ---
+    if (roomName.toLowerCase() === roomService.MOD_LOG_ROOM.toLowerCase()) {
         const allowedRoles = ['owner', 'admin'];
         if (!allowedRoles.includes(socket.userData.role)) {
-            socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error', roomName });
-            return;
+            socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error' });
+            return; // Detener la ejecución para que no se una
         }
     }
+    // --- FIN DE LA MODIFICACIÓN 1 ---
     
     if (!roomService.rooms[roomName]) {
         roomService.rooms[roomName] = { users: {} };
@@ -282,13 +283,16 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
-    if (socket.userData.isStaff) {
+    // --- INICIO DE LA MODIFICACIÓN 2: Ajustar la lógica de auto-join a la sala de logs ---
+    // Solo los owners y admins deben unirse automáticamente.
+    if (['owner', 'admin'].includes(socket.userData.role)) {
         socket.join(roomService.MOD_LOG_ROOM);
         socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
         if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
+    // --- FIN DE LA MODIFICACIÓN 2 ---
     
     if (!wasAlreadyInRoom) {
         logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
@@ -303,14 +307,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     });
     
     roomService.updateUserList(io, roomName);
-    
-    /*
-    db.all('SELECT * FROM messages WHERE roomName = ? ORDER BY timestamp DESC LIMIT 50', [roomName], (err, rows) => {
-        if (err) return console.error("Error al cargar historial:", err);
-        const history = rows.reverse().map(row => ({ id: row.id, nick: row.nick, text: row.text, role: row.role, isVIP: row.isVIP === 1, roomName: row.roomName, editedAt: row.editedAt, timestamp: row.timestamp, replyToId: row.replyToId, preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null }));
-        socket.emit('load history', { roomName, history });
-    });
-    */
     
     roomService.updateRoomData(io);
 }

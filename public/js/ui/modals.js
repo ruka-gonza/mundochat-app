@@ -127,14 +127,22 @@ export async function fetchAndShowActivityLogs() {
 // *** FUNCIÓN AÑADIDA PARA EVITAR EL 'ReferenceError' ***
 // Debes completarla con la lógica para obtener y mostrar los usuarios registrados.
 export async function fetchAndShowRegisteredUsers() {
-    console.log('fetchAndShowRegisteredUsers llamada. Implementar lógica aquí.');
-    // Ejemplo:
-    // try {
-    //     const users = await fetchWithCredentials('/api/admin/registered-users');
-    //     // ...lógica para mostrar los usuarios...
-    // } catch (error) {
-    //     console.error(error);
-    // }
+    try {
+        const users = await fetchWithCredentials('/api/admin/registered-users');
+        dom.registeredUsersList.innerHTML = ''; // Clear existing content
+        if (users.length === 0) {
+            dom.registeredUsersList.innerHTML = `<tr><td colspan="2">No hay usuarios registrados.</td></tr>`;
+            return;
+        }
+        users.forEach(user => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${user.id}</td><td>${user.nick}</td>`;
+            dom.registeredUsersList.appendChild(row);
+        });
+    } catch (error) {
+        console.error('Error fetching registered users:', error);
+        dom.registeredUsersList.innerHTML = `<tr><td colspan="2">${error.message}</td></tr>`;
+    }
 }
 
 export function openProfileModal() {

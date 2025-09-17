@@ -165,7 +165,8 @@ router.get('/online-users', isStaff, async (req, res) => {
         console.error("Error grave en la ruta /online-users:", error);
         res.status(500).json({ error: 'Error del servidor al obtener usuarios online.' });
     }
-});
+}
+);
 
 router.get('/activity-logs', isStaff, (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
@@ -231,6 +232,16 @@ router.post('/unmute', isStaff, async (req, res) => {
     } catch (error) {
         console.error("Error en /api/admin/unmute:", error);
         res.status(500).json({ error: 'Error interno del servidor.' });
+    }
+});
+
+router.get('/registered-users', isStaff, async (req, res) => {
+    try {
+        const users = await userService.getAllRegisteredUsers();
+        res.json(users);
+    } catch (error) {
+        console.error('Error fetching registered users:', error);
+        res.status(500).json({ error: 'Error interno del servidor al obtener usuarios registrados.' });
     }
 });
 

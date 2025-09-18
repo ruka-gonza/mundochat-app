@@ -6,6 +6,33 @@ const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Roma
 const MOD_LOG_ROOM = '#Staff-Logs';
 const guestSocketMap = new Map();
 
+// --- INICIO DE LA MODIFICACIÓN: Nueva función de sincronización ---
+
+/**
+ * Actualiza los datos de un usuario en todas las listas de sala en las que se encuentra.
+ * Esta función es CRÍTICA para mantener la consistencia del estado del servidor.
+ * @param {object} socket - El objeto socket del usuario cuyos datos han cambiado.
+ */
+function updateUserDataInAllRooms(socket) {
+    if (!socket || !socket.userData || !socket.joinedRooms) {
+        console.warn('[SYNC_WARNING] Se intentó actualizar datos de usuario sin un socket válido.');
+        return;
+    }
+
+    socket.joinedRooms.forEach(roomName => {
+        // Asegurarse de que la sala y el usuario existen en el registro
+        if (rooms[roomName] && rooms[roomName].users[socket.id]) {
+            // Actualiza la copia de los datos del usuario en la sala con los datos más recientes de socket.userData
+            rooms[roomName].users[socket.id] = { 
+                ...rooms[roomName].users[socket.id], // Mantiene datos específicos de la sala si los hubiera
+                ...socket.userData // Sobrescribe con los datos más recientes
+            };
+        }
+    });
+}
+// --- FIN DE LA MODIFICACIÓN ---
+
+
 // --- Inicialización en Memoria y desde BD ---
 function initializeRooms() {
     const dbInstance = require('./db-connection').getInstance();
@@ -165,5 +192,6 @@ module.exports = {
     isNickInUse,
     updateUserList,
     updateRoomData,
-    getActiveRoomsWithUserCount
+    getActiveRoomsWithUserCount,
+    updateUserDataInAllRooms // <-- Exportar la nueva función
 };

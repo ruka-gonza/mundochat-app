@@ -10,7 +10,6 @@ const { v4: uuidv4 } = require('uuid');
 const uploadsDir = path.join(__dirname, '..', 'data', 'avatars');
 const tempUploadsDir = path.join(__dirname, '..', 'data', 'temp_avatars');
 
-// Función para asegurar que los directorios existan
 async function ensureDirs() {
     try {
         await fs.access(uploadsDir);
@@ -24,12 +23,9 @@ async function ensureDirs() {
     }
 }
 
-// =========================================================================
-// ===       NUEVA RUTA UNIVERSAL PARA SUBIR AVATARES (BASE64)           ===
-// =========================================================================
 router.post('/avatar', async (req, res) => {
     const { avatarBase64 } = req.body;
-    const { id, nick, role } = req.verifiedUser; // Esto viene del middleware isCurrentUser
+    const { id, nick, role } = req.verifiedUser;
     const io = req.io;
 
     if (!avatarBase64) {
@@ -64,7 +60,6 @@ router.post('/avatar', async (req, res) => {
         const targetSocket = roomService.findSocketIdByNick(nick) ? io.sockets.sockets.get(roomService.findSocketIdByNick(nick)) : null;
 
         if (isGuest) {
-            // Para invitados, solo actualizamos el estado en el socket
             if (targetSocket) {
                 if (targetSocket.userData.temp_avatar_path) {
                     await fs.unlink(targetSocket.userData.temp_avatar_path).catch(err => console.error("No se pudo borrar el avatar temporal antiguo:", err));
@@ -73,7 +68,6 @@ router.post('/avatar', async (req, res) => {
                 targetSocket.userData.temp_avatar_path = filePath;
             }
         } else {
-            // Para usuarios registrados, actualizamos la DB
             await userService.setAvatarUrl(id, avatarUrl);
             if (targetSocket) {
                 targetSocket.userData.avatar_url = avatarUrl;
@@ -89,11 +83,8 @@ router.post('/avatar', async (req, res) => {
     }
 });
 
-
-// RUTA DE CAMBIO DE NICK (se mantiene igual)
 router.post('/nick', async (req, res) => {
-    // ... (el código de esta ruta no cambia)
-    const oldNick = req.verifiedUser.nick;
+    const { id: userId, nick: oldNick } = req.verifiedUser;
     const { newNick } = req.body;
     const io = req.io;
 
@@ -111,9 +102,15 @@ router.post('/nick', async (req, res) => {
 
     try {
         const existingUser = await userService.findUserByNick(newNick);
-        if (existingUser) {
-            return res.status(400).json({ error: `El nick '${newNick}' ya está registrado.` });
+        
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // Si el nick existe, pero pertenece al MISMO usuario que hace la petición (comprobando por ID),
+        // entonces no es un error. Esto permite cambiar A->B y luego B->A.
+        // Solo lanzamos error si el nick pertenece a OTRO usuario.
+        if (existingUser && existingUser.id !== userId) {
+            return res.status(400).json({ error: `El nick '${newNick}' ya está registrado por otro usuario.` });
         }
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
         
         const success = await userService.updateUserNick(oldNick, newNick);
 
@@ -122,17 +119,30 @@ router.post('/nick', async (req, res) => {
             if (targetSocketId) {
                 const targetSocket = io.sockets.sockets.get(targetSocketId);
                 if (targetSocket) {
+                    // 1. Actualizar el estado principal del socket
                     targetSocket.userData.nick = newNick;
                     
+                    // 2. Sincronizar el estado actualizado en todas las salas del servidor
+                    roomService.updateUserDataInAllRooms(targetSocket);
+                    
+                    // 3. Enviar evento para que el cliente actualice su cookie
                     targetSocket.emit('set session cookie', { 
                         id: targetSocket.userData.id,
                         nick: newNick,
                         role: targetSocket.userData.role
                     });
-
+                    
+                    // 4. Emitir evento global para cambios cosméticos (ej. en listas de chats privados)
                     io.emit('user_data_updated', {
                         oldNick: oldNick,
                         nick: newNick
+                    });
+
+                    // 5. Forzar la re-emisión de la lista de usuarios en todas las salas del usuario
+                    targetSocket.joinedRooms.forEach(room => {
+                        if (room !== targetSocket.id) {
+                            roomService.updateUserList(io, room);
+                        }
                     });
                 }
             }

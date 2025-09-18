@@ -27,8 +27,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
-    // --- INICIO DE LA MODIFICACIÓN ---
-    // Nuevo comando /avatar para invitados
     if (command === '/avatar') {
         const avatarUrl = args[1];
 
@@ -40,37 +38,33 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: 'Uso: /avatar <URL de la imagen>', type: 'error' });
         }
 
-        // Validación simple para seguridad: debe ser una URL http/https y terminar en una extensión de imagen.
         const urlRegex = /^(https?:\/\/[^\s]+(\.jpg|\.jpeg|\.png|\.gif|\.webp))$/i;
         if (!urlRegex.test(avatarUrl)) {
             return socket.emit('system message', { text: 'La URL proporcionada no parece ser una imagen válida (debe terminar en .jpg, .png, .gif, etc.).', type: 'error' });
         }
 
-        // Actualizamos los datos del socket en memoria
         socket.userData.avatar_url = avatarUrl;
+        
+        // --- AÑADIDO: Sincronizar estado del avatar en el servidor ---
+        roomService.updateUserDataInAllRooms(socket);
 
-        // Notificamos a todos los clientes para que actualicen la UI
         io.emit('user_data_updated', {
             nick: sender.nick,
             avatar_url: avatarUrl
         });
 
-        // Enviamos una confirmación al usuario
         socket.emit('system message', { text: '¡Tu avatar ha sido actualizado!', type: 'highlight' });
 
-        // Registramos la acción en el canal de logs del staff
         io.to(roomService.MOD_LOG_ROOM).emit('system message', {
             text: `[AVATAR] El invitado ${sender.nick} ha establecido un nuevo avatar.`,
             type: 'mod-log',
             roomName: roomService.MOD_LOG_ROOM
         });
         
-        return; // Terminamos la ejecución aquí
+        return;
     }
-    // --- FIN DE LA MODIFICACIÓN ---
 
     if (command === '/staff') {
-        // ... (el código de /staff no necesita cambios)
         const staffOnline = {};
         const allSockets = await io.fetchSockets();
         const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
@@ -141,6 +135,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     }
 
     if (command === '/nick') {
+        // --- INICIO DE LA CORRECCIÓN COMPLETA ---
         const newNick = args[1];
         if (sender.role !== 'guest') {
             return socket.emit('system message', { text: 'Los usuarios registrados deben cambiar su nick desde el panel "Mi Perfil".', type: 'error' });
@@ -159,22 +154,29 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: `El nick '${newNick}' ya está en uso por otro usuario.`, type: 'error' });
         }
         const oldNick = sender.nick;
+        
+        // 1. Actualizar el estado principal del socket
         socket.userData.nick = newNick;
+        
+        // 2. Sincronizar el estado actualizado en todas las salas del servidor
+        roomService.updateUserDataInAllRooms(socket);
+        
+        // 3. Enviar evento para que el cliente actualice su cookie
         socket.emit('set session cookie', { id: socket.userData.id, nick: newNick, role: socket.userData.role });
+        
+        // 4. Anunciar el cambio a todos
         io.emit('system message', { text: `${oldNick} ahora es conocido como ${newNick}.`, type: 'highlight' });
         
-        io.emit('user_data_updated', { oldNick: oldNick, nick: newNick, role: socket.userData.role, isVIP: socket.userData.isVIP, avatar_url: socket.userData.avatar_url, id: socket.userData.id });
-
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
-        // Forzamos la actualización de la lista de usuarios en todas las salas donde está el usuario.
-        // Esta es la forma más segura de garantizar que todos los clientes vean el cambio.
+        // 5. Emitir evento global para cambios cosméticos
+        io.emit('user_data_updated', { oldNick: oldNick, nick: newNick });
+        
+        // 6. Forzar la re-emisión de la lista de usuarios en todas las salas del usuario
         socket.joinedRooms.forEach(room => {
-            if (room !== socket.id) { // No enviar a la sala privada del socket
+            if (room !== socket.id) {
                 roomService.updateUserList(io, room);
             }
         });
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
-        
+        // --- FIN DE LA CORRECCIÓN COMPLETA ---
         return;
     }
 

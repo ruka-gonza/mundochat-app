@@ -233,15 +233,13 @@ function logActivity(eventType, userData, details = null) {
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
 
-    // --- INICIO DE LA MODIFICACIÓN 1: Restringir el acceso explícito a la sala de Staff ---
     if (roomName.toLowerCase() === roomService.MOD_LOG_ROOM.toLowerCase()) {
         const allowedRoles = ['owner', 'admin'];
         if (!allowedRoles.includes(socket.userData.role)) {
             socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error' });
-            return; // Detener la ejecución para que no se una
+            return;
         }
     }
-    // --- FIN DE LA MODIFICACIÓN 1 ---
     
     if (!roomService.rooms[roomName]) {
         roomService.rooms[roomName] = { users: {} };
@@ -260,7 +258,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
             oldSocket.emit('system message', { text: 'Has iniciado sesión en otra ubicación. Esta sesión se cerrará.', type: 'error', roomName });
             oldSocket.disconnect(true);
         } else {
-            // Fallback por si el objeto socket ya no existe pero el estado persiste
             delete roomService.rooms[roomName].users[existingSocketId];
         }
     }
@@ -283,8 +280,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
-    // --- INICIO DE LA MODIFICACIÓN 2: Ajustar la lógica de auto-join a la sala de logs ---
-    // Solo los owners y admins deben unirse automáticamente.
     if (['owner', 'admin'].includes(socket.userData.role)) {
         socket.join(roomService.MOD_LOG_ROOM);
         socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
@@ -292,7 +287,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
-    // --- FIN DE LA MODIFICACIÓN 2 ---
     
     if (!wasAlreadyInRoom) {
         logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
@@ -366,7 +360,6 @@ function initializeSocket(io) {
 
         socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
             try {
-                // Security check: only the user themselves can accept.
                 if (socket.userData.nick.toLowerCase() !== targetNick.toLowerCase()) {
                     return;
                 }
@@ -586,13 +579,33 @@ function initializeSocket(io) {
             }
         });
         
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
+
+            // 1. Cambiar el estado principal del usuario
             socket.userData.isAFK = !socket.userData.isAFK;
-            io.emit('user_data_updated', { nick: socket.userData.nick, isAFK: socket.userData.isAFK });
+
+            // 2. CRÍTICO: Sincronizar este nuevo estado en todas las copias de las salas
+            roomService.updateUserDataInAllRooms(socket);
+
+            // 3. Notificar a los clientes para que actualicen su UI.
+            // La forma más robusta es re-enviar la lista de usuarios completa a cada sala.
+            socket.joinedRooms.forEach(room => {
+                if (room !== socket.id) { // No actualizar la "sala" personal del socket
+                    roomService.updateUserList(io, room);
+                }
+            });
+            
+            // 4. Mantener el mensaje de sistema para notificar a los demás del cambio
             const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
-            socket.joinedRooms.forEach(room => { if (room !== socket.id) { io.to(room).emit('system message', { text: statusMessage, type: 'join', roomName: room }); } });
+            socket.joinedRooms.forEach(room => {
+                if (room !== socket.id) {
+                    io.to(room).emit('system message', { text: statusMessage, type: 'join', roomName: room });
+                }
+            });
         });
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
         
         socket.on('report user', ({ targetNick, reason }) => {
             const reporter = socket.userData;

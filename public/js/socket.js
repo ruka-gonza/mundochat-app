@@ -1,11 +1,11 @@
-import state from './state.js';
-import * as dom from './domElements.js';
-import { showNotification, replaceEmoticons } from './utils.js';
-import { addPrivateChat, updateConversationList } from './ui/conversations.js'; 
-import { renderUserList } from './ui/userInteractions.js';
-import { appendMessageToView, createMessageElement } from './ui/renderer.js';
-import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
-import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal, showAdminAgreementModal } from './ui/modals.js';
+import state from '../state.js';
+import * as dom from '../domElements.js';
+import { showNotification, replaceEmoticons } from '../utils.js';
+import { addPrivateChat, updateConversationList } from './conversations.js'; 
+import { renderUserList } from './userInteractions.js';
+import { appendMessageToView, createMessageElement } from './renderer.js';
+import { switchToChat, updateTypingIndicator } from './chatInput.js'; 
+import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal, showAdminAgreementModal } from './modals.js';
 
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
@@ -132,10 +132,16 @@ export function initializeSocketEvents(socket) {
         const lowerOldNick = (data.oldNick || data.nick).toLowerCase();
         const lowerNewNick = data.nick.toLowerCase();
     
+        // --- INICIO DE LA CORRECCIÓN EN EL CLIENTE ---
+        // Lógica mejorada para renombrar al usuario en el almacén de datos central.
         if (data.oldNick && lowerOldNick !== lowerNewNick) {
-            state.allUsersData[lowerNewNick] = state.allUsersData[lowerOldNick] || {};
+            // Copiamos los datos del usuario al nuevo nick y eliminamos la entrada antigua.
+            state.allUsersData[lowerNewNick] = state.allUsersData[lowerOldNick];
             delete state.allUsersData[lowerOldNick];
         }
+        // --- FIN DE LA CORRECCIÓN EN EL CLIENTE ---
+
+        // Actualizamos (o creamos) la entrada con los nuevos datos.
         state.allUsersData[lowerNewNick] = { ...state.allUsersData[lowerNewNick], ...data };
         
         if (state.myNick.toLowerCase() === lowerOldNick) {

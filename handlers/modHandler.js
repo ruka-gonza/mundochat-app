@@ -1,4 +1,3 @@
-
 const userService = require('../services/userService');
 const banService = require('../services/banService');
 const roomService = require('../services/roomService');
@@ -142,7 +141,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     }
 
     if (command === '/nick') {
-        // ... (el código de /nick no necesita cambios)
         const newNick = args[1];
         if (sender.role !== 'guest') {
             return socket.emit('system message', { text: 'Los usuarios registrados deben cambiar su nick desde el panel "Mi Perfil".', type: 'error' });
@@ -164,7 +162,19 @@ async function handleCommand(io, socket, text, currentRoom) {
         socket.userData.nick = newNick;
         socket.emit('set session cookie', { id: socket.userData.id, nick: newNick, role: socket.userData.role });
         io.emit('system message', { text: `${oldNick} ahora es conocido como ${newNick}.`, type: 'highlight' });
+        
         io.emit('user_data_updated', { oldNick: oldNick, nick: newNick, role: socket.userData.role, isVIP: socket.userData.isVIP, avatar_url: socket.userData.avatar_url, id: socket.userData.id });
+
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // Forzamos la actualización de la lista de usuarios en todas las salas donde está el usuario.
+        // Esta es la forma más segura de garantizar que todos los clientes vean el cambio.
+        socket.joinedRooms.forEach(room => {
+            if (room !== socket.id) { // No enviar a la sala privada del socket
+                roomService.updateUserList(io, room);
+            }
+        });
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
+        
         return;
     }
 
@@ -177,20 +187,18 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: 'Nombre de sala inválido. Debe tener entre 3-20 caracteres y solo letras, números, -, _, #.', type: 'error', roomName: currentRoom });
         }
 
-        // Pasamos el objeto sender completo que contiene id y nick
         const wasCreated = await roomService.createRoom(newRoomName, sender, io);
         if (!wasCreated) {
             return socket.emit('system message', { text: `La sala '${newRoomName}' ya existe. Intenta unirte a ella.`, type: 'error', roomName: currentRoom });
         }
 
-        // La lógica de la base de datos se ha movido a roomService, pero mantenemos la asignación de operador
         const operatorStmt = db.prepare('INSERT OR IGNORE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
         operatorStmt.run(sender.id, newRoomName, 'operator', sender.nick, new Date().toISOString());
         operatorStmt.finalize();
 
         io.to(currentRoom).emit('system message', { text: `¡${sender.nick} ha creado una nueva sala: ${newRoomName}!`, type: 'highlight', roomName: currentRoom });
         socket.emit('join room', { roomName: newRoomName });
-        socket.emit('room_created_success'); // <-- Evento para mostrar el popup de ayuda
+        socket.emit('room_created_success');
         io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[SALA CREADA] ${sender.nick} ha creado la sala: ${newRoomName}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
         return;
     }

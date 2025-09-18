@@ -105,7 +105,6 @@ export function initAuth() {
                 if (!response.ok) {
                     throw new Error(result.error);
                 }
-                // GUARDAMOS EL TOKEN RECIBIDO
                 state.authToken = result.token;
                 state.socket.emit('guest_join', { ...result.userData, roomName });
             } catch (error) {
@@ -131,7 +130,6 @@ export function initAuth() {
                 if (!response.ok) {
                     throw new Error(result.error);
                 }
-                // GUARDAMOS EL TOKEN RECIBIDO
                 state.authToken = result.token;
                 state.socket.emit('login', { ...result.userData, roomName });
             } catch (error) {

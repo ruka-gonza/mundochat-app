@@ -1,6 +1,6 @@
 const state = {
     socket: null, 
-    authToken: null, // <-- NUEVA LÍNEA: Para guardar el token de sesión
+    authToken: null,
     myNick: '',
     myUserData: {},
     currentChatContext: { type: 'none', with: null },

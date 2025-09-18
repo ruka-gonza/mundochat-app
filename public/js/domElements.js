@@ -88,7 +88,6 @@ export const replyContextBar = document.getElementById('reply-context-bar');
 export const sexoWarningModal = document.getElementById('sexo-warning-modal');
 export const acceptSexoWarningButton = document.getElementById('accept-sexo-warning');
 
-// --- INICIO DE LA MODIFICACIÓN ---
 export const imageModalOverlay = document.getElementById('image-modal-overlay');
 export const modalImage = document.getElementById('modal-image');
 export const closeImageModalButton = document.getElementById('close-image-modal');

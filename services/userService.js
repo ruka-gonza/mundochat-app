@@ -1,4 +1,4 @@
-const db = require('./db-connection').getInstance();
+// ELIMINAMOS: const db = require('./db-connection').getInstance();
 const bcrypt = require('bcrypt');
 const config = require('../config');
 
@@ -13,20 +13,19 @@ function getRole(nick) {
 }
 
 function findUserByNick(identifier) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         const lowerCaseIdentifier = identifier.toLowerCase();
         db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
             if (err) return reject(err);
             if (row) {
-                // Prioritize the role from the database if it's a staff role
-                // Otherwise, determine the role based on hardcoded lists (for initial assignment or if DB role is 'user')
                 const dbRole = row.role;
                 const hardcodedRole = getRole(row.nick);
 
                 if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
-                    row.role = dbRole; // Use the role from the database if it's a staff role
+                    row.role = dbRole;
                 } else {
-                    row.role = hardcodedRole; // Otherwise, use the role determined by getRole (which would be 'user' for non-staff)
+                    row.role = hardcodedRole;
                 }
             }
             resolve(row);
@@ -35,6 +34,7 @@ function findUserByNick(identifier) {
 }
 
 function findUserById(id) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
             if (err) return reject(err);
@@ -54,6 +54,7 @@ function findUserById(id) {
 }
 
 async function createUser(nick, email, password, ip) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     const hashedPassword = await bcrypt.hash(password, 10);
     return new Promise((resolve, reject) => {
         const initialRole = getRole(nick);
@@ -67,6 +68,7 @@ async function createUser(nick, email, password, ip) {
 }
 
 function updateUserNick(oldNick, newNick) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET nick = ? WHERE lower(nick) = ?', [newNick, oldNick.toLowerCase()], function(err) {
             if (err) return reject(err);
@@ -76,6 +78,7 @@ function updateUserNick(oldNick, newNick) {
 }
 
 function updateUserIP(nick, ip) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET lastIP = ? WHERE lower(nick) = ?', [ip, nick.toLowerCase()], function(err) {
             if (err) return reject(err);
@@ -89,6 +92,7 @@ async function verifyPassword(password, hash) {
 }
 
 function setVipStatus(nick, isVIP) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET isVIP = ? WHERE lower(nick) = ?', [isVIP ? 1 : 0, nick.toLowerCase()], function(err) {
             if (err) return reject(err);
@@ -98,6 +102,7 @@ function setVipStatus(nick, isVIP) {
 }
 
 function setMuteStatus(nick, isMuted, moderatorNick = null) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         const mutedBy = isMuted ? moderatorNick : null;
         const stmt = db.prepare('UPDATE users SET isMuted = ?, mutedBy = ? WHERE lower(nick) = ?');
@@ -110,6 +115,7 @@ function setMuteStatus(nick, isMuted, moderatorNick = null) {
 }
 
 function setAvatarUrl(userId, avatarUrl) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, userId], function(err) {
             if (err) return reject(err);
@@ -119,6 +125,7 @@ function setAvatarUrl(userId, avatarUrl) {
 }
 
 function setUserRole(nick, role) {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         const validRoles = ['admin', 'mod', 'user'];
         if (!validRoles.includes(role)) {
@@ -132,6 +139,7 @@ function setUserRole(nick, role) {
 }
 
 function getAllStaff() {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
     return new Promise((resolve, reject) => {
         const staffRoles = ['owner', 'admin', 'mod', 'operator'];
         const placeholders = staffRoles.map(() => '?').join(',');
@@ -142,6 +150,26 @@ function getAllStaff() {
                 console.error("Error fetching staff from database:", err);
                 return reject(err);
             }
+            resolve(rows);
+        });
+    });
+}
+
+function getTotalRegisteredUsers() {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    return new Promise((resolve, reject) => {
+        db.get('SELECT COUNT(*) AS count FROM users WHERE role != \'guest\'', (err, row) => {
+            if (err) return reject(err);
+            resolve(row.count);
+        });
+    });
+}
+
+function getAllRegisteredUsers() {
+    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    return new Promise((resolve, reject) => {
+        db.all('SELECT id, nick, email, role, registeredAt, lastIP, isVIP, isMuted FROM users WHERE role != "guest"', (err, rows) => {
+            if (err) return reject(err);
             resolve(rows);
         });
     });
@@ -159,5 +187,7 @@ module.exports = {
     setAvatarUrl,
     updateUserNick,
     setUserRole,
-    getAllStaff
+    getAllStaff,
+    getTotalRegisteredUsers,
+    getAllRegisteredUsers
 };

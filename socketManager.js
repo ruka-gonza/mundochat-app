@@ -579,7 +579,6 @@ function initializeSocket(io) {
             }
         });
         
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
 
@@ -589,15 +588,22 @@ function initializeSocket(io) {
             // 2. CRÍTICO: Sincronizar este nuevo estado en todas las copias de las salas
             roomService.updateUserDataInAllRooms(socket);
 
-            // 3. Notificar a los clientes para que actualicen su UI.
-            // La forma más robusta es re-enviar la lista de usuarios completa a cada sala.
+            // --- INICIO DE LA CORRECCIÓN CLAVE ---
+            // 3. Notificar al PROPIO cliente para que actualice su estado local (`state.isAFK`)
+            socket.emit('user_data_updated', { 
+                nick: socket.userData.nick, 
+                isAFK: socket.userData.isAFK 
+            });
+            // --- FIN DE LA CORRECCIÓN CLAVE ---
+
+            // 4. Notificar a los demás clientes re-enviando la lista de usuarios completa y actualizada
             socket.joinedRooms.forEach(room => {
-                if (room !== socket.id) { // No actualizar la "sala" personal del socket
+                if (room !== socket.id) {
                     roomService.updateUserList(io, room);
                 }
             });
             
-            // 4. Mantener el mensaje de sistema para notificar a los demás del cambio
+            // 5. Mantener el mensaje de sistema para notificar a los demás del cambio
             const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
             socket.joinedRooms.forEach(room => {
                 if (room !== socket.id) {
@@ -605,7 +611,6 @@ function initializeSocket(io) {
                 }
             });
         });
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
         
         socket.on('report user', ({ targetNick, reason }) => {
             const reporter = socket.userData;

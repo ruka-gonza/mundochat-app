@@ -1,0 +1,6 @@
+# Permitir que todos los robots de búsqueda rastreen todo el sitio.
+User-agent: *
+Allow: /
+
+# Indicar la ubicación de nuestro mapa del sitio.
+Sitemap: https://mundochat.me/sitemap.xml

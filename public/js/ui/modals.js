@@ -124,12 +124,10 @@ export async function fetchAndShowActivityLogs() {
     }
 }
 
-// *** FUNCIÓN AÑADIDA PARA EVITAR EL 'ReferenceError' ***
-// Debes completarla con la lógica para obtener y mostrar los usuarios registrados.
 export async function fetchAndShowRegisteredUsers() {
     try {
         const users = await fetchWithCredentials('/api/admin/registered-users');
-        dom.registeredUsersList.innerHTML = ''; // Clear existing content
+        dom.registeredUsersList.innerHTML = '';
         if (users.length === 0) {
             dom.registeredUsersList.innerHTML = `<tr><td colspan="2">No hay usuarios registrados.</td></tr>`;
             return;
@@ -211,6 +209,49 @@ export function initModals() {
         clearInterval(state.activityMonitorInterval);
     };
     dom.adminCloseModalButton.addEventListener('click', stopAdminPanelRefresh);
+
+    dom.adminModal.addEventListener('click', async (e) => {
+        const target = e.target;
+        if (target === dom.adminModal) {
+            stopAdminPanelRefresh();
+        }
+
+        // --- INICIO DE LA CORRECCIÓN CLAVE (CLIENTE) ---
+        if (target.classList.contains('unban-btn')) {
+            const userId = target.dataset.id;
+            if (confirm(`¿Estás seguro de que quieres desbanear a ${userId}?`)) {
+                try {
+                    const result = await fetchWithCredentials('/api/admin/unban', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId })
+                    });
+                    alert(result.message || result.error);
+                    fetchAndShowBannedUsers(); // Refrescar la lista
+                } catch (err) {
+                    alert('Error al procesar la solicitud: ' + err.message);
+                }
+            }
+        }
+
+        if (target.classList.contains('unmute-btn')) {
+            const nick = target.dataset.nick;
+            if (confirm(`¿Estás seguro de que quieres quitar el mute a ${nick}?`)) {
+                try {
+                    const result = await fetchWithCredentials('/api/admin/unmute', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nick })
+                    });
+                    alert(result.message || result.error);
+                    fetchAndShowMutedUsers(); // Refrescar la lista
+                } catch (err) {
+                    alert('Error al procesar la solicitud: ' + err.message);
+                }
+            }
+        }
+        // --- FIN DE LA CORRECCIÓN CLAVE (CLIENTE) ---
+    });
 
     dom.adminTabs.forEach(tab => {
         tab.addEventListener('click', () => {
@@ -294,8 +335,12 @@ export function initModals() {
         dom.changeNickButton.disabled = true; dom.changeNickButton.textContent = 'Cambiando...';
         try {
             const result = await fetchWithCredentials('/api/user/nick', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newNick }) });
-            alert(result.message);
-            dom.profileModal.classList.add('hidden');
+            
+            const originalText = dom.changeNickButton.textContent;
+            dom.changeNickButton.textContent = '¡Cambiado!';
+            setTimeout(() => {
+                dom.changeNickButton.textContent = originalText;
+            }, 2000);
         } catch (error) {
             console.error('Error al cambiar nick:', error);
             alert('Hubo un error al conectar con el servidor: ' + error.message);

@@ -3,14 +3,9 @@ const router = express.Router();
 const banService = require('../services/banService');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
-// ELIMINAMOS: const db = require('../services/db-connection').getInstance();
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 const isStaff = async (req, res, next) => {
     try {
-        // 1. Buscamos la cookie universal 'user_auth', no 'adminUser'.
         const userAuthCookie = req.cookies.user_auth ? JSON.parse(req.cookies.user_auth) : null;
         
         if (!userAuthCookie || !userAuthCookie.nick) {
@@ -22,14 +17,12 @@ const isStaff = async (req, res, next) => {
             return res.status(403).json({ error: 'Acceso denegado: Usuario no encontrado.' });
         }
 
-        // Solo permitir roles de staff global para acceder al panel de administración
         let isGlobalStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
         
         if (!isGlobalStaff) {
             return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación global.' });
         }
 
-        // Adjuntamos los datos del moderador a la petición para su uso posterior.
         req.moderator = { nick: user.nick, role: user.role };
         return next();
 
@@ -38,10 +31,6 @@ const isStaff = async (req, res, next) => {
         res.status(500).json({ error: 'Error interno del servidor al verificar permisos.' });
     }
 };
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
-
 
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
@@ -58,7 +47,7 @@ function obfuscateIP(ip) {
 }
 
 router.get('/reports', isStaff, (req, res) => {
-    const db = require('../services/db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('../services/db-connection').getInstance();
     db.all("SELECT timestamp, details FROM activity_logs WHERE event_type = 'USER_REPORT' ORDER BY timestamp DESC", [], (err, rows) => {
         if (err) {
             console.error("Error al obtener denuncias:", err);
@@ -84,7 +73,7 @@ router.get('/reports', isStaff, (req, res) => {
 
 router.get('/banned', isStaff, async (req, res) => {
     try {
-        const db = require('../services/db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+        const db = require('../services/db-connection').getInstance();
         db.all('SELECT * FROM banned_users ORDER BY at DESC', [], (err, rows) => {
             if (err) {
                 console.error("Error al obtener baneados:", err);
@@ -103,7 +92,7 @@ router.get('/banned', isStaff, async (req, res) => {
 router.get('/muted', isStaff, async (req, res) => {
     const io = req.io;
     try {
-        const db = require('../services/db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+        const db = require('../services/db-connection').getInstance();
         const dbMutedUsersPromise = new Promise((resolve, reject) => {
             db.all('SELECT nick, role, isVIP, lastIP, mutedBy FROM users WHERE isMuted = 1', [], (err, rows) => {
                 if (err) return reject(err);
@@ -173,7 +162,7 @@ router.get('/online-users', isStaff, async (req, res) => {
 router.get('/activity-logs', isStaff, (req, res) => {
     const limit = parseInt(req.query.limit) || 100;
     const offset = (parseInt(req.query.page) || 0) * limit;
-    const db = require('../services/db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('../services/db-connection').getInstance();
 
     db.all('SELECT * FROM activity_logs ORDER BY timestamp DESC LIMIT ? OFFSET ?', [limit, offset], (err, rows) => {
         if (err) {
@@ -194,7 +183,11 @@ router.post('/unban', isStaff, async (req, res) => {
     }
     
     try {
-        const success = await banService.unbanUser(userId.toLowerCase());
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // Se elimina .toLowerCase() para que funcione con UUIDs de invitados
+        const success = await banService.unbanUser(userId); 
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
+
         if (success) {
             req.io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${req.moderator.nick} ha desbaneado a '${userId}' desde el panel.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             res.json({ message: `Usuario '${userId}' desbaneado con éxito.` });

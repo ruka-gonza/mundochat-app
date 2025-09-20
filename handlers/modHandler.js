@@ -7,14 +7,26 @@ const fetch = require('node-fetch');
 const config = require('../config');
 const ms = require('ms');
 
-// ... (Las funciones obfuscateIP, y los comandos /avatar, /staff, /nick, /crear no cambian. Los omito por brevedad, pero están en el bloque completo de abajo) ...
+function obfuscateIP(ip) {
+    if (!ip) return 'N/A';
+    if (ip === '::1' || ip === '127.0.0.1') return ip;
+    if (ip.includes(':')) {
+        const parts = ip.split(':');
+        return parts.length > 4 ? parts.slice(0, 4).join(':') + ':xxxx:xxxx' : ip;
+    }
+    if (ip.includes('.')) {
+        const parts = ip.split('.');
+        return parts.length === 4 ? parts.slice(0, 2).join('.') + '.x.x' : ip;
+    }
+    return 'IP Inválida';
+}
+
 
 async function handleCommand(io, socket, text, currentRoom) {
     const args = text.split(' ');
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
-    // ... (Código para /avatar, /staff, /nick, /crear) ...
     if (command === '/avatar') {
         const avatarUrl = args[1];
 
@@ -184,7 +196,6 @@ async function handleCommand(io, socket, text, currentRoom) {
         return;
     }
     
-    // ... (Permisos y resto de la lógica inicial) ...
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
     const commandPermissions = {
@@ -228,11 +239,9 @@ async function handleCommand(io, socket, text, currentRoom) {
         }
     }
     
-    // --- INICIO DE LA MODIFICACIÓN PARA /UNBAN ---
     if (command === '/unban') {
         const nickToUnban = targetNick.toLowerCase();
         
-        // Buscamos en la tabla de baneados un ID que coincida con el nick (insensible a mayúsculas/minúsculas)
         const banEntry = await new Promise((resolve, reject) => {
             db.get('SELECT id FROM banned_users WHERE lower(nick) = ?', [nickToUnban], (err, row) => {
                 if (err) return reject(err);
@@ -244,18 +253,15 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra en la lista de baneados.`, type: 'error', roomName: currentRoom });
         }
 
-        // Usamos el ID exacto (que puede ser un nick o un UUID) para desbanear
         await banService.unbanUser(banEntry.id);
         
         io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${sender.nick} DESBANEÓ a ${targetNick}.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
         io.emit('system message', { text: `${targetNick} ha sido DESBANEADO por ${sender.nick}.`, type: 'highlight' });
         io.emit('admin panel refresh');
-        return; // Terminamos aquí para no ejecutar la lógica `default`
+        return;
     }
-    // --- FIN DE LA MODIFICACIÓN PARA /UNBAN ---
 
     switch (command) {
-        // ... (resto de los comandos, como /help, /global, etc., permanecen igual) ...
         case '/help': {
             let helpMessage = 'Comandos disponibles para tu rol:\n\n';
             helpMessage += '▪️ /staff - Muestra el staff conectado.\n';
@@ -369,7 +375,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             const [lastConnectLog, lastDisconnectLog, banInfo, geoData] = await Promise.all([
                 new Promise(resolve => db.get("SELECT timestamp FROM activity_logs WHERE nick = ? AND event_type = 'CONNECT' ORDER BY timestamp DESC LIMIT 1", [whoisData.nick], (e, r) => resolve(r))),
                 new Promise(resolve => db.get("SELECT timestamp FROM activity_logs WHERE nick = ? AND event_type = 'DISCONNECT' ORDER BY timestamp DESC LIMIT 1", [whoisData.nick], (e, r) => resolve(r))),
-                banService.isUserBanned(whoisData.role === 'guest' ? whoisData.id : whoisData.nick.toLowerCase()),
+                banService.isUserBanned(whoisData.role === 'guest' ? whoisData.id : whoisData.nick.toLowerCase(), whoisData.ip),
                 getGeoLocation(whoisData.ip)
             ]);
             const ipToShow = ['owner', 'admin'].includes(sender.role) ? whoisData.ip : obfuscateIP(whoisData.ip);
@@ -426,10 +432,13 @@ async function handleCommand(io, socket, text, currentRoom) {
                 const banId = isGuest ? userToBan.id : userToBan.nick.toLowerCase();
                 const banNick = userToBan.nick;
                 const banIp = userToBan.ip || (dbUser ? dbUser.lastIP : null);
+                
+                // --- INICIO DE LA CORRECCIÓN CLAVE ---
+                // Se crea una sola entrada de baneo que incluye la IP.
                 await banService.banUser(banId, banNick, banIp, reasonBan, sender.nick);
-                if (isGuest && banIp) {
-                    await banService.banUser(banIp, banNick, banIp, `(Baneo por IP) ${reasonBan}`, sender.nick);
-                }
+                // Se elimina la segunda llamada que creaba el baneo duplicado.
+                // --- FIN DE LA CORRECCIÓN CLAVE ---
+                
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[BAN] ${sender.nick} BANEÓ a ${banNick}. Razón: ${reasonBan}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
                 if (targetSocket) {
                     targetSocket.joinedRooms.forEach(room => {

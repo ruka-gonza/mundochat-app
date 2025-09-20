@@ -210,9 +210,12 @@ async function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
     }
 }
 
+// --- INICIO DE LA CORRECCIÓN CLAVE ---
 async function checkBanStatus(socket, idToCheck, ip) {
-    let banInfo = await banService.isUserBanned(idToCheck);
-    if (!banInfo && ip) { banInfo = await banService.isUserBanned(ip); }
+    // Llamamos a la nueva función de servicio con AMBOS datos a la vez.
+    // El servicio se encarga de la lógica de buscar por ID o por IP.
+    const banInfo = await banService.isUserBanned(idToCheck, ip);
+    
     if (banInfo) {
         socket.emit('auth_error', { message: `Estás baneado. Razón: ${banInfo.reason}` });
         socket.emit('system message', { text: `Estás baneado. Razón: ${banInfo.reason}`, type: 'error' });
@@ -221,6 +224,7 @@ async function checkBanStatus(socket, idToCheck, ip) {
     }
     return false;
 }
+// --- FIN DE LA CORRECCIÓN CLAVE ---
 
 function logActivity(eventType, userData, details = null) {
     if (!userData || !userData.nick) return;
@@ -403,7 +407,7 @@ function initializeSocket(io) {
             try {
                 const { nick, roomName, id } = data;
                 if (!nick || !roomName) return; 
-                if (await checkBanStatus(socket, null, userIP)) return;
+                if (await checkBanStatus(socket, id, userIP)) return;
                 
                 socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isStaff: false, isAFK: false };
                 roomService.guestSocketMap.set(id, socket.id);
@@ -582,28 +586,21 @@ function initializeSocket(io) {
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
 
-            // 1. Cambiar el estado principal del usuario
             socket.userData.isAFK = !socket.userData.isAFK;
 
-            // 2. CRÍTICO: Sincronizar este nuevo estado en todas las copias de las salas
             roomService.updateUserDataInAllRooms(socket);
 
-            // --- INICIO DE LA CORRECCIÓN CLAVE ---
-            // 3. Notificar al PROPIO cliente para que actualice su estado local (`state.isAFK`)
             socket.emit('user_data_updated', { 
                 nick: socket.userData.nick, 
                 isAFK: socket.userData.isAFK 
             });
-            // --- FIN DE LA CORRECCIÓN CLAVE ---
 
-            // 4. Notificar a los demás clientes re-enviando la lista de usuarios completa y actualizada
             socket.joinedRooms.forEach(room => {
                 if (room !== socket.id) {
                     roomService.updateUserList(io, room);
                 }
             });
             
-            // 5. Mantener el mensaje de sistema para notificar a los demás del cambio
             const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
             socket.joinedRooms.forEach(room => {
                 if (room !== socket.id) {

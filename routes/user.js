@@ -10,6 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const uploadsDir = path.join(__dirname, '..', 'data', 'avatars');
 const tempUploadsDir = path.join(__dirname, '..', 'data', 'temp_avatars');
 
+// Función para asegurar que los directorios existan
 async function ensureDirs() {
     try {
         await fs.access(uploadsDir);
@@ -25,7 +26,7 @@ async function ensureDirs() {
 
 router.post('/avatar', async (req, res) => {
     const { avatarBase64 } = req.body;
-    const { id, nick, role } = req.verifiedUser;
+    const { id, nick, role } = req.verifiedUser; // Esto viene del middleware isCurrentUser
     const io = req.io;
 
     if (!avatarBase64) {
@@ -57,24 +58,36 @@ router.post('/avatar', async (req, res) => {
 
         await fs.writeFile(filePath, imageBuffer);
         
-        const targetSocket = roomService.findSocketIdByNick(nick) ? io.sockets.sockets.get(roomService.findSocketIdByNick(nick)) : null;
+        const targetSocketId = roomService.findSocketIdByNick(nick);
+        const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
 
-        if (isGuest) {
-            if (targetSocket) {
+        if (targetSocket) { // Solo proceder si el usuario está conectado
+            if (isGuest) {
+                // Para invitados, actualizamos el estado en el socket
                 if (targetSocket.userData.temp_avatar_path) {
                     await fs.unlink(targetSocket.userData.temp_avatar_path).catch(err => console.error("No se pudo borrar el avatar temporal antiguo:", err));
                 }
                 targetSocket.userData.avatar_url = avatarUrl;
                 targetSocket.userData.temp_avatar_path = filePath;
-            }
-        } else {
-            await userService.setAvatarUrl(id, avatarUrl);
-            if (targetSocket) {
+                
+                // --- INICIO DE LA CORRECCIÓN CLAVE ---
+                // Sincronizamos el estado actualizado del invitado en todas las salas del servidor.
+                // Esta es la línea que faltaba y que arregla el bug.
+                roomService.updateUserDataInAllRooms(targetSocket);
+                // --- FIN DE LA CORRECCIÓN CLAVE ---
+
+            } else {
+                // Para usuarios registrados, actualizamos la DB y el socket
+                await userService.setAvatarUrl(id, avatarUrl);
                 targetSocket.userData.avatar_url = avatarUrl;
+                // Sincronizamos también para usuarios registrados por si acaso (buena práctica)
+                roomService.updateUserDataInAllRooms(targetSocket);
             }
+            
+            // Notificamos a todos los clientes para que actualicen la UI
+            io.emit('user_data_updated', { nick: nick, avatar_url: avatarUrl });
         }
         
-        io.emit('user_data_updated', { nick: nick, avatar_url: avatarUrl });
         res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
 
     } catch (error) {
@@ -83,6 +96,8 @@ router.post('/avatar', async (req, res) => {
     }
 });
 
+
+// RUTA DE CAMBIO DE NICK (la dejamos como estaba, ya está correcta)
 router.post('/nick', async (req, res) => {
     const { id: userId, nick: oldNick } = req.verifiedUser;
     const { newNick } = req.body;
@@ -103,14 +118,9 @@ router.post('/nick', async (req, res) => {
     try {
         const existingUser = await userService.findUserByNick(newNick);
         
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
-        // Si el nick existe, pero pertenece al MISMO usuario que hace la petición (comprobando por ID),
-        // entonces no es un error. Esto permite cambiar A->B y luego B->A.
-        // Solo lanzamos error si el nick pertenece a OTRO usuario.
         if (existingUser && existingUser.id !== userId) {
             return res.status(400).json({ error: `El nick '${newNick}' ya está registrado por otro usuario.` });
         }
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
         
         const success = await userService.updateUserNick(oldNick, newNick);
 
@@ -119,26 +129,21 @@ router.post('/nick', async (req, res) => {
             if (targetSocketId) {
                 const targetSocket = io.sockets.sockets.get(targetSocketId);
                 if (targetSocket) {
-                    // 1. Actualizar el estado principal del socket
                     targetSocket.userData.nick = newNick;
                     
-                    // 2. Sincronizar el estado actualizado en todas las salas del servidor
                     roomService.updateUserDataInAllRooms(targetSocket);
                     
-                    // 3. Enviar evento para que el cliente actualice su cookie
                     targetSocket.emit('set session cookie', { 
                         id: targetSocket.userData.id,
                         nick: newNick,
                         role: targetSocket.userData.role
                     });
                     
-                    // 4. Emitir evento global para cambios cosméticos (ej. en listas de chats privados)
                     io.emit('user_data_updated', {
                         oldNick: oldNick,
                         nick: newNick
                     });
 
-                    // 5. Forzar la re-emisión de la lista de usuarios en todas las salas del usuario
                     targetSocket.joinedRooms.forEach(room => {
                         if (room !== targetSocket.id) {
                             roomService.updateUserList(io, room);

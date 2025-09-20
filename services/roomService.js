@@ -6,13 +6,6 @@ const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Roma
 const MOD_LOG_ROOM = '#Staff-Logs';
 const guestSocketMap = new Map();
 
-// --- INICIO DE LA MODIFICACIÓN: Nueva función de sincronización ---
-
-/**
- * Actualiza los datos de un usuario en todas las listas de sala en las que se encuentra.
- * Esta función es CRÍTICA para mantener la consistencia del estado del servidor.
- * @param {object} socket - El objeto socket del usuario cuyos datos han cambiado.
- */
 function updateUserDataInAllRooms(socket) {
     if (!socket || !socket.userData || !socket.joinedRooms) {
         console.warn('[SYNC_WARNING] Se intentó actualizar datos de usuario sin un socket válido.');
@@ -20,20 +13,15 @@ function updateUserDataInAllRooms(socket) {
     }
 
     socket.joinedRooms.forEach(roomName => {
-        // Asegurarse de que la sala y el usuario existen en el registro
         if (rooms[roomName] && rooms[roomName].users[socket.id]) {
-            // Actualiza la copia de los datos del usuario en la sala con los datos más recientes de socket.userData
             rooms[roomName].users[socket.id] = { 
-                ...rooms[roomName].users[socket.id], // Mantiene datos específicos de la sala si los hubiera
-                ...socket.userData // Sobrescribe con los datos más recientes
+                ...rooms[roomName].users[socket.id],
+                ...socket.userData
             };
         }
     });
 }
-// --- FIN DE LA MODIFICACIÓN ---
 
-
-// --- Inicialización en Memoria y desde BD ---
 function initializeRooms() {
     const dbInstance = require('./db-connection').getInstance();
     if (!dbInstance) {
@@ -64,8 +52,6 @@ function initializeRooms() {
         console.log("Salas por defecto y de BD listas:", Object.keys(rooms));
     });
 }
-
-// --- Funciones de Gestión de Salas ---
 
 function getActiveRoomsWithUserCount() {
     const roomListArray = Object.keys(rooms).map(roomName => ({
@@ -98,12 +84,11 @@ function isNickInUse(nick) { return !!findSocketIdByNick(nick); }
 
 async function createRoom(roomName, creator, io) {
     if (rooms[roomName]) {
-        return false; // La sala ya existe en memoria
+        return false;
     }
     const dbInstance = require('./db-connection').getInstance();
 
     return new Promise((resolve, reject) => {
-        // Usamos INSERT OR IGNORE para máxima seguridad anti-crash
         const roomStmt = dbInstance.prepare('INSERT OR IGNORE INTO rooms (name, creatorId, creatorNick, createdAt) VALUES (?, ?, ?, ?)');
         roomStmt.run(roomName, creator.id, creator.nick, new Date().toISOString(), function(err) {
             roomStmt.finalize();
@@ -112,21 +97,22 @@ async function createRoom(roomName, creator, io) {
                 return reject(err);
             }
             if (this.changes === 0) {
-                // La sala ya existía en la BD pero no en memoria (caso raro), la cargamos
                 if (!rooms[roomName]) {
                     rooms[roomName] = { users: {} };
                 }
-                return resolve(false); // Indicamos que no se creó porque ya existía
+                return resolve(false);
             }
 
-            // Si se insertó correctamente, la creamos en memoria y notificamos
             rooms[roomName] = { users: {} };
             updateRoomData(io);
-            resolve(true); // Indicamos que se creó con éxito
+            resolve(true);
         });
     });
 }
 
+
+// --- INICIO DE LA CORRECCIÓN CLAVE ---
+// La función ahora es `async` para poder usar `await` dentro.
 async function updateUserList(io, roomName) {
     if (rooms[roomName]) {
         const uniqueUsers = {};
@@ -152,21 +138,35 @@ async function updateUserList(io, roomName) {
         
         for (const socketId in rooms[roomName].users) {
             const user = rooms[roomName].users[socketId];
-            
             if (!user || !user.nick) {
-                console.log(`[CLEANUP] Usuario sin nick encontrado en ${roomName}, eliminando...`);
                 delete rooms[roomName].users[socketId];
                 continue;
             }
-            
             if (!uniqueUsers[user.nick.toLowerCase()]) {
                 uniqueUsers[user.nick.toLowerCase()] = user;
-            } else {
-                console.log(`[CLEANUP] Usuario duplicado encontrado: ${user.nick}, manteniendo conexión más reciente`);
             }
         }
 
-        const userList = Object.values(uniqueUsers).sort((a, b) => {
+        const usersToProcess = Object.values(uniqueUsers);
+
+        // 1. Creamos un array de promesas para calcular el rol efectivo de CADA usuario en esta sala.
+        const rolePromises = usersToProcess.map(user => 
+            permissionService.getUserEffectiveRole(user.id, roomName)
+        );
+        
+        // 2. Esperamos a que todas las promesas se resuelvan.
+        const effectiveRoles = await Promise.all(rolePromises);
+
+        // 3. Creamos la lista final de usuarios, reemplazando el rol global por el rol efectivo.
+        const userListWithEffectiveRoles = usersToProcess.map((user, index) => {
+            return {
+                ...user, // Copiamos todos los datos del usuario (nick, avatar, isAFK, etc.)
+                role: effectiveRoles[index] // Sobrescribimos la propiedad 'role' con la correcta para esta sala.
+            };
+        });
+
+        // 4. Ordenamos la lista final usando los roles efectivos.
+        userListWithEffectiveRoles.sort((a, b) => {
             const roleA = permissionService.getRolePriority(a.role);
             const roleB = permissionService.getRolePriority(b.role);
             if (roleA !== roleB) {
@@ -175,11 +175,14 @@ async function updateUserList(io, roomName) {
             return a.nick.localeCompare(b.nick);
         });
 
-        io.to(roomName).emit('update user list', { roomName, users: userList });
+        // 5. Enviamos la lista corregida al cliente.
+        io.to(roomName).emit('update user list', { roomName, users: userListWithEffectiveRoles });
         
-        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userList.length} usuarios activos`);
+        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListWithEffectiveRoles.length} usuarios activos`);
     }
 }
+// --- FIN DE LA CORRECCIÓN CLAVE ---
+
 
 module.exports = {
     rooms,
@@ -193,5 +196,5 @@ module.exports = {
     updateUserList,
     updateRoomData,
     getActiveRoomsWithUserCount,
-    updateUserDataInAllRooms // <-- Exportar la nueva función
+    updateUserDataInAllRooms
 };

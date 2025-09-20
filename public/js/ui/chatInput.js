@@ -70,7 +70,21 @@ function renderSuggestions() {
         }
         li.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            autocompleteNick(user.nick);
+            // Al hacer clic, sí queremos que se cierre la caja
+            const text = dom.input.value;
+            const textToReplace = state.suggestionState.originalWord;
+            const lastIndex = text.toLowerCase().lastIndexOf(textToReplace.toLowerCase());
+            if (lastIndex === -1) return;
+            const before = text.substring(0, lastIndex);
+            const after = text.substring(lastIndex + textToReplace.length);
+            const newText = before + user.nick + ' ' + after.trimStart();
+            dom.input.value = newText;
+            dom.commandSuggestions.classList.add('hidden');
+            state.suggestionState.list = [];
+            state.suggestionState.index = -1;
+            const newCursorPosition = (before + user.nick).length + 1;
+            dom.input.focus();
+            dom.input.setSelectionRange(newCursorPosition, newCursorPosition);
         });
         ul.appendChild(li);
     });
@@ -78,22 +92,25 @@ function renderSuggestions() {
     dom.commandSuggestions.classList.remove('hidden');
 }
 
+// --- INICIO DE LA MODIFICACIÓN 1: Autocomplete ahora solo reemplaza texto ---
+// Hemos simplificado esta función para que solo reemplace el texto,
+// sin ocultar el panel de sugerencias. Esto nos permite seguir ciclando con Tab.
 function autocompleteNick(nick) {
     const text = dom.input.value;
     const textToReplace = state.suggestionState.originalWord;
     const lastIndex = text.toLowerCase().lastIndexOf(textToReplace.toLowerCase());
     if (lastIndex === -1) return;
+    
     const before = text.substring(0, lastIndex);
-    const after = text.substring(lastIndex + textToReplace.length);
-    const newText = before + nick + ' ' + after.trimStart();
+    const newText = before + nick; // No añadimos espacio aún para poder seguir escribiendo
     dom.input.value = newText;
-    dom.commandSuggestions.classList.add('hidden');
-    state.suggestionState.list = [];
-    state.suggestionState.index = -1;
-    const newCursorPosition = (before + nick).length + 1;
+
+    // Movemos el cursor al final de la palabra autocompletada
+    const newCursorPosition = newText.length;
     dom.input.focus();
     dom.input.setSelectionRange(newCursorPosition, newCursorPosition);
 }
+// --- FIN DE LA MODIFICACIÓN 1 ---
 
 export function sendMessage() {
     const text = dom.input.value.trim();
@@ -279,7 +296,7 @@ export function initChatInput() {
     let recordingStartTime;
     let recordingInterval;
     let sendButton = document.getElementById('send-icon-button');
-    let supportedMimeType = ''; // Variable to store the supported MIME type
+    let supportedMimeType = '';
 
     function resetAudioRecorderUI() {
         if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
@@ -344,7 +361,6 @@ export function initChatInput() {
             if(imageUploadInput) imageUploadInput.disabled = true;
             dom.emojiButton.disabled = true;
             
-            // Robust MimeType checking
             const MimeTypes = [
                 'audio/webm; codecs=opus',
                 'audio/webm',
@@ -370,7 +386,6 @@ export function initChatInput() {
             };
 
             state.mediaRecorder.onstop = () => {
-                // Use the detected mimeType when creating the Blob
                 state.audioBlob = new Blob(state.audioChunks, { type: supportedMimeType });
                 if (stopBtn) stopBtn.classList.add('hidden');
                 if (sendBtn) sendBtn.classList.remove('hidden');
@@ -413,7 +428,6 @@ export function initChatInput() {
     if (cancelRecordingButton) cancelRecordingButton.addEventListener('click', resetAudioRecorderUI);
     if (sendAudioButton) sendAudioButton.addEventListener('click', () => {
         if (state.audioBlob) {
-            // Dynamically set the file extension based on the supported mimeType
             const extension = (supportedMimeType || 'audio/webm').split('/')[1].split(';')[0];
             const fileName = `audio-${Date.now()}.${extension}`;
             handleFileUpload(new File([state.audioBlob], fileName, { type: state.audioBlob.type }));
@@ -431,16 +445,31 @@ export function initChatInput() {
         sendMessage();
     });
 
+    // --- INICIO DE LA MODIFICACIÓN 2: Lógica de `keydown` mejorada ---
     dom.input.addEventListener('keydown', (e) => {
+        // Ocultar sugerencias con Escape
         if (e.key === 'Escape') {
             dom.commandSuggestions.classList.add('hidden');
             state.suggestionState.list = [];
         }
+
+        // Manejar Tab para ciclar entre sugerencias
         if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
-            e.preventDefault();
-            autocompleteNick(state.suggestionState.list[0].nick);
+            e.preventDefault(); // ¡Muy importante para evitar que el foco salte!
+
+            // Incrementar el índice y volver al principio si llegamos al final
+            state.suggestionState.index = (state.suggestionState.index + 1) % state.suggestionState.list.length;
+            
+            const selectedUser = state.suggestionState.list[state.suggestionState.index];
+            
+            // Autocompletar el input con el nick seleccionado
+            autocompleteNick(selectedUser.nick);
+            
+            // Volver a renderizar las sugerencias para actualizar el resaltado visual
+            renderSuggestions();
         }
     });
+    // --- FIN DE LA MODIFICACIÓN 2 ---
 
     dom.imageUpload.addEventListener('change', (e) => {
         handleFileUpload(e.target.files[0]);

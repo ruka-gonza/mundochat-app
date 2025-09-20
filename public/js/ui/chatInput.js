@@ -70,7 +70,6 @@ function renderSuggestions() {
         }
         li.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            // Al hacer clic, sí queremos que se cierre la caja
             const text = dom.input.value;
             const textToReplace = state.suggestionState.originalWord;
             const lastIndex = text.toLowerCase().lastIndexOf(textToReplace.toLowerCase());
@@ -92,9 +91,6 @@ function renderSuggestions() {
     dom.commandSuggestions.classList.remove('hidden');
 }
 
-// --- INICIO DE LA MODIFICACIÓN 1: Autocomplete ahora solo reemplaza texto ---
-// Hemos simplificado esta función para que solo reemplace el texto,
-// sin ocultar el panel de sugerencias. Esto nos permite seguir ciclando con Tab.
 function autocompleteNick(nick) {
     const text = dom.input.value;
     const textToReplace = state.suggestionState.originalWord;
@@ -102,15 +98,13 @@ function autocompleteNick(nick) {
     if (lastIndex === -1) return;
     
     const before = text.substring(0, lastIndex);
-    const newText = before + nick; // No añadimos espacio aún para poder seguir escribiendo
+    const newText = before + nick;
     dom.input.value = newText;
 
-    // Movemos el cursor al final de la palabra autocompletada
     const newCursorPosition = newText.length;
     dom.input.focus();
     dom.input.setSelectionRange(newCursorPosition, newCursorPosition);
 }
-// --- FIN DE LA MODIFICACIÓN 1 ---
 
 export function sendMessage() {
     const text = dom.input.value.trim();
@@ -445,31 +439,30 @@ export function initChatInput() {
         sendMessage();
     });
 
-    // --- INICIO DE LA MODIFICACIÓN 2: Lógica de `keydown` mejorada ---
     dom.input.addEventListener('keydown', (e) => {
-        // Ocultar sugerencias con Escape
         if (e.key === 'Escape') {
             dom.commandSuggestions.classList.add('hidden');
             state.suggestionState.list = [];
         }
 
-        // Manejar Tab para ciclar entre sugerencias
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
         if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
-            e.preventDefault(); // ¡Muy importante para evitar que el foco salte!
+            e.preventDefault(); 
 
-            // Incrementar el índice y volver al principio si llegamos al final
             state.suggestionState.index = (state.suggestionState.index + 1) % state.suggestionState.list.length;
             
             const selectedUser = state.suggestionState.list[state.suggestionState.index];
             
-            // Autocompletar el input con el nick seleccionado
             autocompleteNick(selectedUser.nick);
             
-            // Volver a renderizar las sugerencias para actualizar el resaltado visual
+            // Actualizamos la palabra original con la que acabamos de autocompletar.
+            // Esto es crucial para que el siguiente 'Tab' reemplace la palabra correcta.
+            state.suggestionState.originalWord = selectedUser.nick;
+            
             renderSuggestions();
         }
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
     });
-    // --- FIN DE LA MODIFICACIÓN 2 ---
 
     dom.imageUpload.addEventListener('change', (e) => {
         handleFileUpload(e.target.files[0]);

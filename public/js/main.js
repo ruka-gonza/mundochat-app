@@ -121,7 +121,6 @@ document.addEventListener('DOMContentLoaded', () => {
         connectionOverlay.innerHTML = '❌ No se pudo reconectar. Por favor, recarga la página.';
     });
 
-    // Nuevo listener para forzar el logout desde el servidor
     state.socket.on('reauth_failed', () => {
         console.warn("Re-authentication failed by server. Clearing session.");
         document.cookie = "user_auth=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; SameSite=None; Secure";

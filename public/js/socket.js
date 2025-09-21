@@ -101,15 +101,14 @@ export function initializeSocketEvents(socket) {
         if (data.nick) {
             state.myNick = data.nick;
         }
-        if (data.id && data.nick && data.role) { // Assuming userData contains id, nick, role
+        if (data.id && data.nick && data.role) {
             state.myUserData = {
-                ...state.myUserData, // Keep existing user data
+                ...state.myUserData,
                 id: data.id,
                 nick: data.nick,
                 role: data.role
             };
         }
-        // Update the cookie to ensure the client-side session is refreshed
         document.cookie = `user_auth=${JSON.stringify(data)}; path=/; max-age=86400`;
     });
 
@@ -132,14 +131,11 @@ export function initializeSocketEvents(socket) {
         const lowerOldNick = (data.oldNick || data.nick).toLowerCase();
         const lowerNewNick = data.nick.toLowerCase();
     
-        // Lógica mejorada para renombrar al usuario en el almacén de datos central.
         if (data.oldNick && lowerOldNick !== lowerNewNick) {
-            // Copiamos los datos del usuario al nuevo nick y eliminamos la entrada antigua.
             state.allUsersData[lowerNewNick] = state.allUsersData[lowerOldNick];
             delete state.allUsersData[lowerOldNick];
         }
 
-        // Actualizamos (o creamos) la entrada con los nuevos datos.
         state.allUsersData[lowerNewNick] = { ...state.allUsersData[lowerNewNick], ...data };
         
         if (state.myNick.toLowerCase() === lowerOldNick) {

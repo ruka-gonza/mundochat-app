@@ -42,15 +42,17 @@ async function getUserEffectiveRole(userId, roomName) {
     return user.role;
 }
 
+// --- INICIO DE LA CORRECCIÓN CLAVE: Nueva jerarquía de roles ---
 const rolePriorities = {
     owner: 0,
     admin: 1,
-    mod: 2,
-    operator: 3,
+    operator: 2, // Operador ahora es más que moderador
+    mod: 3,      // Moderador ahora es el primer nivel de staff
     vip: 4,
     user: 5,
     guest: 6
 };
+// --- FIN DE LA CORRECCIÓN CLAVE ---
 
 function getRolePriority(role) {
     return rolePriorities[role] !== undefined ? rolePriorities[role] : 99;

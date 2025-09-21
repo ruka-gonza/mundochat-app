@@ -66,7 +66,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     if (command === '/staff') {
         const staffOnline = {};
         const allSockets = await io.fetchSockets();
-        const roleOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'guest': 5 };
+        const roleOrder = { 'owner': 0, 'admin': 1, 'operator': 2, 'mod': 3, 'user': 4, 'guest': 5 }; // Jerarquía actualizada
         for (const sock of allSockets) {
             if (!sock.userData || !sock.userData.id) continue;
             let highestRole = sock.userData.role;
@@ -74,14 +74,14 @@ async function handleCommand(io, socket, text, currentRoom) {
             for (const room of sock.joinedRooms) {
                 if (room === sock.id || room === roomService.MOD_LOG_ROOM) continue;
                 const effectiveRole = await permissionService.getUserEffectiveRole(sock.userData.id, room);
-                if (['owner', 'admin', 'mod', 'operator'].includes(effectiveRole)) {
+                if (['owner', 'admin', 'operator', 'mod'].includes(effectiveRole)) {
                     staffInRooms.add(room);
                     if (roleOrder[effectiveRole] < roleOrder[highestRole]) {
                         highestRole = effectiveRole;
                     }
                 }
             }
-            if (['owner', 'admin', 'mod', 'operator'].includes(sock.userData.role)) {
+            if (['owner', 'admin', 'operator', 'mod'].includes(sock.userData.role)) {
                  sock.joinedRooms.forEach(room => {
                     if (room !== sock.id && room !== roomService.MOD_LOG_ROOM) {
                         staffInRooms.add(room);
@@ -109,7 +109,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             staffList.forEach(nick => {
                 const staffInfo = staffOnline[nick];
                 const rooms = staffInfo.rooms.join(', ');
-                const displayRole = { 'owner': 'Owner', 'admin': 'Admin', 'mod': 'Moderador', 'operator': 'Operador' }[staffInfo.role] || 'Staff';
+                const displayRole = { 'owner': 'Owner', 'admin': 'Admin', 'operator': 'Operador', 'mod': 'Moderador' }[staffInfo.role] || 'Staff';
                 staffMessage += `▪️ ${nick} (${displayRole}) - En salas: ${rooms || 'Ninguna'}\n`;
             });
         }
@@ -185,9 +185,11 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: `La sala '${newRoomName}' ya existe. Intenta unirte a ella.`, type: 'error', roomName: currentRoom });
         }
 
-        const operatorStmt = db.prepare('INSERT OR IGNORE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
-        operatorStmt.run(sender.id, newRoomName, 'operator', sender.nick, new Date().toISOString());
-        operatorStmt.finalize();
+        // --- INICIO DE LA CORRECCIÓN CLAVE: Creador de sala ahora es MOD ---
+        const creatorRoleStmt = db.prepare('INSERT OR IGNORE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
+        creatorRoleStmt.run(sender.id, newRoomName, 'mod', sender.nick, new Date().toISOString());
+        creatorRoleStmt.finalize();
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
 
         io.to(currentRoom).emit('system message', { text: `¡${sender.nick} ha creado una nueva sala: ${newRoomName}!`, type: 'highlight', roomName: currentRoom });
         socket.emit('join room', { roomName: newRoomName });
@@ -198,19 +200,22 @@ async function handleCommand(io, socket, text, currentRoom) {
     
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
+
+    // --- INICIO DE LA CORRECCIÓN CLAVE: Nuevos permisos para comandos ---
     const commandPermissions = {
-        '/help': { roles: ['owner', 'admin', 'mod', 'operator'], description: '/help - Muestra esta lista de comandos.' },
-        '/kick': { roles: ['owner', 'admin', 'mod', 'operator'], description: '/kick <nick> [razón] - Expulsa a un usuario de la sala actual.' },
-        '/ban': { roles: ['owner', 'admin', 'mod', 'operator'], description: '/ban <nick> [razón] - Banea permanentemente a un usuario.' },
-        '/mute': { roles: ['owner', 'admin', 'mod', 'operator'], description: '/mute <nick> - Silencia o des-silencia a un usuario en el chat.' },
-        '/whois': { roles: ['owner', 'admin', 'mod', 'operator'], description: '/whois <nick> - Muestra información detallada de un usuario.' },
-        '/unban': { roles: ['owner', 'admin', 'mod', 'operator'], description: '/unban <nick> - Quita el ban a un usuario.' },
-        '/vip': { roles: ['owner', 'admin'], description: '/vip <nick> - Otorga o quita el estatus VIP a un usuario registrado.' },
-        '/promote': { roles: ['owner', 'admin'], description: '/promote <nick> <rol> [sala] - Asciende a un usuario a mod/admin/operator (global o en sala).' },
-        '/demote': { roles: ['owner', 'admin'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal (global o en sala).' },
-        '/delsala': { roles: ['owner', 'admin'], description: '/delsala <nombre-sala> - Elimina una sala del chat.' },
-        '/global': { roles: ['owner', 'admin'], description: '/global <mensaje> - Envía un anuncio a todas las salas activas.' }
+        '/help':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/help - Muestra esta lista de comandos.' },
+        '/kick':    { roles: ['owner', 'admin', 'mod'], description: '/kick <nick> [razón] - Expulsa a un usuario de la sala actual.' },
+        '/ban':     { roles: ['owner', 'admin', 'mod'], description: '/ban <nick> [razón] - Banea permanentemente a un usuario.' },
+        '/unban':   { roles: ['owner', 'admin', 'mod'], description: '/unban <nick> - Quita el ban a un usuario.' },
+        '/mute':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/mute <nick> - Silencia o des-silencia a un usuario en el chat.' },
+        '/whois':   { roles: ['owner', 'admin', 'operator', 'mod'], description: '/whois <nick> - Muestra información detallada de un usuario.' },
+        '/delsala': { roles: ['owner', 'admin', 'operator'], description: '/delsala <nombre-sala> - Elimina una sala del chat.' },
+        '/vip':     { roles: ['owner', 'admin'], description: '/vip <nick> - Otorga o quita el estatus VIP a un usuario registrado.' },
+        '/promote': { roles: ['owner', 'admin'], description: '/promote <nick> <rol> [sala] - Asciende a un usuario a mod/admin/operator.' },
+        '/demote':  { roles: ['owner', 'admin'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal.' },
+        '/global':  { roles: ['owner', 'admin'], description: '/global <mensaje> - Envía un anuncio a todas las salas activas.' }
     };
+    // --- FIN DE LA CORRECCIÓN CLAVE ---
 
     if (!commandPermissions[command]) {
         return socket.emit('system message', { text: `Comando '${command}' no reconocido.`, type: 'error', roomName: currentRoom });
@@ -277,10 +282,6 @@ async function handleCommand(io, socket, text, currentRoom) {
         }
 
         case '/global': {
-            if (sender.role !== 'owner' && sender.role !== 'admin') {
-                return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
-            }
-
             const message = args.slice(1).join(' ');
             if (!message) {
                 return socket.emit('system message', { text: 'Uso: /global <mensaje>', type: 'error', roomName: currentRoom });
@@ -309,7 +310,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             if (!roomToDelete || !roomService.rooms[roomToDelete] || roomService.DEFAULT_ROOMS.includes(roomToDelete)) {
                 return socket.emit('system message', { text: 'Uso: /delsala <nombre-sala-existente-y-no-default>', type: 'error', roomName: currentRoom });
             }
-            const reason = args.slice(2).join(' ') || 'Sala eliminada por un administrador.';
+            const reason = args.slice(2).join(' ') || 'Sala eliminada por un moderador.';
             io.to(roomToDelete).emit('system message', { text: `Esta sala ha sido eliminada por ${sender.nick}. Razón: ${reason}`, type: 'error'});
             io.in(roomToDelete).socketsLeave(roomToDelete);
             delete roomService.rooms[roomToDelete];
@@ -401,7 +402,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             if (!dbUser && !targetSocket) {
                 return socket.emit('system message', { text: `No se encontró al usuario '${targetNick}'.`, type: 'error', roomName: currentRoom });
             }
-            const rolesOrder = { 'owner': 0, 'admin': 1, 'mod': 2, 'operator': 3, 'user': 4, 'vip': 4, 'guest': 5 };
+            const rolesOrder = { 'owner': 0, 'admin': 1, 'operator': 2, 'mod': 3, 'user': 4, 'vip': 4, 'guest': 5 };
             const targetEffectiveRole = dbUser ? await permissionService.getUserEffectiveRole(dbUser.id, currentRoom) : (targetSocket ? 'guest' : 'user');
             if (rolesOrder[senderEffectiveRole] >= rolesOrder[targetEffectiveRole]) {
                 return socket.emit('system message', { text: 'No puedes ejecutar acciones sobre un usuario de tu mismo rango o superior en esta sala.', type: 'error', roomName: currentRoom });
@@ -433,11 +434,7 @@ async function handleCommand(io, socket, text, currentRoom) {
                 const banNick = userToBan.nick;
                 const banIp = userToBan.ip || (dbUser ? dbUser.lastIP : null);
                 
-                // --- INICIO DE LA CORRECCIÓN CLAVE ---
-                // Se crea una sola entrada de baneo que incluye la IP.
                 await banService.banUser(banId, banNick, banIp, reasonBan, sender.nick);
-                // Se elimina la segunda llamada que creaba el baneo duplicado.
-                // --- FIN DE LA CORRECCIÓN CLAVE ---
                 
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[BAN] ${sender.nick} BANEÓ a ${banNick}. Razón: ${reasonBan}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
                 if (targetSocket) {

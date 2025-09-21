@@ -110,9 +110,6 @@ async function createRoom(roomName, creator, io) {
     });
 }
 
-
-// --- INICIO DE LA CORRECCIÓN CLAVE ---
-// La función ahora es `async` para poder usar `await` dentro.
 async function updateUserList(io, roomName) {
     if (rooms[roomName]) {
         const uniqueUsers = {};
@@ -149,40 +146,70 @@ async function updateUserList(io, roomName) {
 
         const usersToProcess = Object.values(uniqueUsers);
 
-        // 1. Creamos un array de promesas para calcular el rol efectivo de CADA usuario en esta sala.
         const rolePromises = usersToProcess.map(user => 
             permissionService.getUserEffectiveRole(user.id, roomName)
         );
         
-        // 2. Esperamos a que todas las promesas se resuelvan.
         const effectiveRoles = await Promise.all(rolePromises);
 
-        // 3. Creamos la lista final de usuarios, reemplazando el rol global por el rol efectivo.
-        const userListWithEffectiveRoles = usersToProcess.map((user, index) => {
+        let userListWithEffectiveRoles = usersToProcess.map((user, index) => {
             return {
-                ...user, // Copiamos todos los datos del usuario (nick, avatar, isAFK, etc.)
-                role: effectiveRoles[index] // Sobrescribimos la propiedad 'role' con la correcta para esta sala.
+                ...user,
+                role: effectiveRoles[index]
             };
         });
 
-        // 4. Ordenamos la lista final usando los roles efectivos.
-        userListWithEffectiveRoles.sort((a, b) => {
-            const roleA = permissionService.getRolePriority(a.role);
-            const roleB = permissionService.getRolePriority(b.role);
-            if (roleA !== roleB) {
-                return roleA - roleB;
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // Preparamos las listas para staff y para usuarios normales
+        let publicUserList = [];
+        let staffUserList = [];
+
+        userListWithEffectiveRoles.forEach(user => {
+            let publicView = { ...user };
+            let staffView = { ...user };
+
+            if (user.isIncognito) {
+                // Para los demás, este usuario se verá como un usuario normal
+                publicView.role = 'user';
+                publicView.isVIP = false;
+                
+                // Para el staff, añadimos una bandera para que sepan que es incógnito
+                staffView.isActuallyStaffIncognito = true;
             }
-            return a.nick.localeCompare(b.nick);
+            publicUserList.push(publicView);
+            staffUserList.push(staffView);
         });
 
-        // 5. Enviamos la lista corregida al cliente.
-        io.to(roomName).emit('update user list', { roomName, users: userListWithEffectiveRoles });
+        // Ordenamos ambas listas por separado
+        const sortUsers = (list) => {
+            list.sort((a, b) => {
+                const roleA = permissionService.getRolePriority(a.role);
+                const roleB = permissionService.getRolePriority(b.role);
+                if (roleA !== roleB) return roleA - roleB;
+                return a.nick.localeCompare(b.nick);
+            });
+        };
+        sortUsers(publicUserList);
+        sortUsers(staffUserList);
+
+        // Enviamos la lista correspondiente a cada grupo
+        const staffSocketIds = [];
+        io.sockets.sockets.forEach(sock => {
+            if (sock.rooms.has(roomName) && (sock.userData.role === 'owner' || sock.userData.role === 'admin')) {
+                staffSocketIds.push(sock.id);
+            }
+        });
+
+        if (staffSocketIds.length > 0) {
+            io.to(staffSocketIds).emit('update user list', { roomName, users: staffUserList });
+        }
         
-        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListWithEffectiveRoles.length} usuarios activos`);
+        io.to(roomName).except(staffSocketIds).emit('update user list', { roomName, users: publicUserList });
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
+        
+        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${publicUserList.length} usuarios enviados`);
     }
 }
-// --- FIN DE LA CORRECCIÓN CLAVE ---
-
 
 module.exports = {
     rooms,

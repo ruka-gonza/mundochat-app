@@ -1,4 +1,4 @@
-import state from './state.js';
+import state from '../state.js';
 
 const emoticonMap = {
     ':)': '🙂',
@@ -47,11 +47,18 @@ export function replaceEmoticons(text) {
 export function getUserIcons(user) {
     if (!user) return '';
 
+    // --- INICIO DE LA CORRECCIÓN CLAVE ---
+    // Si el usuario es un staff en modo incógnito (y yo soy staff para poder verlo)
+    if (user.isActuallyStaffIncognito) {
+        return `<span class="user-icon">👻</span>`;
+    }
+    // --- FIN DE LA CORRECCIÓN CLAVE ---
+
     const roleIcons = {
         owner: '👑',
         admin: '🛡️',
-        mod: '🔧',
-        operator: '📣'
+        operator: '📣',
+        mod: '🔧'
     };
 
     const afkIcon = user.isAFK ? '⏳' : '';

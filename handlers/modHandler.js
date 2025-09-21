@@ -27,6 +27,64 @@ async function handleCommand(io, socket, text, currentRoom) {
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
+    // --- INICIO DE LA MODIFICACIÓN: Nuevo Comando /incognito ---
+    if (command === '/incognito') {
+        // Solo owners y admins pueden usar este comando
+        if (sender.role !== 'owner' && sender.role !== 'admin') {
+            return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
+        }
+
+        const newNick = args.slice(1).join(' ').trim();
+        const wasIncognito = sender.isIncognito || false;
+
+        if (wasIncognito) {
+            // --- SALIR DEL MODO INCÓGNITO ---
+            const oldNick = sender.nick;
+            socket.userData.nick = sender.originalNick;
+            delete socket.userData.isIncognito;
+            delete socket.userData.originalNick;
+
+            socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
+
+            io.emit('user_data_updated', { oldNick: oldNick, nick: socket.userData.nick });
+        } else {
+            // --- ENTRAR EN MODO INCÓGNITO ---
+            socket.userData.isIncognito = true;
+            socket.userData.originalNick = sender.nick; // Guardamos el nick real
+
+            const oldNick = sender.nick;
+            let finalNick = newNick;
+
+            if (finalNick) {
+                // Comprobar si el nick falso está en uso
+                if (roomService.isNickInUse(finalNick) || await userService.findUserByNick(finalNick)) {
+                    socket.emit('system message', { text: `El nick '${finalNick}' ya está en uso. Elige otro para el modo incógnito.`, type: 'error' });
+                    // Revertir cambios
+                    delete socket.userData.isIncognito;
+                    delete socket.userData.originalNick;
+                    return;
+                }
+                socket.userData.nick = finalNick;
+            }
+            // Si no se proporciona un nick, se queda con el original pero estará marcado como incógnito.
+
+            socket.emit('system message', { text: `Has entrado en modo incógnito. Ahora apareces como '${socket.userData.nick}' con rol de usuario.`, type: 'highlight' });
+
+            io.emit('user_data_updated', { oldNick: oldNick, nick: socket.userData.nick });
+        }
+        
+        // Sincronizar el estado en el servidor y forzar actualización en clientes
+        roomService.updateUserDataInAllRooms(socket);
+        socket.joinedRooms.forEach(room => {
+            if (room !== socket.id) {
+                roomService.updateUserList(io, room);
+            }
+        });
+
+        return; // Terminar ejecución aquí
+    }
+    // --- FIN DE LA MODIFICACIÓN ---
+
     if (command === '/avatar') {
         const avatarUrl = args[1];
 
@@ -481,11 +539,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                 const specificRoom = args[3];
                 if (!dbUser) return socket.emit('system message', { text: `El usuario '${targetNick}' debe estar registrado.`, type: 'error', roomName: currentRoom });
                 if (!['admin', 'mod', 'operator'].includes(newRole)) return socket.emit('system message', { text: `Rol '${newRole}' no válido. Roles permitidos: admin, mod, operator.`, type: 'error', roomName: currentRoom });
-                
-                // --- INICIO DE LA CORRECCIÓN CLAVE ---
-                // Eliminamos la restricción que solo permitía al owner nombrar admins.
-                // La lógica de jerarquía ya impide que un admin promueva a otro admin o al owner.
-                // --- FIN DE LA CORRECCIÓN CLAVE ---
                 
                 if (specificRoom) {
                     if (!roomService.rooms[specificRoom]) return socket.emit('system message', { text: `La sala '${specificRoom}' no existe.`, type: 'error', roomName: currentRoom });

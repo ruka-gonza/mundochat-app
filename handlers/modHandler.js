@@ -66,7 +66,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     if (command === '/staff') {
         const staffOnline = {};
         const allSockets = await io.fetchSockets();
-        const roleOrder = { 'owner': 0, 'admin': 1, 'operator': 2, 'mod': 3, 'user': 4, 'guest': 5 }; // Jerarquía actualizada
+        const roleOrder = { 'owner': 0, 'admin': 1, 'operator': 2, 'mod': 3, 'user': 4, 'guest': 5 };
         for (const sock of allSockets) {
             if (!sock.userData || !sock.userData.id) continue;
             let highestRole = sock.userData.role;
@@ -185,11 +185,9 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: `La sala '${newRoomName}' ya existe. Intenta unirte a ella.`, type: 'error', roomName: currentRoom });
         }
 
-        // --- INICIO DE LA CORRECCIÓN CLAVE: Creador de sala ahora es MOD ---
         const creatorRoleStmt = db.prepare('INSERT OR IGNORE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
         creatorRoleStmt.run(sender.id, newRoomName, 'mod', sender.nick, new Date().toISOString());
         creatorRoleStmt.finalize();
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
 
         io.to(currentRoom).emit('system message', { text: `¡${sender.nick} ha creado una nueva sala: ${newRoomName}!`, type: 'highlight', roomName: currentRoom });
         socket.emit('join room', { roomName: newRoomName });
@@ -201,7 +199,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
 
-    // --- INICIO DE LA CORRECCIÓN CLAVE: Nuevos permisos para comandos ---
     const commandPermissions = {
         '/help':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/help - Muestra esta lista de comandos.' },
         '/kick':    { roles: ['owner', 'admin', 'mod'], description: '/kick <nick> [razón] - Expulsa a un usuario de la sala actual.' },
@@ -215,7 +212,6 @@ async function handleCommand(io, socket, text, currentRoom) {
         '/demote':  { roles: ['owner', 'admin'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal.' },
         '/global':  { roles: ['owner', 'admin'], description: '/global <mensaje> - Envía un anuncio a todas las salas activas.' }
     };
-    // --- FIN DE LA CORRECCIÓN CLAVE ---
 
     if (!commandPermissions[command]) {
         return socket.emit('system message', { text: `Comando '${command}' no reconocido.`, type: 'error', roomName: currentRoom });
@@ -485,7 +481,12 @@ async function handleCommand(io, socket, text, currentRoom) {
                 const specificRoom = args[3];
                 if (!dbUser) return socket.emit('system message', { text: `El usuario '${targetNick}' debe estar registrado.`, type: 'error', roomName: currentRoom });
                 if (!['admin', 'mod', 'operator'].includes(newRole)) return socket.emit('system message', { text: `Rol '${newRole}' no válido. Roles permitidos: admin, mod, operator.`, type: 'error', roomName: currentRoom });
-                if (newRole === 'admin' && sender.role !== 'owner') return socket.emit('system message', { text: 'Solo el Owner puede nombrar administradores.', type: 'error', roomName: currentRoom });
+                
+                // --- INICIO DE LA CORRECCIÓN CLAVE ---
+                // Eliminamos la restricción que solo permitía al owner nombrar admins.
+                // La lógica de jerarquía ya impide que un admin promueva a otro admin o al owner.
+                // --- FIN DE LA CORRECCIÓN CLAVE ---
+                
                 if (specificRoom) {
                     if (!roomService.rooms[specificRoom]) return socket.emit('system message', { text: `La sala '${specificRoom}' no existe.`, type: 'error', roomName: currentRoom });
                     const stmt = db.prepare('INSERT OR REPLACE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
@@ -497,31 +498,12 @@ async function handleCommand(io, socket, text, currentRoom) {
                 } else {
                     if (newRole === 'admin') {
                         if (targetSocket) {
-                            console.log(`[DEBUG] Found target socket for ${targetNick}. Socket ID: ${targetSocket.id}`);
-                            const agreementText = `ACUERDO DE CONFIDENCIALIDAD
-
-Entre: Owner (mundochat) y el usuario interesado (nuevo Admin)
-
-Ambas partes acuerdan lo siguiente:
-
-1. Toda la información compartida entre las partes de manera escrita o por cualquier medio (audio o imágenes), relacionada con el chat o con el resto de usuarios/as de las diferentes salas, será considerada confidencial.
-
-2. No se podrá divulgar, compartir ni utilizar dicha información para fines distintos que no sean los relacionados con el chat.
-
-3. El compromiso de confidencialidad permanecerá vigente mientras dure la actividad de dicho usuario (nuevo Admin) en el chat.
-
-4. En caso de incumplimiento, será cesado de su rol de Admin y expulsado inmediatamente dando por finalizada cualquier relación que tuviera en dicho chat.
-
-5. Y para que quede constancia de la aceptación de dicho contrato, si está de acuerdo, acepte las condiciones más abajo.`;
                             io.emit('admin_agreement_required', {
-                                text: agreementText,
                                 targetNick: targetNick,
                                 senderNick: sender.nick
                             });
-                            console.log(`[DEBUG] Emitted 'admin_agreement_required' to ${targetNick}.`);
                             socket.emit('system message', { text: `Se ha enviado una solicitud de confirmación a ${targetNick} para el rol de admin.`, type: 'highlight' });
                         } else {
-                            console.log(`[DEBUG] Could not find target socket for ${targetNick}.`);
                             socket.emit('system message', { text: `El usuario ${targetNick} no está conectado para aceptar el acuerdo de confidencialidad.`, type: 'error' });
                         }
                     } else {

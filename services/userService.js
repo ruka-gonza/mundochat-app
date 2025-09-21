@@ -1,4 +1,3 @@
-// ELIMINAMOS: const db = require('./db-connection').getInstance();
 const bcrypt = require('bcrypt');
 const config = require('../config');
 
@@ -6,6 +5,7 @@ let admins = ["Basajaun", "namor"];
 let mods = ["Mod1"];
 
 function getRole(nick) {
+    const db = require('./db-connection').getInstance();
     if (nick.toLowerCase() === config.ownerNick.toLowerCase()) return 'owner';
     if (admins.map(a => a.toLowerCase()).includes(nick.toLowerCase())) return 'admin';
     if (mods.map(m => m.toLowerCase()).includes(nick.toLowerCase())) return 'mod';
@@ -13,7 +13,7 @@ function getRole(nick) {
 }
 
 function findUserByNick(identifier) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         const lowerCaseIdentifier = identifier.toLowerCase();
         db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
@@ -34,7 +34,7 @@ function findUserByNick(identifier) {
 }
 
 function findUserById(id) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
             if (err) return reject(err);
@@ -54,7 +54,7 @@ function findUserById(id) {
 }
 
 async function createUser(nick, email, password, ip) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     const hashedPassword = await bcrypt.hash(password, 10);
     return new Promise((resolve, reject) => {
         const initialRole = getRole(nick);
@@ -68,7 +68,7 @@ async function createUser(nick, email, password, ip) {
 }
 
 function updateUserNick(oldNick, newNick) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET nick = ? WHERE lower(nick) = ?', [newNick, oldNick.toLowerCase()], function(err) {
             if (err) return reject(err);
@@ -78,7 +78,7 @@ function updateUserNick(oldNick, newNick) {
 }
 
 function updateUserIP(nick, ip) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET lastIP = ? WHERE lower(nick) = ?', [ip, nick.toLowerCase()], function(err) {
             if (err) return reject(err);
@@ -92,7 +92,7 @@ async function verifyPassword(password, hash) {
 }
 
 function setVipStatus(nick, isVIP) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET isVIP = ? WHERE lower(nick) = ?', [isVIP ? 1 : 0, nick.toLowerCase()], function(err) {
             if (err) return reject(err);
@@ -102,7 +102,7 @@ function setVipStatus(nick, isVIP) {
 }
 
 function setMuteStatus(nick, isMuted, moderatorNick = null) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         const mutedBy = isMuted ? moderatorNick : null;
         const stmt = db.prepare('UPDATE users SET isMuted = ?, mutedBy = ? WHERE lower(nick) = ?');
@@ -115,7 +115,7 @@ function setMuteStatus(nick, isMuted, moderatorNick = null) {
 }
 
 function setAvatarUrl(userId, avatarUrl) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, userId], function(err) {
             if (err) return reject(err);
@@ -125,9 +125,13 @@ function setAvatarUrl(userId, avatarUrl) {
 }
 
 function setUserRole(nick, role) {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
-        const validRoles = ['admin', 'mod', 'user'];
+        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // Añadimos 'operator' a la lista de roles válidos para una promoción global.
+        const validRoles = ['admin', 'mod', 'operator', 'user'];
+        // --- FIN DE LA CORRECCIÓN CLAVE ---
+        
         if (!validRoles.includes(role)) {
             return reject(new Error('Rol no válido.'));
         }
@@ -139,7 +143,7 @@ function setUserRole(nick, role) {
 }
 
 function getAllStaff() {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         const staffRoles = ['owner', 'admin', 'mod', 'operator'];
         const placeholders = staffRoles.map(() => '?').join(',');
@@ -156,7 +160,7 @@ function getAllStaff() {
 }
 
 function getTotalRegisteredUsers() {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.get('SELECT COUNT(*) AS count FROM users WHERE role != \'guest\'', (err, row) => {
             if (err) return reject(err);
@@ -166,7 +170,7 @@ function getTotalRegisteredUsers() {
 }
 
 function getAllRegisteredUsers() {
-    const db = require('./db-connection').getInstance(); // <-- OBTENER INSTANCIA AQUÍ
+    const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
         db.all('SELECT id, nick, email, role, registeredAt, lastIP, isVIP, isMuted FROM users WHERE role != "guest"', (err, rows) => {
             if (err) return reject(err);

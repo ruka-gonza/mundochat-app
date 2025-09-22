@@ -17,7 +17,7 @@ async function ensureUploadsDir() {
 }
 
 router.post('/chat-file', async (req, res) => {
-    const { fileBase64, contextType, contextWith, senderNick } = req.body;
+    const { fileBase64, contextType, contextWith } = req.body;
     const sender = req.verifiedUser; // Del middleware isCurrentUser
     const io = req.io;
 

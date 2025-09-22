@@ -201,7 +201,7 @@ module.exports = {
     initializeRooms,
     createRoom,
     findSocketIdByNick,
-    findSocketIdByUserId, // <-- Exportar la nueva función
+    findSocketIdByUserId,
     isNickInUse,
     updateUserList,
     updateRoomData,

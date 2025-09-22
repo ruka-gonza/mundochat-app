@@ -117,12 +117,14 @@ async function updateUserList(io, roomName) {
         const uniqueUsers = {};
         const activeSocketIds = new Set();
         
+        // Obtenemos un listado de todos los sockets activos directamente de Socket.IO
         if (global.io && global.io.sockets && global.io.sockets.sockets) {
             global.io.sockets.sockets.forEach((socket, socketId) => {
                 activeSocketIds.add(socketId);
             });
         }
         
+        // Limpiamos sockets fantasma que ya no están en la lista global de Socket.IO
         const socketsToRemove = [];
         for (const socketId in rooms[roomName].users) {
             if (!activeSocketIds.has(socketId)) {
@@ -135,12 +137,14 @@ async function updateUserList(io, roomName) {
             delete rooms[roomName].users[socketId];
         });
         
+        // Construimos una lista de usuarios únicos para evitar duplicados si alguien tiene múltiples conexiones (aunque ya se maneja)
         for (const socketId in rooms[roomName].users) {
             const user = rooms[roomName].users[socketId];
             if (!user || !user.nick) {
                 delete rooms[roomName].users[socketId];
                 continue;
             }
+            // Siempre tomamos el último usuario encontrado con ese nick, asumiendo que es el más actualizado
             if (!uniqueUsers[user.nick.toLowerCase()]) {
                 uniqueUsers[user.nick.toLowerCase()] = user;
             }
@@ -148,6 +152,7 @@ async function updateUserList(io, roomName) {
 
         const usersToProcess = Object.values(uniqueUsers);
 
+        // Obtenemos los roles efectivos para cada usuario en la sala
         const rolePromises = usersToProcess.map(user => 
             permissionService.getUserEffectiveRole(user.id, roomName)
         );
@@ -162,6 +167,7 @@ async function updateUserList(io, roomName) {
             };
 
             // Añadir la bandera de incógnito si corresponde.
+            // Esta es la parte crítica: user.isIncognito viene del estado actual del socket.
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
 
             return finalUser;

@@ -61,12 +61,13 @@ async function handleCommand(io, socket, text, currentRoom) {
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
 
             // 4. Notificar al propio cliente de sus datos restaurados para que actualice su estado local
-            socket.emit('user_data_updated', { 
+            socket.emit('user_data_updated', {
+                oldNick: oldNick,
                 nick: socket.userData.nick,
                 role: socket.userData.role,
                 isVIP: socket.userData.isVIP,
                 isAFK: socket.userData.isAFK, // mantener estado AFK si lo tenía
-                isActuallyStaffIncognito: false // Explícitamente apaga la bandera en el cliente
+                isActuallyStaffIncognito: false
             });
             
             // Notificar a los demás del cambio de nick si es que había uno

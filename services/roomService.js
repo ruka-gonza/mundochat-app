@@ -159,28 +159,27 @@ async function updateUserList(io, roomName) {
             };
         });
 
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
+        // --- INICIO DE LA MODIFICACIÓN ---
         // Preparamos las listas para staff y para usuarios normales
         let publicUserList = [];
         let staffUserList = [];
+
+        // Creamos un mapa para buscar sockets de forma eficiente
+        const connectedSockets = new Map(io.sockets.sockets);
 
         userListWithEffectiveRoles.forEach(user => {
             let publicView = { ...user };
             let staffView = { ...user };
 
             if (user.isIncognito) {
-                // Para los demás, este usuario se verá como un usuario normal
                 publicView.role = 'user';
                 publicView.isVIP = false;
-                
-                // Para el staff, añadimos una bandera para que sepan que es incógnito
                 staffView.isActuallyStaffIncognito = true;
             }
             publicUserList.push(publicView);
             staffUserList.push(staffView);
         });
 
-        // Ordenamos ambas listas por separado
         const sortUsers = (list) => {
             list.sort((a, b) => {
                 const roleA = permissionService.getRolePriority(a.role);
@@ -192,20 +191,22 @@ async function updateUserList(io, roomName) {
         sortUsers(publicUserList);
         sortUsers(staffUserList);
 
-        // Enviamos la lista correspondiente a cada grupo
         const staffSocketIds = [];
-        io.sockets.sockets.forEach(sock => {
-            if (sock.rooms.has(roomName) && (sock.userData.role === 'owner' || sock.userData.role === 'admin')) {
-                staffSocketIds.push(sock.id);
+        for (const socketId in rooms[roomName].users) {
+            const userInRoom = rooms[roomName].users[socketId];
+            if (userInRoom && (userInRoom.role === 'owner' || userInRoom.role === 'admin')) {
+                if (connectedSockets.has(socketId)) {
+                    staffSocketIds.push(socketId);
+                }
             }
-        });
+        }
 
         if (staffSocketIds.length > 0) {
             io.to(staffSocketIds).emit('update user list', { roomName, users: staffUserList });
         }
         
         io.to(roomName).except(staffSocketIds).emit('update user list', { roomName, users: publicUserList });
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
+        // --- FIN DE LA MODIFICACIÓN ---
         
         console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${publicUserList.length} usuarios enviados`);
     }

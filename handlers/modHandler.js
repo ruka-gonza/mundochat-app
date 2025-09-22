@@ -27,9 +27,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
-    // --- INICIO DE LA MODIFICACIÓN: Nuevo Comando /incognito ---
     if (command === '/incognito') {
-        // Solo owners y admins pueden usar este comando
         if (sender.role !== 'owner' && sender.role !== 'admin') {
             return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
         }
@@ -38,42 +36,59 @@ async function handleCommand(io, socket, text, currentRoom) {
         const wasIncognito = sender.isIncognito || false;
 
         if (wasIncognito) {
-            // --- SALIR DEL MODO INCÓGNITO ---
+            // --- INICIO DE LA CORRECCIÓN CLAVE ---
+            // --- SALIR DEL MODO INCÓGNITO (Lógica mejorada) ---
             const oldNick = sender.nick;
+            
+            // 1. Restaurar el nick original
             socket.userData.nick = sender.originalNick;
+            
+            // 2. Obtener el rol real desde la base de datos para asegurar consistencia
+            const realUser = await userService.findUserByNick(socket.userData.nick);
+            if (realUser) {
+                socket.userData.role = realUser.role; // Restaurar el rol real
+            }
+
+            // 3. Limpiar las propiedades de incógnito
             delete socket.userData.isIncognito;
             delete socket.userData.originalNick;
 
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
 
+            // 4. Notificar al propio cliente de sus datos completos y restaurados
+            socket.emit('user_data_updated', { 
+                nick: socket.userData.nick,
+                role: socket.userData.role,
+                isVIP: socket.userData.isVIP 
+            });
+
+            // 5. Notificar a los demás del cambio de nick
             io.emit('user_data_updated', { oldNick: oldNick, nick: socket.userData.nick });
+            // --- FIN DE LA CORRECCIÓN CLAVE ---
+
         } else {
             // --- ENTRAR EN MODO INCÓGNITO ---
             socket.userData.isIncognito = true;
-            socket.userData.originalNick = sender.nick; // Guardamos el nick real
+            socket.userData.originalNick = sender.nick;
 
             const oldNick = sender.nick;
             let finalNick = newNick;
 
             if (finalNick) {
-                // Comprobar si el nick falso está en uso
                 if (roomService.isNickInUse(finalNick) || await userService.findUserByNick(finalNick)) {
                     socket.emit('system message', { text: `El nick '${finalNick}' ya está en uso. Elige otro para el modo incógnito.`, type: 'error' });
-                    // Revertir cambios
                     delete socket.userData.isIncognito;
                     delete socket.userData.originalNick;
                     return;
                 }
                 socket.userData.nick = finalNick;
             }
-            // Si no se proporciona un nick, se queda con el original pero estará marcado como incógnito.
 
             socket.emit('system message', { text: `Has entrado en modo incógnito. Ahora apareces como '${socket.userData.nick}' con rol de usuario.`, type: 'highlight' });
 
             io.emit('user_data_updated', { oldNick: oldNick, nick: socket.userData.nick });
         }
         
-        // Sincronizar el estado en el servidor y forzar actualización en clientes
         roomService.updateUserDataInAllRooms(socket);
         socket.joinedRooms.forEach(room => {
             if (room !== socket.id) {
@@ -81,10 +96,10 @@ async function handleCommand(io, socket, text, currentRoom) {
             }
         });
 
-        return; // Terminar ejecución aquí
+        return;
     }
-    // --- FIN DE LA MODIFICACIÓN ---
 
+    // ... (El resto del archivo no cambia, pégalo desde tu versión)
     if (command === '/avatar') {
         const avatarUrl = args[1];
 

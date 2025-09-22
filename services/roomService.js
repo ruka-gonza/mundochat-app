@@ -162,9 +162,7 @@ async function updateUserList(io, roomName) {
             };
 
             // Añadir la bandera de incógnito si corresponde.
-            if (user.isIncognito) {
-                finalUser.isActuallyStaffIncognito = true;
-            }
+            finalUser.isActuallyStaffIncognito = !!user.isIncognito;
 
             return finalUser;
         });

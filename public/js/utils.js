@@ -1,4 +1,4 @@
-import state from './state.js';
+import state from '../state.js';
 
 const emoticonMap = {
     ':)': '🙂',
@@ -47,9 +47,20 @@ export function replaceEmoticons(text) {
 export function getUserIcons(user) {
     if (!user) return '';
 
+    // --- INICIO DE LA CORRECCIÓN CLAVE ---
+    // El cliente ahora decide qué mostrar.
+    const viewerIsStaff = state.myUserData && (state.myUserData.role === 'owner' || state.myUserData.role === 'admin');
+
+    // 1. Si el usuario tiene la bandera de incógnito...
     if (user.isActuallyStaffIncognito) {
-        return `<span class="user-icon">👻</span>`;
+        // ...y yo (quien está viendo) soy staff, muestro el fantasma.
+        if (viewerIsStaff) {
+            return `<span class="user-icon">👻</span>`;
+        }
+        // ...si no soy staff, no muestro NINGÚN icono para él.
+        return '';
     }
+    // --- FIN DE LA CORRECCIÓN CLAVE ---
 
     const roleIcons = {
         owner: '👑',

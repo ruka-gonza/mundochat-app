@@ -110,6 +110,8 @@ async function createRoom(roomName, creator, io) {
     });
 }
 
+
+// --- INICIO DE LA CORRECCIÓN CLAVE ---
 async function updateUserList(io, roomName) {
     if (rooms[roomName]) {
         const uniqueUsers = {};
@@ -152,65 +154,40 @@ async function updateUserList(io, roomName) {
         
         const effectiveRoles = await Promise.all(rolePromises);
 
-        let userListWithEffectiveRoles = usersToProcess.map((user, index) => {
-            return {
+        // 1. Construir una única lista de usuarios con toda la información necesaria.
+        const userListFinal = usersToProcess.map((user, index) => {
+            const finalUser = {
                 ...user,
                 role: effectiveRoles[index]
             };
-        });
 
-        // --- INICIO DE LA MODIFICACIÓN ---
-        // Preparamos las listas para staff y para usuarios normales
-        let publicUserList = [];
-        let staffUserList = [];
-
-        // Creamos un mapa para buscar sockets de forma eficiente
-        const connectedSockets = new Map(io.sockets.sockets);
-
-        userListWithEffectiveRoles.forEach(user => {
-            let publicView = { ...user };
-            let staffView = { ...user };
-
+            // Añadir la bandera de incógnito si corresponde.
             if (user.isIncognito) {
-                publicView.role = 'user';
-                publicView.isVIP = false;
-                staffView.isActuallyStaffIncognito = true;
+                finalUser.isActuallyStaffIncognito = true;
             }
-            publicUserList.push(publicView);
-            staffUserList.push(staffView);
+
+            return finalUser;
         });
 
-        const sortUsers = (list) => {
-            list.sort((a, b) => {
-                const roleA = permissionService.getRolePriority(a.role);
-                const roleB = permissionService.getRolePriority(b.role);
-                if (roleA !== roleB) return roleA - roleB;
-                return a.nick.localeCompare(b.nick);
-            });
-        };
-        sortUsers(publicUserList);
-        sortUsers(staffUserList);
-
-        const staffSocketIds = [];
-        for (const socketId in rooms[roomName].users) {
-            const userInRoom = rooms[roomName].users[socketId];
-            if (userInRoom && (userInRoom.role === 'owner' || userInRoom.role === 'admin')) {
-                if (connectedSockets.has(socketId)) {
-                    staffSocketIds.push(socketId);
-                }
+        // 2. Ordenar la lista.
+        userListFinal.sort((a, b) => {
+            const roleA = permissionService.getRolePriority(a.role);
+            const roleB = permissionService.getRolePriority(b.role);
+            if (roleA !== roleB) {
+                return roleA - roleB;
             }
-        }
+            return a.nick.localeCompare(b.nick);
+        });
 
-        if (staffSocketIds.length > 0) {
-            io.to(staffSocketIds).emit('update user list', { roomName, users: staffUserList });
-        }
+        // 3. Enviar esta lista única y completa a TODOS en la sala.
+        // El cliente se encargará de decidir qué mostrar.
+        io.to(roomName).emit('update user list', { roomName, users: userListFinal });
         
-        io.to(roomName).except(staffSocketIds).emit('update user list', { roomName, users: publicUserList });
-        // --- FIN DE LA MODIFICACIÓN ---
-        
-        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${publicUserList.length} usuarios enviados`);
+        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListFinal.length} usuarios enviados`);
     }
 }
+// --- FIN DE LA CORRECCIÓN CLAVE ---
+
 
 module.exports = {
     rooms,

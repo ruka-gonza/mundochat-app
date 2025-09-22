@@ -286,15 +286,15 @@ async function handleCommand(io, socket, text, currentRoom) {
 
     const commandPermissions = {
         '/help':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/help - Muestra esta lista de comandos.' },
-        '/kick':    { roles: ['owner', 'admin', 'mod'], description: '/kick <nick> [razón] - Expulsa a un usuario de la sala actual.' },
-        '/ban':     { roles: ['owner', 'admin', 'mod'], description: '/ban <nick> [razón] - Banea permanentemente a un usuario.' },
-        '/unban':   { roles: ['owner', 'admin', 'mod'], description: '/unban <nick> - Quita el ban a un usuario.' },
+        '/kick':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/kick <nick> (razón) - Expulsa a un usuario actual de la sala.' },
+        '/ban':     { roles: ['owner', 'admin', 'operator', 'mod'], description: '/ban <nick> <razón> - Banea permanentemente a un usuario.' },
+        '/unban':   { roles: ['owner', 'admin', 'operator', 'mod'], description: '/unban <nick> - Quita el ban a un usuario.' },
         '/mute':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/mute <nick> - Silencia o des-silencia a un usuario en el chat.' },
-        '/whois':   { roles: ['owner', 'admin', 'operator', 'mod'], description: '/whois <nick> - Muestra información detallada de un usuario.' },
-        '/delsala': { roles: ['owner', 'admin', 'operator'], description: '/delsala <nombre-sala> - Elimina una sala del chat.' },
-        '/vip':     { roles: ['owner', 'admin'], description: '/vip <nick> - Otorga o quita el estatus VIP a un usuario registrado.' },
-        '/promote': { roles: ['owner', 'admin'], description: '/promote <nick> <rol> [sala] - Asciende a un usuario a mod/admin/operator.' },
-        '/demote':  { roles: ['owner', 'admin'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal.' },
+        '/whois':   { roles: ['owner', 'admin', 'operator'], description: '/whois <nick> - Muestra información detallada de un usuario.' },
+        '/delsala': { roles: ['owner', 'admin', 'operator'], description: '/delsala <nombre de la sala> - Elimina la sala de chat creada.' },
+        '/vip':     { roles: ['owner', 'admin', 'operator'], description: '/vip <nick> - Otorga o quita el status nick a un usuario registrado.' },
+        '/promote': { roles: ['owner', 'admin', 'operator'], description: '/promote <nick> <rol> [sala] - Asciende a un usuario a mod/oper en la sala.' },
+        '/demote':  { roles: ['owner', 'admin', 'operator'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal en la sala.' },
         '/global':  { roles: ['owner', 'admin'], description: '/global <mensaje> - Envía un anuncio a todas las salas activas.' }
     };
 

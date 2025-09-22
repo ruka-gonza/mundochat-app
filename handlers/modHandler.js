@@ -65,7 +65,8 @@ async function handleCommand(io, socket, text, currentRoom) {
                 nick: socket.userData.nick,
                 role: socket.userData.role,
                 isVIP: socket.userData.isVIP,
-                isAFK: socket.userData.isAFK // mantener estado AFK si lo tenía
+                isAFK: socket.userData.isAFK, // mantener estado AFK si lo tenía
+                isActuallyStaffIncognito: false // Explícitamente apaga la bandera en el cliente
             });
             
             // Notificar a los demás del cambio de nick si es que había uno

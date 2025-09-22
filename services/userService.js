@@ -12,11 +12,32 @@ function getRole(nick) {
     return 'user';
 }
 
-function findUserByNick(identifier) {
+function findUserByNick(nick) {
     const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
-        const lowerCaseIdentifier = identifier.toLowerCase();
-        db.get('SELECT * FROM users WHERE lower(nick) = ? OR lower(email) = ?', [lowerCaseIdentifier, lowerCaseIdentifier], (err, row) => {
+        const lowerCaseNick = nick.toLowerCase();
+        db.get('SELECT * FROM users WHERE lower(nick) = ?', [lowerCaseNick], (err, row) => {
+            if (err) return reject(err);
+            if (row) {
+                const dbRole = row.role;
+                const hardcodedRole = getRole(row.nick);
+
+                if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
+                    row.role = dbRole;
+                } else {
+                    row.role = hardcodedRole;
+                }
+            }
+            resolve(row);
+        });
+    });
+}
+
+function findUserByEmail(email) {
+    const db = require('./db-connection').getInstance();
+    return new Promise((resolve, reject) => {
+        const lowerCaseEmail = email.toLowerCase();
+        db.get('SELECT * FROM users WHERE lower(email) = ?', [lowerCaseEmail], (err, row) => {
             if (err) return reject(err);
             if (row) {
                 const dbRole = row.role;
@@ -182,6 +203,7 @@ function getAllRegisteredUsers() {
 module.exports = {
     getRole,
     findUserByNick,
+    findUserByEmail,
     findUserById,
     createUser,
     verifyPassword,

@@ -79,18 +79,22 @@ router.post('/chat-file', async (req, res) => {
             io.to(contextWith).emit('chat message', messagePayload);
 
         } else if (contextType === 'private') {
+            const fromNickForDB = sender.nick; // El nick real para la BD
+            const fromNickForSocket = senderNick || sender.nick; // El nick del socket (incógnito o real)
+
             const stmt = db.prepare(`INSERT INTO private_messages (from_nick, to_nick, text, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const { lastID } = await new Promise((resolve, reject) => {
-                stmt.run(sender.nick, contextWith, textPlaceholder, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
+                stmt.run(fromNickForDB, contextWith, textPlaceholder, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
                     if (err) return reject(err);
                     resolve(this);
                 });
                 stmt.finalize();
             });
-            const messagePayload = { id: lastID, text: textPlaceholder, from: sender.nick, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
+            const messagePayload = { id: lastID, text: textPlaceholder, from: fromNickForSocket, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
             const targetSocketId = roomService.findSocketIdByNick(contextWith);
             if (targetSocketId) io.to(targetSocketId).emit('private message', messagePayload);
-            const mySocketId = roomService.findSocketIdByNick(sender.nick);
+            
+            const mySocketId = roomService.findSocketIdByNick(fromNickForSocket);
             if (mySocketId) io.to(mySocketId).emit('private message', messagePayload);
         }
 

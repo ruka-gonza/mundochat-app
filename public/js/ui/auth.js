@@ -2,6 +2,7 @@ import state from '../state.js';
 import * as dom from '../domElements.js';
 import { isValidNick, unlockAudioContext } from '../utils.js';
 
+// ... (El resto del contenido de este archivo ya estaba bien) ...
 function setupAuthTabs() {
     const authTabs = document.querySelectorAll('.auth-tab');
     const authForms = document.querySelectorAll('.auth-form');

@@ -59,7 +59,6 @@ export const sendResetLinkButton = document.getElementById('send-reset-link-butt
 export const forgotPasswordMessage = document.getElementById('forgot-password-message');
 export const newNickInput = document.getElementById('new-nick-input');
 export const changeNickButton = document.getElementById('change-nick-button');
-
 export const adminModal = document.getElementById('admin-modal');
 export const adminCloseModalButton = adminModal.querySelector('.modal-close-button');
 export const adminTabs = document.querySelectorAll('.admin-tab');
@@ -70,24 +69,17 @@ export const reportsList = document.getElementById('reports-list');
 export const onlineUsersList = document.getElementById('online-users-list');
 export const activityLogsList = document.getElementById('activity-logs-list');
 export const registeredUsersList = document.getElementById('registered-users-list');
-
 export const welcomePopup = document.getElementById('welcome-popup-overlay');
 export const closeWelcomePopupButton = document.getElementById('close-welcome-popup');
 export const confirmWelcomePopupButton = document.getElementById('confirm-welcome-popup');
-
 export const conversationsPanel = document.getElementById('conversations-panel');
 export const mobileOverlay = document.getElementById('mobile-overlay');
 export const privateUnreadBadge = document.getElementById('private-unread-badge');
-
 export const themeToggleCheckbox = document.getElementById('theme-toggle-checkbox');
-
 export const cancelReplyButton = document.getElementById('cancel-reply-button');
 export const replyContextBar = document.getElementById('reply-context-bar');
-
-
 export const sexoWarningModal = document.getElementById('sexo-warning-modal');
 export const acceptSexoWarningButton = document.getElementById('accept-sexo-warning');
-
 export const imageModalOverlay = document.getElementById('image-modal-overlay');
 export const modalImage = document.getElementById('modal-image');
 export const closeImageModalButton = document.getElementById('close-image-modal');

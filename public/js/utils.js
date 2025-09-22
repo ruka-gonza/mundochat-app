@@ -1,4 +1,4 @@
-import state from '../state.js';
+import state from './state.js';
 
 const emoticonMap = {
     ':)': '🙂',
@@ -54,8 +54,8 @@ export function getUserIcons(user) {
     const roleIcons = {
         owner: '👑',
         admin: '🛡️',
-        operator: '🔧',
-        mod: '📣'
+        operator: '📣',
+        mod: '🔧'
     };
 
     const afkIcon = user.isAFK ? '⏳' : '';

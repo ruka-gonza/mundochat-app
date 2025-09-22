@@ -1,3 +1,4 @@
+// Archivo: public/js/state.js
 const state = {
     socket: null, 
     authToken: null,

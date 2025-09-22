@@ -352,7 +352,10 @@ async function handleCommand(io, socket, text, currentRoom) {
             let helpMessage = 'Comandos disponibles para tu rol:\n\n';
             helpMessage += '▪️ /staff - Muestra el staff conectado.\n';
             helpMessage += '▪️ /nick <nuevo-nick> - Cambia tu nick (solo para invitados).\n';
-            helpMessage += '▪️ /crear <nombre-sala> - Crea una nueva sala de chat.\n'
+            helpMessage += '▪️ /crear <nombre-sala> - Crea una nueva sala de chat.\n';
+            if (['owner', 'admin'].includes(senderEffectiveRole)) {
+                helpMessage += '▪️ /incognito [nick] - Entra o sal del modo incógnito.\n';
+            }
             for (const cmd in commandPermissions) {
                 if (commandPermissions[cmd].roles.includes(senderEffectiveRole)) {
                     helpMessage += `▪️ ${commandPermissions[cmd].description}\n`;

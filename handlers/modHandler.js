@@ -54,9 +54,9 @@ async function handleCommand(io, socket, text, currentRoom) {
             socket.userData.isVIP = realUser.isVIP === 1;
             
             // 3. Limpiar TODAS las propiedades de incógnito
-            delete socket.userData.isIncognito;
+            socket.userData.isIncognito = false;
+            socket.userData.isActuallyStaffIncognito = false;
             delete socket.userData.originalNick;
-            delete socket.userData.isActuallyStaffIncognito; // Importante limpiar esta bandera también
 
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
 

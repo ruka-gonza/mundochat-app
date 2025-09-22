@@ -17,7 +17,7 @@ async function ensureUploadsDir() {
 }
 
 router.post('/chat-file', async (req, res) => {
-    const { fileBase64, contextType, contextWith } = req.body;
+    const { fileBase64, contextType, contextWith, senderNick } = req.body;
     const sender = req.verifiedUser; // Del middleware isCurrentUser
     const io = req.io;
 
@@ -79,22 +79,33 @@ router.post('/chat-file', async (req, res) => {
             io.to(contextWith).emit('chat message', messagePayload);
 
         } else if (contextType === 'private') {
-            const fromNickForDB = sender.nick; // El nick real para la BD
-            const fromNickForSocket = senderNick || sender.nick; // El nick del socket (incógnito o real)
-
             const stmt = db.prepare(`INSERT INTO private_messages (from_nick, to_nick, text, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
             const { lastID } = await new Promise((resolve, reject) => {
-                stmt.run(fromNickForDB, contextWith, textPlaceholder, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
+                // Guardar en la BD siempre con el nick real
+                stmt.run(sender.nick, contextWith, textPlaceholder, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
                     if (err) return reject(err);
                     resolve(this);
                 });
                 stmt.finalize();
             });
-            const messagePayload = { id: lastID, text: textPlaceholder, from: fromNickForSocket, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
+
+            // Encontrar el socket del remitente por su ID de usuario para obtener su nick actual (que puede ser el de incógnito)
+            const mySocketId = roomService.findSocketIdByUserId(sender.id);
+            let fromNick = sender.nick; // Usar el nick real por defecto
+            if (mySocketId) {
+                const mySock = io.sockets.sockets.get(mySocketId);
+                if (mySock && mySock.userData) {
+                    fromNick = mySock.userData.nick; // Usar el nick del socket si se encuentra
+                }
+            }
+
+            const messagePayload = { id: lastID, text: textPlaceholder, from: fromNick, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
+            
+            // Enviar al destinatario
             const targetSocketId = roomService.findSocketIdByNick(contextWith);
             if (targetSocketId) io.to(targetSocketId).emit('private message', messagePayload);
-            
-            const mySocketId = roomService.findSocketIdByNick(fromNickForSocket);
+
+            // Enviar de vuelta al remitente (si se encontró su socket)
             if (mySocketId) io.to(mySocketId).emit('private message', messagePayload);
         }
 

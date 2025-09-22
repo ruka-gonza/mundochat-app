@@ -80,6 +80,18 @@ function findSocketIdByNick(nick) {
     return null;
 }
 
+function findSocketIdByUserId(userId) {
+    if (!userId) return null;
+    for (const room of Object.values(rooms)) {
+        for (const socketId in room.users) {
+            if (room.users[socketId].id === userId) {
+                return socketId;
+            }
+        }
+    }
+    return null;
+}
+
 function isNickInUse(nick) { return !!findSocketIdByNick(nick); }
 
 async function createRoom(roomName, creator, io) {

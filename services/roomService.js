@@ -184,7 +184,7 @@ async function updateUserList(io, roomName) {
         });
 
         // 3. Enviar esta lista única y completa a TODOS en la sala.
-        // El cliente se encargará de decidir qué mostrar.
+        
         io.to(roomName).emit('update user list', { roomName, users: userListFinal });
         
         console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListFinal.length} usuarios enviados`);

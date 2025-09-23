@@ -614,6 +614,13 @@ function initializeSocket(io) {
 
             const oldNick = socket.userData.nick;
             let nickChanged = false;
+            let originalNickToRestore = null; // Para almacenar el nick original si se cambia
+
+            if (socket.userData.isIncognito) { // Si ya está en incognito y lo va a desactivar
+                if (socket.userData.original_nick) {
+                    originalNickToRestore = socket.userData.original_nick;
+                }
+            }
 
             if (newNick && newNick !== oldNick) {
                 // Validar el nuevo nick (ej: longitud, caracteres permitidos, no en uso)
@@ -625,13 +632,26 @@ function initializeSocket(io) {
                     return socket.emit('system message', { text: `El nick "${newNick}" ya está en uso.`, type: 'error' });
                 }
 
-                // Actualizar nick en userData del socket
+                // Si se proporciona un newNick, guardar el oldNick para restaurar si no se estaba en incognito
+                if (!socket.userData.isIncognito && !socket.userData.original_nick) {
+                    socket.userData.original_nick = oldNick;
+                }
+                
                 socket.userData.nick = newNick;
                 nickChanged = true;
 
                 // Si es un usuario registrado, actualizar en la BD
                 if (socket.userData.id && socket.userData.role !== 'guest') {
                     await userService.updateUserNick(oldNick, newNick); // Usar oldNick para buscar en la BD
+                }
+            } else if (originalNickToRestore) { // Si no se proporcionó newNick y hay un original para restaurar
+                socket.userData.nick = originalNickToRestore;
+                delete socket.userData.original_nick;
+                nickChanged = true; // El nick ha cambiado de vuelta al original
+
+                // Si es un usuario registrado, actualizar en la BD
+                if (socket.userData.id && socket.userData.role !== 'guest') {
+                    await userService.updateUserNick(oldNick, originalNickToRestore);
                 }
             }
 

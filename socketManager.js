@@ -637,17 +637,31 @@ function initializeSocket(io) {
 
             socket.userData.isIncognito = !socket.userData.isIncognito;
 
+            if (socket.userData.isIncognito) {
+                // Guardar el avatar original y establecer el por defecto
+                socket.userData.original_avatar_url = socket.userData.avatar_url;
+                socket.userData.avatar_url = 'image/default-avatar.png'; // Ruta al avatar por defecto
+            } else {
+                // Restaurar el avatar original
+                if (socket.userData.original_avatar_url) {
+                    socket.userData.avatar_url = socket.userData.original_avatar_url;
+                    delete socket.userData.original_avatar_url;
+                }
+            }
+
             // Si el nick cambió, necesitamos actualizar allUsersData en el cliente
             if (nickChanged) {
                 socket.emit('user_data_updated', {
                     oldNick: oldNick,
                     nick: socket.userData.nick,
-                    isIncognito: socket.userData.isIncognito
+                    isIncognito: socket.userData.isIncognito,
+                    avatar_url: socket.userData.avatar_url // Incluir el avatar actualizado
                 });
             } else {
                 socket.emit('user_data_updated', {
                     nick: socket.userData.nick,
-                    isIncognito: socket.userData.isIncognito
+                    isIncognito: socket.userData.isIncognito,
+                    avatar_url: socket.userData.avatar_url // Incluir el avatar actualizado
                 });
             }
             

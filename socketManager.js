@@ -609,20 +609,52 @@ function initializeSocket(io) {
             });
         });
 
-        socket.on('toggle incognito', () => {
+        socket.on('toggle incognito', async ({ newNick }) => {
             if (!socket.userData) return;
+
+            const oldNick = socket.userData.nick;
+            let nickChanged = false;
+
+            if (newNick && newNick !== oldNick) {
+                // Validar el nuevo nick (ej: longitud, caracteres permitidos, no en uso)
+                // Por ahora, una validación básica
+                if (newNick.length < 3 || newNick.length > 15 || !/^[a-zA-Z0-9_-]+$/.test(newNick)) {
+                    return socket.emit('system message', { text: 'Nick inválido. Usa entre 3 y 15 caracteres alfanuméricos, guiones o guiones bajos.', type: 'error' });
+                }
+                if (roomService.isNickInUse(newNick)) {
+                    return socket.emit('system message', { text: `El nick "${newNick}" ya está en uso.`, type: 'error' });
+                }
+
+                // Actualizar nick en userData del socket
+                socket.userData.nick = newNick;
+                nickChanged = true;
+
+                // Si es un usuario registrado, actualizar en la BD
+                if (socket.userData.id && socket.userData.role !== 'guest') {
+                    await userService.updateUserNick(oldNick, newNick); // Usar oldNick para buscar en la BD
+                }
+            }
 
             socket.userData.isIncognito = !socket.userData.isIncognito;
 
+            // Si el nick cambió, necesitamos actualizar allUsersData en el cliente
+            if (nickChanged) {
+                socket.emit('user_data_updated', {
+                    oldNick: oldNick,
+                    nick: socket.userData.nick,
+                    isIncognito: socket.userData.isIncognito
+                });
+            } else {
+                socket.emit('user_data_updated', {
+                    nick: socket.userData.nick,
+                    isIncognito: socket.userData.isIncognito
+                });
+            }
+            
             roomService.updateUserDataInAllRooms(socket);
 
-            socket.emit('user_data_updated', {
-                nick: socket.userData.nick,
-                isIncognito: socket.userData.isIncognito
-            });
-
             socket.joinedRooms.forEach(room => {
-                if (room !== socket.id) { // Ensure not to send to self if socket.id is a room name
+                if (room !== socket.id) {
                     roomService.updateUserList(io, room);
                 }
             });

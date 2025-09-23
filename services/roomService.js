@@ -205,8 +205,9 @@ async function updateUserList(io, roomName) {
 
             const userListForRecipient = userListFinal.map(user => {
                 if (user.isActuallyStaffIncognito && !canSeeIncognito) {
-                    // Si el usuario es incognito y el recipiente no puede verlo, ocultar la bandera.
-                    return { ...user, isActuallyStaffIncognito: false };
+                    // Si el usuario es incognito y el recipiente no puede verlo, ocultar la bandera y el rol/VIP.
+                    const { role, isVIP, ...rest } = user; // Destructurar para omitir role y isVIP
+                    return { ...rest, isActuallyStaffIncognito: false };
                 } else if (user.isActuallyStaffIncognito && canSeeIncognito) {
                     // Si el usuario es incognito y el recipiente puede verlo, mantener la bandera.
                     return { ...user, isActuallyStaffIncognito: true };

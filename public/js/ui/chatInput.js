@@ -118,7 +118,12 @@ export function sendMessage() {
     }
     const { type, with: contextWith } = state.currentChatContext;
     if (text.startsWith('/incognito')) {
-        state.socket.emit('toggle incognito');
+        const parts = text.split(' ');
+        let newNick = null;
+        if (parts.length > 1) {
+            newNick = parts[1];
+        }
+        state.socket.emit('toggle incognito', { newNick });
         dom.input.value = '';
         dom.emojiPicker.classList.add('hidden');
         hideReplyContextBar();

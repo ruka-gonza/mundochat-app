@@ -117,6 +117,14 @@ export function sendMessage() {
         state.socket.emit('stop typing', { context: state.currentChatContext, to: state.currentChatContext.with });
     }
     const { type, with: contextWith } = state.currentChatContext;
+    if (text.startsWith('/incognito')) {
+        state.socket.emit('toggle incognito');
+        dom.input.value = '';
+        dom.emojiPicker.classList.add('hidden');
+        hideReplyContextBar();
+        return;
+    }
+
     if (type === 'room') {
         const payload = { 
             text, 
@@ -165,7 +173,8 @@ export async function handleFileUpload(file) {
                 body: JSON.stringify({
                     fileBase64,
                     contextType: state.currentChatContext.type,
-                    contextWith: state.currentChatContext.with
+                    contextWith: state.currentChatContext.with,
+                    senderNick: state.myNick // <-- AÑADIDO: Enviamos el nick actual
                 })
             };
 

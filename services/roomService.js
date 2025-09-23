@@ -195,11 +195,29 @@ async function updateUserList(io, roomName) {
             return a.nick.localeCompare(b.nick);
         });
 
-        // 3. Enviar esta lista única y completa a TODOS en la sala.
-        
-        io.to(roomName).emit('update user list', { roomName, users: userListFinal });
-        
-        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListFinal.length} usuarios enviados`);
+        // 3. Enviar esta lista única y completa a cada usuario en la sala, personalizando la visibilidad del incognito.
+        const socketsInRoom = await io.in(roomName).fetchSockets();
+
+        for (const recipientSocket of socketsInRoom) {
+            const recipientUserId = recipientSocket.userData ? recipientSocket.userData.id : null;
+            const recipientRole = recipientUserId ? await permissionService.getUserEffectiveRole(recipientUserId, roomName) : 'guest';
+            const canSeeIncognito = recipientRole === 'owner' || recipientRole === 'admin';
+
+            const userListForRecipient = userListFinal.map(user => {
+                if (user.isActuallyStaffIncognito && !canSeeIncognito) {
+                    // Si el usuario es incognito y el recipiente no puede verlo, ocultar la bandera.
+                    return { ...user, isActuallyStaffIncognito: false };
+                } else if (user.isActuallyStaffIncognito && canSeeIncognito) {
+                    // Si el usuario es incognito y el recipiente puede verlo, mantener la bandera.
+                    return { ...user, isActuallyStaffIncognito: true };
+                }
+                return user;
+            });
+
+            recipientSocket.emit('update user list', { roomName, users: userListForRecipient });
+        }
+
+        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListFinal.length} usuarios procesados y enviados individualmente.`);
     }
 }
 // --- FIN DE LA CORRECCIÓN CLAVE ---

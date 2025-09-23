@@ -608,6 +608,26 @@ function initializeSocket(io) {
                 }
             });
         });
+
+        socket.on('toggle incognito', () => {
+            if (!socket.userData) return;
+
+            socket.userData.isIncognito = !socket.userData.isIncognito;
+
+            roomService.updateUserDataInAllRooms(socket);
+
+            socket.emit('user_data_updated', {
+                nick: socket.userData.nick,
+                isIncognito: socket.userData.isIncognito
+            });
+
+            socket.joinedRooms.forEach(room => {
+                if (room !== socket.id) { // Ensure not to send to self if socket.id is a room name
+                    roomService.updateUserList(io, room);
+                }
+            });
+            // No system message for incognito to keep it discreet
+        });
         
         socket.on('report user', ({ targetNick, reason }) => {
             const reporter = socket.userData;

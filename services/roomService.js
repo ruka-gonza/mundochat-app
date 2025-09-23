@@ -187,6 +187,15 @@ async function updateUserList(io, roomName) {
 
         // 2. Ordenar la lista.
         userListFinal.sort((a, b) => {
+            // Priorizar usuarios no-incógnitos sobre incógnitos
+            if (a.isActuallyStaffIncognito && !b.isActuallyStaffIncognito) {
+                return 1; // b (no-incógnito) va antes que a (incógnito)
+            }
+            if (!a.isActuallyStaffIncognito && b.isActuallyStaffIncognito) {
+                return -1; // a (no-incógnito) va antes que b (incógnito)
+            }
+
+            // Si ambos son incógnitos o ambos no lo son, ordenar por rol y luego por nick
             const roleA = permissionService.getRolePriority(a.role);
             const roleB = permissionService.getRolePriority(b.role);
             if (roleA !== roleB) {

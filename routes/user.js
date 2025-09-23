@@ -58,10 +58,12 @@ router.post('/avatar', async (req, res) => {
 
         await fs.writeFile(filePath, imageBuffer);
         
-        const targetSocketId = roomService.findSocketIdByNick(nick);
+        const targetSocketId = roomService.findSocketIdByUserId(id); // Buscar por ID de usuario, no por nick
         const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
 
         if (targetSocket) { // Solo proceder si el usuario está conectado
+            const currentNick = targetSocket.userData.nick; // Obtener el nick actual del socket (puede ser el de incógnito)
+
             if (isGuest) {
                 // Para invitados, actualizamos el estado en el socket
                 if (targetSocket.userData.temp_avatar_path) {
@@ -70,22 +72,17 @@ router.post('/avatar', async (req, res) => {
                 targetSocket.userData.avatar_url = avatarUrl;
                 targetSocket.userData.temp_avatar_path = filePath;
                 
-                // --- INICIO DE LA CORRECCIÓN CLAVE ---
-                // Sincronizamos el estado actualizado del invitado en todas las salas del servidor.
-                // Esta es la línea que faltaba y que arregla el bug.
                 roomService.updateUserDataInAllRooms(targetSocket);
-                // --- FIN DE LA CORRECCIÓN CLAVE ---
 
             } else {
                 // Para usuarios registrados, actualizamos la DB y el socket
                 await userService.setAvatarUrl(id, avatarUrl);
                 targetSocket.userData.avatar_url = avatarUrl;
-                // Sincronizamos también para usuarios registrados por si acaso (buena práctica)
                 roomService.updateUserDataInAllRooms(targetSocket);
             }
             
-            // Notificamos a todos los clientes para que actualicen la UI
-            io.emit('user_data_updated', { nick: nick, avatar_url: avatarUrl });
+            // Notificamos a todos los clientes para que actualicen la UI con el nick actual del socket
+            io.emit('user_data_updated', { nick: currentNick, avatar_url: avatarUrl });
         }
         
         res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });

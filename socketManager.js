@@ -670,6 +670,7 @@ function initializeSocket(io) {
             }
 
             // Si el nick cambió, necesitamos actualizar allUsersData en el cliente
+            // Y también la cookie de sesión para que el middleware isCurrentUser no falle
             if (nickChanged) {
                 socket.emit('user_data_updated', {
                     oldNick: oldNick,
@@ -677,11 +678,27 @@ function initializeSocket(io) {
                     isIncognito: socket.userData.isIncognito,
                     avatar_url: socket.userData.avatar_url // Incluir el avatar actualizado
                 });
+                // Actualizar la cookie de sesión con el nick actual
+                socket.emit('set session cookie', {
+                    id: socket.userData.id,
+                    nick: socket.userData.nick, // Usar el nick actual (incognito o restaurado)
+                    role: socket.userData.role
+                });
             } else {
                 socket.emit('user_data_updated', {
                     nick: socket.userData.nick,
                     isIncognito: socket.userData.isIncognito,
                     avatar_url: socket.userData.avatar_url // Incluir el avatar actualizado
+                });
+                // Si no hubo cambio de nick, pero el estado de incognito cambió,
+                // la cookie ya debería tener el nick correcto.
+                // No es estrictamente necesario emitir 'set session cookie' aquí
+                // a menos que el cliente necesite la cookie actualizada por alguna razón.
+                // Pero para simplificar y asegurar consistencia, lo haremos.
+                socket.emit('set session cookie', {
+                    id: socket.userData.id,
+                    nick: socket.userData.nick,
+                    role: socket.userData.role
                 });
             }
             

@@ -28,7 +28,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     const sender = socket.userData;
 
     if (command === '/incognito') {
-        if (sender.role !== 'owner' && sender.role !== 'admin') {
+        if (sender.role !== 'owner' && sender.role !== 'admin' && !sender.isIncognito) {
             return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
         }
 

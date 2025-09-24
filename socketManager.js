@@ -237,18 +237,6 @@ function logActivity(eventType, userData, details = null) {
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
 
-    const isAdminOrOwner = ['owner', 'admin'].includes(socket.userData.role);
-
-    if (isAdminOrOwner) {
-        // Si un administrador o propietario intenta unirse a una sala que no es la de staff,
-        // y ya están en la sala de staff, se les deniega.
-        if (socket.joinedRooms.has(roomService.STAFF_ROOM) && roomName !== roomService.STAFF_ROOM) {
-            return socket.emit('system message', { text: 'Los administradores solo pueden estar en la sala de staff.', type: 'error' });
-        }
-        // Para la primera unión o cualquier intento de unión, forzarlos a la sala de staff.
-        roomName = roomService.STAFF_ROOM;
-    }
-
     if (roomName.toLowerCase() === roomService.MOD_LOG_ROOM.toLowerCase()) {
         const allowedRoles = ['owner', 'admin'];
         if (!allowedRoles.includes(socket.userData.role)) {
@@ -434,11 +422,15 @@ function initializeSocket(io) {
 
         socket.on('login', async (data) => {
             try {
-                const { nick, id, roomName } = data;
+                let { nick, id, roomName } = data;
                 if (await checkBanStatus(socket, id, userIP)) return;
                 const registeredData = await userService.findUserById(id);
                 if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
                 
+                if (['owner', 'admin'].includes(registeredData.role)) {
+                    roomName = roomService.MOD_LOG_ROOM;
+                }
+
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
                 await userService.updateUserIP(registeredData.nick, userIP);
                 closedSessions.delete(id);
@@ -623,10 +615,6 @@ function initializeSocket(io) {
 
         socket.on('toggle incognito', async ({ newNick }) => {
             if (!socket.userData) return;
-
-            if (['owner', 'admin'].includes(socket.userData.role)) {
-                return socket.emit('system message', { text: 'Los administradores no pueden usar el modo incógnito.', type: 'error' });
-            }
 
             const oldNick = socket.userData.nick;
             let nickChanged = false;

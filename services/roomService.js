@@ -2,8 +2,7 @@ const permissionService = require('./permissionService');
 const db = require('./db-connection').getInstance(); // Obtiene la instancia de la BD
 
 let rooms = {};
-const STAFF_ROOM = 'staff';
-const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Romance", "Chile", "Argentina", "Brasil", "España", "México", STAFF_ROOM];
+const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Romance", "Chile", "Argentina", "Brasil", "España", "México"];
 const MOD_LOG_ROOM = '#Staff-Logs';
 const guestSocketMap = new Map();
 
@@ -237,7 +236,6 @@ async function updateUserList(io, roomName) {
 module.exports = {
     rooms,
     DEFAULT_ROOMS,
-    STAFF_ROOM,
     MOD_LOG_ROOM,
     guestSocketMap,
     initializeRooms,

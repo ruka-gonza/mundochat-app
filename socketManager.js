@@ -467,7 +467,7 @@ function initializeSocket(io) {
                 if (['owner', 'admin'].includes(registeredData.role)) {
                     roomName = roomService.INCOGNITO_ROOM;
                 } else if (['operator', 'mod'].includes(registeredData.role)) {
-                    roomName = roomService.MOD_LOG_ROOM;
+                    roomName = '#General';
                 }
 
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };

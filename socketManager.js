@@ -241,8 +241,16 @@ async function handleJoinRoom(io, socket, { roomName }) {
     const isModLog = lowerCaseRoomName === roomService.MOD_LOG_ROOM.toLowerCase();
     const isIncognito = lowerCaseRoomName === roomService.INCOGNITO_ROOM.toLowerCase();
 
-    if (isModLog || isIncognito) {
+    if (isIncognito) {
         const allowedRoles = ['owner', 'admin'];
+        if (!allowedRoles.includes(socket.userData.role)) {
+            socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error' });
+            return;
+        }
+    }
+
+    if (isModLog) {
+        const allowedRoles = ['owner', 'admin', 'operator', 'mod'];
         if (!allowedRoles.includes(socket.userData.role)) {
             socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error' });
             return;
@@ -288,6 +296,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
+    // Auto-join for owner/admin
     if (['owner', 'admin'].includes(socket.userData.role)) {
         // Auto-join Staff-Logs
         if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
@@ -306,6 +315,18 @@ async function handleJoinRoom(io, socket, { roomName }) {
         }
         roomService.rooms[roomService.INCOGNITO_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.INCOGNITO_ROOM);
+    }
+
+    // Auto-join for oper/mod
+    if (['operator', 'mod'].includes(socket.userData.role)) {
+        // Auto-join Staff-Logs
+        if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
+            socket.join(roomService.MOD_LOG_ROOM);
+            socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
+            if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
+        }
+        roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
+        roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
     
     if (!wasAlreadyInRoom) {
@@ -445,6 +466,8 @@ function initializeSocket(io) {
                 
                 if (['owner', 'admin'].includes(registeredData.role)) {
                     roomName = roomService.INCOGNITO_ROOM;
+                } else if (['operator', 'mod'].includes(registeredData.role)) {
+                    roomName = roomService.MOD_LOG_ROOM;
                 }
 
                 socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };

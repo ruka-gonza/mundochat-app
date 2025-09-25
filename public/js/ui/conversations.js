@@ -33,7 +33,7 @@ export function updateConversationList() {
         closeBtn.className = 'close-conversation';
         closeBtn.innerHTML = '×';
         
-        const canBeClosed = isRoom ? id !== '#General' && id !== '#Staff-Logs' : true;
+        const canBeClosed = isRoom ? id !== '#Incognito' && id !== '#Staff-Logs' : true;
 
         if (canBeClosed) {
             item.appendChild(closeBtn);

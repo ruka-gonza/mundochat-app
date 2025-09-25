@@ -237,7 +237,11 @@ function logActivity(eventType, userData, details = null) {
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
 
-    if (roomName.toLowerCase() === roomService.MOD_LOG_ROOM.toLowerCase()) {
+    const lowerCaseRoomName = roomName.toLowerCase();
+    const isModLog = lowerCaseRoomName === roomService.MOD_LOG_ROOM.toLowerCase();
+    const isIncognito = lowerCaseRoomName === roomService.INCOGNITO_ROOM.toLowerCase();
+
+    if (isModLog || isIncognito) {
         const allowedRoles = ['owner', 'admin'];
         if (!allowedRoles.includes(socket.userData.role)) {
             socket.emit('system message', { text: 'No tienes permiso para entrar a esta sala.', type: 'error' });
@@ -285,11 +289,23 @@ async function handleJoinRoom(io, socket, { roomName }) {
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
     if (['owner', 'admin'].includes(socket.userData.role)) {
-        socket.join(roomService.MOD_LOG_ROOM);
-        socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
-        if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
+        // Auto-join Staff-Logs
+        if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
+            socket.join(roomService.MOD_LOG_ROOM);
+            socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
+            if (!roomService.rooms[roomService.MOD_LOG_ROOM]) roomService.rooms[roomService.MOD_LOG_ROOM] = { users: {} };
+        }
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
+
+        // Auto-join Incognito
+        if (!socket.joinedRooms.has(roomService.INCOGNITO_ROOM)) {
+            socket.join(roomService.INCOGNITO_ROOM);
+            socket.joinedRooms.add(roomService.INCOGNITO_ROOM);
+            if (!roomService.rooms[roomService.INCOGNITO_ROOM]) roomService.rooms[roomService.INCOGNITO_ROOM] = { users: {} };
+        }
+        roomService.rooms[roomService.INCOGNITO_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
+        roomService.updateUserList(io, roomService.INCOGNITO_ROOM);
     }
     
     if (!wasAlreadyInRoom) {

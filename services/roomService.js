@@ -4,6 +4,7 @@ const db = require('./db-connection').getInstance(); // Obtiene la instancia de 
 let rooms = {};
 const DEFAULT_ROOMS = ["#General", "Juegos", "Música", "Amistad", "Sexo", "Romance", "Chile", "Argentina", "Brasil", "España", "México"];
 const MOD_LOG_ROOM = '#Staff-Logs';
+const INCOGNITO_ROOM = '#Incognito';
 const guestSocketMap = new Map();
 
 function updateUserDataInAllRooms(socket) {
@@ -37,6 +38,9 @@ function initializeRooms() {
     if (!rooms[MOD_LOG_ROOM]) {
         rooms[MOD_LOG_ROOM] = { users: {} };
     }
+    if (!rooms[INCOGNITO_ROOM]) {
+        rooms[INCOGNITO_ROOM] = { users: {} };
+    }
 
     dbInstance.all('SELECT name FROM rooms', [], (err, rows) => {
         if (err) {
@@ -54,10 +58,12 @@ function initializeRooms() {
 }
 
 function getActiveRoomsWithUserCount() {
-    const roomListArray = Object.keys(rooms).map(roomName => ({
-        name: roomName,
-        userCount: Object.keys(rooms[roomName]?.users || {}).length
-    }));
+    const roomListArray = Object.keys(rooms)
+        .filter(roomName => roomName !== MOD_LOG_ROOM && roomName !== INCOGNITO_ROOM)
+        .map(roomName => ({
+            name: roomName,
+            userCount: Object.keys(rooms[roomName]?.users || {}).length
+        }));
     roomListArray.sort((a, b) => b.userCount - a.userCount);
     return roomListArray;
 }
@@ -187,15 +193,6 @@ async function updateUserList(io, roomName) {
 
         // 2. Ordenar la lista.
         userListFinal.sort((a, b) => {
-            // Priorizar usuarios no-incógnitos sobre incógnitos
-            if (a.isActuallyStaffIncognito && !b.isActuallyStaffIncognito) {
-                return 1; // b (no-incógnito) va antes que a (incógnito)
-            }
-            if (!a.isActuallyStaffIncognito && b.isActuallyStaffIncognito) {
-                return -1; // a (no-incógnito) va antes que b (incógnito)
-            }
-
-            // Si ambos son incógnitos o ambos no lo son, ordenar por rol y luego por nick
             const roleA = permissionService.getRolePriority(a.role);
             const roleB = permissionService.getRolePriority(b.role);
             if (roleA !== roleB) {
@@ -237,6 +234,7 @@ module.exports = {
     rooms,
     DEFAULT_ROOMS,
     MOD_LOG_ROOM,
+    INCOGNITO_ROOM,
     guestSocketMap,
     initializeRooms,
     createRoom,

@@ -10,7 +10,7 @@ const db = new sqlite3.Database(dbPath);
 
 let fileChunks = {}; // In-memory file chunk storage
 
-function handleChatMessage(io, socket, { text, roomName }) {
+async function handleChatMessage(io, socket, { text, roomName }) {
     if (!socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) {
         return;
     }
@@ -21,7 +21,7 @@ function handleChatMessage(io, socket, { text, roomName }) {
     }
 
     if (text.startsWith('/')) {
-        return handleCommand(io, socket, text, roomName);
+        return await handleCommand(io, socket, text, roomName);
     }
     
     // INTEGRACIÓN DEL BOT

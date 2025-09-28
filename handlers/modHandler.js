@@ -6,7 +6,7 @@ const db = require('../services/db-connection').getInstance();
 const fetch = require('node-fetch');
 const config = require('../config');
 const ms = require('ms');
-const YouTube = require('youtube-sr').default;
+
 
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
@@ -304,14 +304,25 @@ async function handleCommand(io, socket, text, currentRoom) {
     if (command === '/yt') {
         const query = args.slice(1).join(' ');
         if (!query) {
-            return socket.emit('system message', { text: 'Uso: /yt <artista y canción>', type: 'error', roomName: currentRoom });
+            return socket.emit('system message', { text: 'Uso: /yt <búsqueda>', type: 'error', roomName: currentRoom });
+        }
+
+        if (!config.youtubeApiKey) {
+            console.error('Error: La clave de API de YouTube no está configurada en el archivo .env (YOUTUBE_API_KEY)');
+            return socket.emit('system message', { text: 'El comando de YouTube no está configurado correctamente por el administrador.', type: 'error', roomName: currentRoom });
         }
 
         try {
-            const video = await YouTube.searchOne(query);
-            if (video) {
+            const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${config.youtubeApiKey}&type=video&maxResults=1`;
+            const response = await fetch(searchUrl);
+            const data = await response.json();
+
+            if (data.items && data.items.length > 0) {
+                const videoId = data.items[0].id.videoId;
+                const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                
                 const messageData = {
-                    text: video.url,
+                    text: videoUrl,
                     nick: sender.nick,
                     role: sender.role,
                     isVIP: sender.isVIP,
@@ -319,8 +330,8 @@ async function handleCommand(io, socket, text, currentRoom) {
                 };
 
                 const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
-                stmt.run(currentRoom, sender.nick, video.url, sender.role, sender.isVIP ? 1 : 0, new Date().toISOString(), function(err) {
-                    if(err) {
+                stmt.run(currentRoom, sender.nick, videoUrl, sender.role, sender.isVIP ? 1 : 0, new Date().toISOString(), function(err) {
+                    if (err) {
                         console.error("Error guardando mensaje de /yt:", err);
                         return;
                     }
@@ -333,7 +344,7 @@ async function handleCommand(io, socket, text, currentRoom) {
                 socket.emit('system message', { text: `No se encontraron resultados para "${query}" en YouTube.`, type: 'error', roomName: currentRoom });
             }
         } catch (error) {
-            console.error('Error al buscar en YouTube:', error);
+            console.error('Error al buscar en YouTube con la API:', error);
             socket.emit('system message', { text: 'Ocurrió un error al buscar el video. Inténtalo de nuevo.', type: 'error', roomName: currentRoom });
         }
         return;

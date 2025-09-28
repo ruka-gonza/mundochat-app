@@ -6,6 +6,7 @@ const config = {
     port: process.env.PORT || 3000,
     ownerNick: process.env.OWNER_NICK || 'Admin',
     proxyCheckApiKey: process.env.PROXYCHECK_API_KEY || '',
+    youtubeApiKey: process.env.YOUTUBE_API_KEY || '',
 
     // Configuración para el envío de correos
     emailService: {

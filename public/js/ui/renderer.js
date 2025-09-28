@@ -39,6 +39,23 @@ function createPreviewCard(preview) {
 }
 
 function processMessageText(text) {
+    // Regex to find YouTube URLs that are alone in a message
+    const youtubeRegex = /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})$/i;
+    const youtubeMatch = text.match(youtubeRegex);
+
+    if (youtubeMatch && youtubeMatch[1]) {
+        const videoId = youtubeMatch[1];
+        return `
+            <div class="video-container">
+                <iframe 
+                    src="https://www.youtube.com/embed/${videoId}" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen>
+                </iframe>
+            </div>`;
+    }
+
     const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
     return text.replace(imageRegex, '<img src="$1" class="chat-image" alt="Image" loading="lazy">');
 }

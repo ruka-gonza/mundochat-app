@@ -145,20 +145,16 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(audioPlayer);
         }
     } else {
-        console.log("[DEBUG] Creating text message element for:", msg.text);
-        const textSpan = document.createElement('span');
-        textSpan.className = 'message-text';
+        const textContainer = document.createElement('div');
+        textContainer.className = 'message-text';
         const processedText = processMessageText(msg.text);
-        console.log("[DEBUG] processedText is:", processedText);
-        
+
         if (processedText.includes('<div class="video-container">')) {
-            console.log("[DEBUG] Video container found. Bypassing emoji parser.");
-            textSpan.innerHTML = processedText;
+            textContainer.innerHTML = processedText;
         } else {
-            console.log("[DEBUG] No video container. Using emoji parser.");
-            textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
+            textContainer.innerHTML = twemoji.parse(replaceEmoticons(processedText));
         }
-        contentDiv.appendChild(textSpan);
+        contentDiv.appendChild(textContainer);
     }
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===

@@ -320,17 +320,19 @@ async function handleCommand(io, socket, text, currentRoom) {
             if (data.items && data.items.length > 0) {
                 const videoId = data.items[0].id.videoId;
                 const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+                const timestamp = new Date().toISOString();
                 
                 const messageData = {
                     text: videoUrl,
                     nick: sender.nick,
                     role: sender.role,
                     isVIP: sender.isVIP,
-                    roomName: currentRoom
+                    roomName: currentRoom,
+                    timestamp: timestamp
                 };
 
                 const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
-                stmt.run(currentRoom, sender.nick, videoUrl, sender.role, sender.isVIP ? 1 : 0, new Date().toISOString(), function(err) {
+                stmt.run(currentRoom, sender.nick, videoUrl, sender.role, sender.isVIP ? 1 : 0, timestamp, function(err) {
                     if (err) {
                         console.error("Error guardando mensaje de /yt:", err);
                         return;

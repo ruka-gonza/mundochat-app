@@ -148,7 +148,13 @@ export function createMessageElement(msg, isPrivate = false) {
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
         const processedText = processMessageText(msg.text);
-        textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
+        
+        // Si el texto procesado es un contenedor de video, no lo pases por el analizador de emojis.
+        if (processedText.includes('<div class="video-container">')) {
+            textSpan.innerHTML = processedText;
+        } else {
+            textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
+        }
         contentDiv.appendChild(textSpan);
     }
     // =========================================================================

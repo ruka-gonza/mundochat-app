@@ -6,6 +6,7 @@ const db = require('../services/db-connection').getInstance();
 const fetch = require('node-fetch');
 const config = require('../config');
 const ms = require('ms');
+const YouTube = require('youtube-sr').default;
 
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
@@ -299,6 +300,44 @@ async function handleCommand(io, socket, text, currentRoom) {
         io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[SALA CREADA] ${sender.nick} ha creado la sala: ${newRoomName}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
         return;
     }
+
+    if (command === '/yt') {
+        const query = args.slice(1).join(' ');
+        if (!query) {
+            return socket.emit('system message', { text: 'Uso: /yt <artista y canción>', type: 'error', roomName: currentRoom });
+        }
+
+        try {
+            const video = await YouTube.searchOne(query);
+            if (video) {
+                const messageData = {
+                    text: video.url,
+                    nick: sender.nick,
+                    role: sender.role,
+                    isVIP: sender.isVIP,
+                    roomName: currentRoom
+                };
+
+                const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
+                stmt.run(currentRoom, sender.nick, video.url, sender.role, sender.isVIP ? 1 : 0, new Date().toISOString(), function(err) {
+                    if(err) {
+                        console.error("Error guardando mensaje de /yt:", err);
+                        return;
+                    }
+                    messageData.id = this.lastID;
+                    io.to(currentRoom).emit('chat message', messageData);
+                });
+                stmt.finalize();
+
+            } else {
+                socket.emit('system message', { text: `No se encontraron resultados para "${query}" en YouTube.`, type: 'error', roomName: currentRoom });
+            }
+        } catch (error) {
+            console.error('Error al buscar en YouTube:', error);
+            socket.emit('system message', { text: 'Ocurrió un error al buscar el video. Inténtalo de nuevo.', type: 'error', roomName: currentRoom });
+        }
+        return;
+    }
     
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
@@ -372,6 +411,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             helpMessage += '▪️ /staff - Muestra el staff conectado.\n';
             helpMessage += '▪️ /nick <nuevo-nick> - Cambia tu nick (solo para invitados).\n';
             helpMessage += '▪️ /crear <nombre-sala> - Crea una nueva sala de chat.\n';
+            helpMessage += '▪️ /yt <búsqueda> - Muestra un video de YouTube.\n';
             if (['owner', 'admin'].includes(senderEffectiveRole)) {
                 helpMessage += '▪️ /incognito [nick] - Entra o sal del modo incógnito.\n';
             }

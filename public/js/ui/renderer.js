@@ -145,14 +145,17 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(audioPlayer);
         }
     } else {
+        console.log("[DEBUG] Creating text message element for:", msg.text);
         const textSpan = document.createElement('span');
         textSpan.className = 'message-text';
         const processedText = processMessageText(msg.text);
+        console.log("[DEBUG] processedText is:", processedText);
         
-        // Si el texto procesado es un contenedor de video, no lo pases por el analizador de emojis.
         if (processedText.includes('<div class="video-container">')) {
+            console.log("[DEBUG] Video container found. Bypassing emoji parser.");
             textSpan.innerHTML = processedText;
         } else {
+            console.log("[DEBUG] No video container. Using emoji parser.");
             textSpan.innerHTML = twemoji.parse(replaceEmoticons(processedText));
         }
         contentDiv.appendChild(textSpan);

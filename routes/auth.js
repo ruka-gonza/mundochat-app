@@ -49,7 +49,9 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
     const { nick, password } = req.body;
     try {
+        console.log(`Login attempt for nick: ${nick}`);
         const user = await userService.findUserByNick(nick);
+        console.log(`User found in database: ${JSON.stringify(user)}`);
         if (!user) {
             return res.status(401).json({ error: "El nick no está registrado." });
         }

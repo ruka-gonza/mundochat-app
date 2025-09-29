@@ -37,8 +37,6 @@ async function handleCommand(io, socket, text, currentRoom) {
         const wasIncognito = sender.isIncognito || false;
 
         if (wasIncognito) {
-            // --- INICIO DE LA CORRECCIÓN CLAVE ---
-            // --- SALIR DEL MODO INCÓGNITO (Lógica Robusta) ---
             const oldNick = sender.nick;
             
             // 1. Restaurar COMPLETAMENTE el estado del socket a su estado original
@@ -75,8 +73,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                 // Si el nick no cambió, igual hay que notificar el cambio de avatar y rol
                 io.emit('user_data_updated', { nick: socket.userData.nick, role: socket.userData.role, avatar_url: socket.userData.avatar_url });
             }
-            // --- FIN DE LA CORRECCIÓN CLAVE ---
-            
         } else {
             // --- ENTRAR EN MODO INCÓGNITO ---
             // 1. Guardar estado original

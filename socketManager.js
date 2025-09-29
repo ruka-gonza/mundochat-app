@@ -96,7 +96,7 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName] || !roomService.rooms[roomName].users[socket.id]) return;
     const sender = socket.userData;
     if (sender.isMuted && !text.startsWith('/')) return socket.emit('system message', { text: 'Estás silenciado y no puedes enviar mensajes.', type: 'error', roomName });
-    if (text.startsWith('/')) return handleCommand(io, socket, text, roomName);
+    if (text.startsWith('/')) return await handleCommand(io, socket, text, roomName);
     const MAX_MESSAGE_LENGTH = 2000;
     if (text.length > MAX_MESSAGE_LENGTH) return socket.emit('system message', { text: 'Error: Tu mensaje es demasiado largo.', type: 'error', roomName });
     const isMessageSafe = botService.checkMessage(socket, text);
@@ -655,104 +655,14 @@ function initializeSocket(io) {
         socket.on('toggle incognito', async ({ newNick }) => {
             if (!socket.userData) return;
 
-            const oldNick = socket.userData.nick;
-            let nickChanged = false;
-            let originalNickToRestore = null; // Para almacenar el nick original si se cambia
+            // Construir el texto del comando como si el usuario lo hubiera escrito
+            const commandText = newNick ? `/incognito ${newNick}` : '/incognito';
 
-            if (socket.userData.isIncognito) { // Si ya está en incognito y lo va a desactivar
-                if (socket.userData.original_nick) {
-                    originalNickToRestore = socket.userData.original_nick;
-                }
-            }
+            // Obtener la sala actual del usuario. Asumimos que el primer room en el que está es la activa.
+            const currentRoom = Array.from(socket.joinedRooms)[0] || '#General';
 
-            if (newNick && newNick !== oldNick) {
-                // Validar el nuevo nick (ej: longitud, caracteres permitidos, no en uso)
-                // Por ahora, una validación básica
-                if (newNick.length < 3 || newNick.length > 15 || !/^[a-zA-Z0-9_-]+$/.test(newNick)) {
-                    return socket.emit('system message', { text: 'Nick inválido. Usa entre 3 y 15 caracteres alfanuméricos, guiones o guiones bajos.', type: 'error' });
-                }
-                if (roomService.isNickInUse(newNick)) {
-                    return socket.emit('system message', { text: `El nick "${newNick}" ya está en uso.`, type: 'error' });
-                }
-
-                // Si se proporciona un newNick, guardar el oldNick para restaurar si no se estaba en incognito
-                if (!socket.userData.isIncognito && !socket.userData.original_nick) {
-                    socket.userData.original_nick = oldNick;
-                }
-                
-                socket.userData.nick = newNick;
-                nickChanged = true;
-
-                // Si es un usuario registrado, actualizar en la BD
-                if (socket.userData.id && socket.userData.role !== 'guest') {
-                    await userService.updateUserNick(oldNick, newNick); // Usar oldNick para buscar en la BD
-                }
-            } else if (originalNickToRestore) { // Si no se proporcionó newNick y hay un original para restaurar
-                socket.userData.nick = originalNickToRestore;
-                delete socket.userData.original_nick;
-                nickChanged = true; // El nick ha cambiado de vuelta al original
-
-                // Si es un usuario registrado, actualizar en la BD
-                if (socket.userData.id && socket.userData.role !== 'guest') {
-                    await userService.updateUserNick(oldNick, originalNickToRestore);
-                }
-            }
-
-            socket.userData.isIncognito = !socket.userData.isIncognito;
-
-            if (socket.userData.isIncognito) {
-                // Guardar el avatar original y establecer el por defecto
-                socket.userData.original_avatar_url = socket.userData.avatar_url;
-                socket.userData.avatar_url = 'image/default-avatar.png'; // Ruta al avatar por defecto
-            } else {
-                // Restaurar el avatar original
-                if (socket.userData.original_avatar_url) {
-                    socket.userData.avatar_url = socket.userData.original_avatar_url;
-                    delete socket.userData.original_avatar_url;
-                }
-            }
-
-            // Si el nick cambió, necesitamos actualizar allUsersData en el cliente
-            // Y también la cookie de sesión para que el middleware isCurrentUser no falle
-            if (nickChanged) {
-                socket.emit('user_data_updated', {
-                    oldNick: oldNick,
-                    nick: socket.userData.nick,
-                    isIncognito: socket.userData.isIncognito,
-                    avatar_url: socket.userData.avatar_url // Incluir el avatar actualizado
-                });
-                // Actualizar la cookie de sesión con el nick actual
-                socket.emit('set session cookie', {
-                    id: socket.userData.id,
-                    nick: socket.userData.nick, // Usar el nick actual (incognito o restaurado)
-                    role: socket.userData.role
-                });
-            } else {
-                socket.emit('user_data_updated', {
-                    nick: socket.userData.nick,
-                    isIncognito: socket.userData.isIncognito,
-                    avatar_url: socket.userData.avatar_url // Incluir el avatar actualizado
-                });
-                // Si no hubo cambio de nick, pero el estado de incognito cambió,
-                // la cookie ya debería tener el nick correcto.
-                // No es estrictamente necesario emitir 'set session cookie' aquí
-                // a menos que el cliente necesite la cookie actualizada por alguna razón.
-                // Pero para simplificar y asegurar consistencia, lo haremos.
-                socket.emit('set session cookie', {
-                    id: socket.userData.id,
-                    nick: socket.userData.nick,
-                    role: socket.userData.role
-                });
-            }
-            
-            roomService.updateUserDataInAllRooms(socket);
-
-            socket.joinedRooms.forEach(room => {
-                if (room !== socket.id) {
-                    roomService.updateUserList(io, room);
-                }
-            });
-            // No system message for incognito to keep it discreet
+            // Llamar a handleCommand para centralizar la lógica
+            await handleCommand(io, socket, commandText, currentRoom);
         });
         
         socket.on('report user', ({ targetNick, reason }) => {

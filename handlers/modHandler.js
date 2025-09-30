@@ -1,6 +1,6 @@
 const userService = require('../services/userService');
 const banService = require('../services/banService');
-const roomService =require('../services/roomService');
+const roomService = require('../services/roomService');
 const permissionService = require('../services/permissionService');
 const db = require('../services/db-connection').getInstance();
 const fetch = require('node-fetch');
@@ -28,12 +28,13 @@ async function handleCommand(io, socket, text, currentRoom) {
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
-    // =========================================================================
-    // ===                    INICIO DEL NUEVO MODO INCÓGNITO                    ===
-    // =========================================================================
     if (command === '/incognito') {
-        // Solo el owner y admin pueden usar este comando.
-        if (sender.role !== 'owner' && sender.role !== 'admin') {
+        // Si el usuario ya está en modo incógnito, debemos comprobar su rol ORIGINAL.
+        // Si no lo está, comprobamos su rol actual.
+        const effectiveRoleForCommand = sender.isIncognito ? sender.originalRole : sender.role;
+    
+        // <-- ¡LA CORRECCIÓN CLAVE! Usamos la variable de arriba para la comprobación.
+        if (effectiveRoleForCommand !== 'owner' && effectiveRoleForCommand !== 'admin') {
             return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
         }
     
@@ -44,14 +45,14 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (wasIncognito) {
             const oldNick = sender.nick;
             
-            // 1. Restaurar el estado original del socket desde las propiedades guardadas.
+            // Restaurar el estado original del socket desde las propiedades guardadas.
             socket.userData.nick = sender.originalNick;
             socket.userData.role = sender.originalRole;
             socket.userData.avatar_url = sender.originalAvatar;
             socket.userData.isVIP = sender.originalIsVIP;
             socket.userData.isIncognito = false;
             
-            // 2. Limpiar las propiedades temporales.
+            // Limpiar las propiedades temporales.
             delete socket.userData.originalNick;
             delete socket.userData.originalRole;
             delete socket.userData.originalAvatar;
@@ -59,10 +60,10 @@ async function handleCommand(io, socket, text, currentRoom) {
     
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
     
-            // 3. Notificar a todos los clientes del cambio de datos.
+            // Notificar a todos los clientes del cambio de datos.
             io.emit('user_data_updated', {
-                oldNick: oldNick, // El nick de incógnito que se va
-                nick: socket.userData.nick, // El nick original que vuelve
+                oldNick: oldNick,
+                nick: socket.userData.nick,
                 role: socket.userData.role,
                 avatar_url: socket.userData.avatar_url,
                 isVIP: socket.userData.isVIP
@@ -82,29 +83,29 @@ async function handleCommand(io, socket, text, currentRoom) {
             
             const oldNick = sender.nick;
             
-            // 1. Guardar el estado original de forma segura en la sesión del socket.
+            // Guardar el estado original de forma segura en la sesión del socket.
             socket.userData.originalNick = sender.nick;
             socket.userData.originalRole = sender.role;
             socket.userData.originalAvatar = sender.avatar_url;
             socket.userData.originalIsVIP = sender.isVIP;
     
-            // 2. Aplicar la máscara de incógnito a la sesión del socket.
+            // Aplicar la máscara de incógnito a la sesión del socket.
             socket.userData.isIncognito = true;
-            socket.userData.role = 'user'; // Siempre aparece como usuario normal.
-            socket.userData.avatar_url = 'image/default-avatar.png'; // Avatar por defecto.
-            socket.userData.isVIP = false; // Ocultar VIP.
+            socket.userData.role = 'user';
+            socket.userData.avatar_url = 'image/default-avatar.png';
+            socket.userData.isVIP = false;
     
             if (newNick) {
-                socket.userData.nick = newNick; // Cambia el nick solo en la sesión actual.
+                socket.userData.nick = newNick;
             }
     
             socket.emit('system message', { text: `Has entrado en modo incógnito. Ahora apareces como '${socket.userData.nick}' con rol de usuario.`, type: 'highlight' });
     
-            // 3. Notificar a los clientes del cambio.
+            // Notificar a los clientes del cambio.
             io.emit('user_data_updated', {
                 oldNick: oldNick,
                 nick: socket.userData.nick,
-                role: 'user', // Mostramos el rol temporal
+                role: 'user',
                 avatar_url: 'image/default-avatar.png'
             });
         }
@@ -119,9 +120,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     
         return;
     }
-    // =========================================================================
-    // ===                     FIN DEL NUEVO MODO INCÓGNITO                    ===
-    // =========================================================================
 
     if (command === '/avatar') {
         const avatarUrl = args[1];

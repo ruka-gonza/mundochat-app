@@ -28,105 +28,104 @@ async function handleCommand(io, socket, text, currentRoom) {
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     if (command === '/incognito') {
-        if (sender.role !== 'owner' && sender.role !== 'admin' && !sender.isIncognito) {
+        // Solo el owner y admin pueden usar este comando.
+        if (sender.role !== 'owner' && sender.role !== 'admin') {
             return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
         }
-
+    
         const newNick = args.slice(1).join(' ').trim();
         const wasIncognito = sender.isIncognito || false;
-
+    
+        // --- SALIR DEL MODO INCÓGNITO ---
         if (wasIncognito) {
             const oldNick = sender.nick;
             
-            // 1. Restaurar COMPLETAMENTE el estado del socket a su estado original
+            // 1. Restaurar el estado original del socket desde las propiedades guardadas.
             socket.userData.nick = sender.originalNick;
             socket.userData.role = sender.originalRole;
             socket.userData.avatar_url = sender.originalAvatar;
             socket.userData.isVIP = sender.originalIsVIP;
+            socket.userData.isIncognito = false; // Marcar como que ya no está en incógnito
             
-            // 2. Limpiar TODAS las propiedades de incógnito
-            socket.userData.isIncognito = false;
-            socket.userData.isActuallyStaffIncognito = false;
+            // 2. Limpiar las propiedades temporales.
             delete socket.userData.originalNick;
             delete socket.userData.originalRole;
             delete socket.userData.originalAvatar;
             delete socket.userData.originalIsVIP;
-
+    
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
-
-            // 3. Notificar al propio cliente de sus datos restaurados para que actualice su estado local
-            socket.emit('user_data_updated', {
-                oldNick: oldNick,
-                nick: socket.userData.nick,
+    
+            // 3. Notificar a todos los clientes del cambio de datos.
+            io.emit('user_data_updated', {
+                oldNick: oldNick, // El nick de incógnito que se va
+                nick: socket.userData.nick, // El nick original que vuelve
                 role: socket.userData.role,
                 avatar_url: socket.userData.avatar_url,
-                isVIP: socket.userData.isVIP,
-                isAFK: socket.userData.isAFK, 
-                isActuallyStaffIncognito: false
+                isVIP: socket.userData.isVIP
             });
-            
-            // Notificar a los demás del cambio de nick si es que había uno
-            if (oldNick.toLowerCase() !== socket.userData.nick.toLowerCase()) {
-                io.emit('user_data_updated', { oldNick: oldNick, nick: socket.userData.nick, avatar_url: socket.userData.avatar_url });
-            } else {
-                // Si el nick no cambió, igual hay que notificar el cambio de avatar y rol
-                io.emit('user_data_updated', { nick: socket.userData.nick, role: socket.userData.role, avatar_url: socket.userData.avatar_url });
-            }
+    
+        // --- ENTRAR EN MODO INCÓGNITO ---
         } else {
-            // --- ENTRAR EN MODO INCÓGNITO ---
-            // 1. Guardar estado original
+            // Verificación previa: Asegurarse de que el nick de incógnito no esté en uso.
+            if (newNick) {
+                const isRegistered = await userService.findUserByNick(newNick);
+                const isInUse = roomService.isNickInUse(newNick);
+    
+                if (isRegistered || isInUse) {
+                    return socket.emit('system message', { text: `El nick de incógnito '${newNick}' ya está en uso o registrado. Elige otro.`, type: 'error', roomName: currentRoom });
+                }
+                // Protección para el Owner: no puede cambiar su nick base con este comando.
+                if (sender.nick.toLowerCase() === config.ownerNick.toLowerCase() && newNick) {
+                     return socket.emit('system message', { text: 'El Owner no puede cambiar su nick base con el modo incógnito. Usa /incognito sin un nick para ocultar tu rango.', type: 'error' });
+                }
+            }
+            
+            const oldNick = sender.nick;
+            
+            // 1. Guardar el estado original de forma segura en la sesión del socket.
             socket.userData.originalNick = sender.nick;
             socket.userData.originalRole = sender.role;
             socket.userData.originalAvatar = sender.avatar_url;
             socket.userData.originalIsVIP = sender.isVIP;
-
-            // 2. Aplicar estado de incógnito
+    
+            // 2. Aplicar la máscara de incógnito a la sesión del socket.
             socket.userData.isIncognito = true;
-            socket.userData.role = 'user'; // Rol de usuario para pasar desapercibido
-            socket.userData.avatar_url = 'image/default-avatar.png'; // Avatar por defecto
-            socket.userData.isVIP = false; // No mostrar VIP en incógnito
-
-            const oldNick = sender.originalNick;
-            let finalNick = newNick;
-
-            if (finalNick) {
-                if (roomService.isNickInUse(finalNick) || await userService.findUserByNick(finalNick)) {
-                    socket.emit('system message', { text: `El nick '${finalNick}' ya está en uso. Elige otro para el modo incógnito.`, type: 'error' });
-                    // Revertir cambios si el nick falla
-                    socket.userData.isIncognito = false;
-                    socket.userData.role = socket.userData.originalRole;
-                    socket.userData.avatar_url = socket.userData.originalAvatar;
-                    socket.userData.isVIP = socket.userData.originalIsVIP;
-                    delete socket.userData.originalNick;
-                    delete socket.userData.originalRole;
-                    delete socket.userData.originalAvatar;
-                    delete socket.userData.originalIsVIP;
-                    return;
-                }
-                socket.userData.nick = finalNick;
+            socket.userData.role = 'user'; // Siempre aparece como usuario normal.
+            socket.userData.avatar_url = 'image/default-avatar.png'; // Avatar por defecto.
+            socket.userData.isVIP = false; // Ocultar VIP.
+    
+            if (newNick) {
+                socket.userData.nick = newNick; // Cambia el nick solo en la sesión actual.
             }
-
+    
             socket.emit('system message', { text: `Has entrado en modo incógnito. Ahora apareces como '${socket.userData.nick}' con rol de usuario.`, type: 'highlight' });
-
-            // 3. Notificar a los clientes del cambio
-            if (oldNick.toLowerCase() !== socket.userData.nick.toLowerCase()) {
-                io.emit('user_data_updated', { oldNick: oldNick, nick: socket.userData.nick, role: 'user', avatar_url: socket.userData.avatar_url });
-            } else {
-                io.emit('user_data_updated', { nick: socket.userData.nick, role: 'user', avatar_url: socket.userData.avatar_url });
-            }
+    
+            // 3. Notificar a los clientes del cambio.
+            io.emit('user_data_updated', {
+                oldNick: oldNick,
+                nick: socket.userData.nick,
+                role: 'user', // Mostramos el rol temporal
+                avatar_url: 'image/default-avatar.png'
+            });
         }
         
-        // Sincronizar el estado en el servidor y forzar actualización en clientes (esto se hace en ambos casos)
+        // Sincronizar estado en el servidor y actualizar listas de usuarios en todas las salas.
         roomService.updateUserDataInAllRooms(socket);
         socket.joinedRooms.forEach(room => {
             if (room !== socket.id) {
                 roomService.updateUserList(io, room);
             }
         });
-
+    
         return;
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
 
     if (command === '/avatar') {
         const avatarUrl = args[1];

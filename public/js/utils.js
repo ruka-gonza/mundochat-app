@@ -48,7 +48,7 @@ export function getUserIcons(user) {
     if (!user) return '';
 
     // --- INICIO DE LA CORRECCIÓN CLAVE ---
-    // El cliente ahora decide qué mostrar.
+    // El cliente ahora decide qué mostrar basado en la bandera del servidor.
     const viewerIsStaff = state.myUserData && (state.myUserData.role === 'owner' || state.myUserData.role === 'admin');
 
     // 1. Si el usuario tiene la bandera de incógnito...

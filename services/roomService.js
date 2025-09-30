@@ -155,14 +155,13 @@ async function updateUserList(io, roomName) {
             delete rooms[roomName].users[socketId];
         });
         
-        // Construimos una lista de usuarios únicos para evitar duplicados si alguien tiene múltiples conexiones (aunque ya se maneja)
+        // Construimos una lista de usuarios únicos para evitar duplicados
         for (const socketId in rooms[roomName].users) {
             const user = rooms[roomName].users[socketId];
             if (!user || !user.nick) {
                 delete rooms[roomName].users[socketId];
                 continue;
             }
-            // Siempre tomamos el último usuario encontrado con ese nick, asumiendo que es el más actualizado
             if (!uniqueUsers[user.nick.toLowerCase()]) {
                 uniqueUsers[user.nick.toLowerCase()] = user;
             }
@@ -185,7 +184,6 @@ async function updateUserList(io, roomName) {
             };
 
             // Añadir la bandera de incógnito si corresponde.
-            // Esta es la parte crítica: user.isIncognito viene del estado actual del socket.
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
 
             return finalUser;
@@ -201,7 +199,7 @@ async function updateUserList(io, roomName) {
             return a.nick.localeCompare(b.nick);
         });
 
-        // 3. Enviar esta lista única y completa a cada usuario en la sala, personalizando la visibilidad del incognito.
+        // 3. Enviar esta lista única y completa a cada usuario en la sala, personalizando la visibilidad.
         const socketsInRoom = await io.in(roomName).fetchSockets();
 
         for (const recipientSocket of socketsInRoom) {
@@ -211,20 +209,15 @@ async function updateUserList(io, roomName) {
 
             const userListForRecipient = userListFinal.map(user => {
                 if (user.isActuallyStaffIncognito && !canSeeIncognito) {
-                    // Si el usuario es incognito y el recipiente no puede verlo, ocultar la bandera y el rol/VIP.
-                    const { role, isVIP, ...rest } = user; // Destructurar para omitir role y isVIP
+                    // Si el usuario es incognito y el receptor no puede verlo, ocultamos el rol/VIP.
+                    const { role, isVIP, ...rest } = user;
                     return { ...rest, isActuallyStaffIncognito: false };
-                } else if (user.isActuallyStaffIncognito && canSeeIncognito) {
-                    // Si el usuario es incognito y el recipiente puede verlo, mantener la bandera.
-                    return { ...user, isActuallyStaffIncognito: true };
                 }
-                return user;
+                return user; // Si el receptor puede verlo, o no es incognito, se envía tal cual.
             });
 
             recipientSocket.emit('update user list', { roomName, users: userListForRecipient });
         }
-
-        console.log(`[UPDATE_USER_LIST] Sala ${roomName}: ${userListFinal.length} usuarios procesados y enviados individualmente.`);
     }
 }
 // --- FIN DE LA CORRECCIÓN CLAVE ---

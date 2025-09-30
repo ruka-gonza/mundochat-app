@@ -1,6 +1,6 @@
 const userService = require('../services/userService');
 const banService = require('../services/banService');
-const roomService = require('../services/roomService');
+const roomService =require('../services/roomService');
 const permissionService = require('../services/permissionService');
 const db = require('../services/db-connection').getInstance();
 const fetch = require('node-fetch');
@@ -29,7 +29,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     const sender = socket.userData;
 
     // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // ===                    INICIO DEL NUEVO MODO INCÓGNITO                    ===
     // =========================================================================
     if (command === '/incognito') {
         // Solo el owner y admin pueden usar este comando.
@@ -49,7 +49,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             socket.userData.role = sender.originalRole;
             socket.userData.avatar_url = sender.originalAvatar;
             socket.userData.isVIP = sender.originalIsVIP;
-            socket.userData.isIncognito = false; // Marcar como que ya no está en incógnito
+            socket.userData.isIncognito = false;
             
             // 2. Limpiar las propiedades temporales.
             delete socket.userData.originalNick;
@@ -77,10 +77,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     
                 if (isRegistered || isInUse) {
                     return socket.emit('system message', { text: `El nick de incógnito '${newNick}' ya está en uso o registrado. Elige otro.`, type: 'error', roomName: currentRoom });
-                }
-                // Protección para el Owner: no puede cambiar su nick base con este comando.
-                if (sender.nick.toLowerCase() === config.ownerNick.toLowerCase() && newNick) {
-                     return socket.emit('system message', { text: 'El Owner no puede cambiar su nick base con el modo incógnito. Usa /incognito sin un nick para ocultar tu rango.', type: 'error' });
                 }
             }
             
@@ -124,7 +120,7 @@ async function handleCommand(io, socket, text, currentRoom) {
         return;
     }
     // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // ===                     FIN DEL NUEVO MODO INCÓGNITO                    ===
     // =========================================================================
 
     if (command === '/avatar') {

@@ -171,34 +171,38 @@ async function updateUserList(io, roomName) {
         
         const effectiveRoles = await Promise.all(rolePromises);
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        
+        // 1. Construir la lista final de usuarios con la lógica de rol correcta
         const userListFinal = usersToProcess.map((user, index) => {
-            const finalUser = {
-                ...user,
-                role: effectiveRoles[index]
-            };
+            const finalUser = { ...user }; // Copiamos el usuario de la sesión actual
+            
+            // Si el usuario está en modo incógnito, su rol para la lista SIEMPRE será 'user'
+            if (user.isIncognito) {
+                finalUser.role = 'user';
+            } else {
+                // Si no, usamos el rol efectivo que calculamos (para mods de sala, etc.)
+                finalUser.role = effectiveRoles[index];
+            }
+            
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
             return finalUser;
         });
 
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
+        // 2. Ordenar la lista. Ahora `a.role` y `b.role` tendrán el valor correcto ('user' para incógnitos)
         userListFinal.sort((a, b) => {
-            // CORRECCIÓN: Usar el rol visible para la ordenación.
-            // Si un usuario está en incógnito, su rol para ordenar será 'user'.
-            const visibleRoleA = a.isActuallyStaffIncognito ? 'user' : a.role;
-            const visibleRoleB = b.isActuallyStaffIncognito ? 'user' : b.role;
-        
-            const priorityA = permissionService.getRolePriority(visibleRoleA);
-            const priorityB = permissionService.getRolePriority(visibleRoleB);
+            const priorityA = permissionService.getRolePriority(a.role);
+            const priorityB = permissionService.getRolePriority(b.role);
         
             if (priorityA !== priorityB) {
                 return priorityA - priorityB;
             }
-            // Si la prioridad es la misma (ej: dos usuarios, o un admin en incógnito y un usuario),
-            // se ordena alfabéticamente por nick.
+            // Si la prioridad es la misma, ordenar alfabéticamente
             return a.nick.localeCompare(b.nick);
         });
+        
         // =========================================================================
         // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
         // =========================================================================

@@ -174,7 +174,6 @@ async function updateUserList(io, roomName) {
         const userListFinal = usersToProcess.map((user, index) => {
             const finalUser = {
                 ...user,
-                // AHORA ESTA LÍNEA ES LA CLAVE DEL BUG: Se sobrescribe el rol temporal 'user' con el rol real 'owner'
                 role: effectiveRoles[index]
             };
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
@@ -185,13 +184,19 @@ async function updateUserList(io, roomName) {
         // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
         // =========================================================================
         userListFinal.sort((a, b) => {
-            // Se usa el rol REAL del objeto para la ordenación, no el visible.
-            const roleA = permissionService.getRolePriority(a.role);
-            const roleB = permissionService.getRolePriority(b.role);
-
-            if (roleA !== roleB) {
-                return roleA - roleB;
+            // CORRECCIÓN: Usar el rol visible para la ordenación.
+            // Si un usuario está en incógnito, su rol para ordenar será 'user'.
+            const visibleRoleA = a.isActuallyStaffIncognito ? 'user' : a.role;
+            const visibleRoleB = b.isActuallyStaffIncognito ? 'user' : b.role;
+        
+            const priorityA = permissionService.getRolePriority(visibleRoleA);
+            const priorityB = permissionService.getRolePriority(visibleRoleB);
+        
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
             }
+            // Si la prioridad es la misma (ej: dos usuarios, o un admin en incógnito y un usuario),
+            // se ordena alfabéticamente por nick.
             return a.nick.localeCompare(b.nick);
         });
         // =========================================================================

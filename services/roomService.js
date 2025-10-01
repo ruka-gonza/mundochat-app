@@ -15,7 +15,10 @@ function updateUserDataInAllRooms(socket) {
 
     socket.joinedRooms.forEach(roomName => {
         if (rooms[roomName] && rooms[roomName].users[socket.id]) {
-            rooms[roomName].users[socket.id] = socket.userData;
+            rooms[roomName].users[socket.id] = { 
+                ...rooms[roomName].users[socket.id],
+                ...socket.userData
+            };
         }
     });
 }
@@ -169,40 +172,43 @@ async function updateUserList(io, roomName) {
         const effectiveRoles = await Promise.all(rolePromises);
 
         // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN DEFINITIVA               ===
+        // ===            CORRECCIÓN FINAL: LÓGICA DE ORDENACIÓN EXPLÍCITA         ===
         // =========================================================================
         
-        // 1. Construir la lista final de usuarios con la lógica de rol correcta
         const userListFinal = usersToProcess.map((user, index) => {
-            const finalUser = { ...user }; // Copiamos el usuario de la sesión actual
-            
+            const finalUser = { ...user };
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
 
-            // Si el usuario está en modo incógnito, su rol para la lista SIEMPRE será 'user'.
+            // Si es incógnito, su rol visible es 'user'.
             if (finalUser.isActuallyStaffIncognito) {
                 finalUser.role = 'user';
             } else {
-                // Si no, usamos el rol efectivo que calculamos (para mods de sala, etc.).
+                // Si no, su rol es el real.
                 finalUser.role = effectiveRoles[index];
             }
-            
             return finalUser;
         });
 
-        // 2. Ordenar la lista. Ahora `a.role` y `b.role` tendrán el valor correcto ('user' para incógnitos).
+        // La lógica de ordenación que propusiste (Opción A), que es la correcta.
         userListFinal.sort((a, b) => {
             const priorityA = permissionService.getRolePriority(a.role);
             const priorityB = permissionService.getRolePriority(b.role);
-        
+
+            // 🔹 Si ambos son 'user' (sean reales o un admin en incógnito), ordenar solo por nick.
+            if (a.role === 'user' && b.role === 'user') {
+                return a.nick.localeCompare(b.nick, 'es', { sensitivity: 'base' });
+            }
+
+            // 🔹 Si tienen distinta prioridad, el de mayor rango (menor número) va primero.
             if (priorityA !== priorityB) {
                 return priorityA - priorityB;
             }
-            // Si la prioridad es la misma, ordenar alfabéticamente.
-            return a.nick.localeCompare(b.nick);
+
+            // 🔹 Si son del mismo rango de staff, ordenar alfabéticamente.
+            return a.nick.localeCompare(b.nick, 'es', { sensitivity: 'base' });
         });
         
         // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN DEFINITIVA                 ===
         // =========================================================================
 
         const socketsInRoom = await io.in(roomName).fetchSockets();
@@ -213,10 +219,9 @@ async function updateUserList(io, roomName) {
             const canSeeIncognito = recipientRole === 'owner' || recipientRole === 'admin';
 
             const userListForRecipient = userListFinal.map(user => {
-                // Esta lógica ya era correcta: se ocultan los datos a los no-staff.
                 if (user.isActuallyStaffIncognito && !canSeeIncognito) {
                     const { role, isVIP, ...rest } = user;
-                    return { ...rest, isActuallyStaffIncognito: false, role: 'user' }; // Forzamos rol user para el cliente
+                    return { ...rest, isActuallyStaffIncognito: false, role: 'user' };
                 }
                 return user;
             });

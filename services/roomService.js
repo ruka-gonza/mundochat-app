@@ -15,10 +15,7 @@ function updateUserDataInAllRooms(socket) {
 
     socket.joinedRooms.forEach(roomName => {
         if (rooms[roomName] && rooms[roomName].users[socket.id]) {
-            rooms[roomName].users[socket.id] = { 
-                ...rooms[roomName].users[socket.id],
-                ...socket.userData
-            };
+            rooms[roomName].users[socket.id] = socket.userData;
         }
     });
 }

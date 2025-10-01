@@ -129,20 +129,17 @@ async function createRoom(roomName, creator, io) {
 }
 
 
-// --- INICIO DE LA CORRECCIÓN CLAVE ---
 async function updateUserList(io, roomName) {
     if (rooms[roomName]) {
         const uniqueUsers = {};
         const activeSocketIds = new Set();
         
-        // Obtenemos un listado de todos los sockets activos directamente de Socket.IO
         if (global.io && global.io.sockets && global.io.sockets.sockets) {
             global.io.sockets.sockets.forEach((socket, socketId) => {
                 activeSocketIds.add(socketId);
             });
         }
         
-        // Limpiamos sockets fantasma que ya no están en la lista global de Socket.IO
         const socketsToRemove = [];
         for (const socketId in rooms[roomName].users) {
             if (!activeSocketIds.has(socketId)) {
@@ -155,7 +152,6 @@ async function updateUserList(io, roomName) {
             delete rooms[roomName].users[socketId];
         });
         
-        // Construimos una lista de usuarios únicos para evitar duplicados
         for (const socketId in rooms[roomName].users) {
             const user = rooms[roomName].users[socketId];
             if (!user || !user.nick) {
@@ -169,37 +165,43 @@ async function updateUserList(io, roomName) {
 
         const usersToProcess = Object.values(uniqueUsers);
 
-        // Obtenemos los roles efectivos para cada usuario en la sala
         const rolePromises = usersToProcess.map(user => 
             permissionService.getUserEffectiveRole(user.id, roomName)
         );
         
         const effectiveRoles = await Promise.all(rolePromises);
 
-        // 1. Construir una única lista de usuarios con toda la información necesaria.
         const userListFinal = usersToProcess.map((user, index) => {
             const finalUser = {
                 ...user,
                 role: effectiveRoles[index]
             };
-
-            // Añadir la bandera de incógnito si corresponde.
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
-
             return finalUser;
         });
 
-        // 2. Ordenar la lista.
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         userListFinal.sort((a, b) => {
-            const roleA = permissionService.getRolePriority(a.role);
-            const roleB = permissionService.getRolePriority(b.role);
-            if (roleA !== roleB) {
-                return roleA - roleB;
+            // CORRECCIÓN: Usar el rol visible para la ordenación
+            // Si un usuario está en incógnito, su rol para ordenar será 'user'.
+            const visibleRoleA = a.isActuallyStaffIncognito ? 'user' : a.role;
+            const visibleRoleB = b.isActuallyStaffIncognito ? 'user' : b.role;
+        
+            const priorityA = permissionService.getRolePriority(visibleRoleA);
+            const priorityB = permissionService.getRolePriority(visibleRoleB);
+        
+            if (priorityA !== priorityB) {
+                return priorityA - priorityB;
             }
+            // Si la prioridad es la misma, ordenar alfabéticamente por nick.
             return a.nick.localeCompare(b.nick);
         });
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
 
-        // 3. Enviar esta lista única y completa a cada usuario en la sala, personalizando la visibilidad.
         const socketsInRoom = await io.in(roomName).fetchSockets();
 
         for (const recipientSocket of socketsInRoom) {
@@ -209,18 +211,16 @@ async function updateUserList(io, roomName) {
 
             const userListForRecipient = userListFinal.map(user => {
                 if (user.isActuallyStaffIncognito && !canSeeIncognito) {
-                    // Si el usuario es incognito y el receptor no puede verlo, ocultamos el rol/VIP.
                     const { role, isVIP, ...rest } = user;
                     return { ...rest, isActuallyStaffIncognito: false };
                 }
-                return user; // Si el receptor puede verlo, o no es incognito, se envía tal cual.
+                return user;
             });
 
             recipientSocket.emit('update user list', { roomName, users: userListForRecipient });
         }
     }
 }
-// --- FIN DE LA CORRECCIÓN CLAVE ---
 
 
 module.exports = {

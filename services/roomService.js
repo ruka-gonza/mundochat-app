@@ -193,14 +193,20 @@ async function updateUserList(io, roomName) {
         });
 
         // 2. Ordenar la lista. Ahora `a.role` y `b.role` tendrán el valor correcto ('user' para incógnitos).
-        userListFinal.sort((a, b) => {
-            const priorityA = permissionService.getRolePriority(a.role);
-            const priorityB = permissionService.getRolePriority(b.role);
-        
+       userListFinal.sort((a, b) => {
+            // CORRECCIÓN: Usar el rol visible para la ordenación.
+            // Si un usuario está en incógnito, su rol para ordenar será 'user'.
+            const visibleRoleA = a.isActuallyStaffIncognito ? 'user' : a.role;
+            const visibleRoleB = b.isActuallyStaffIncognito ? 'user' : b.role;
+
+            const priorityA = permissionService.getRolePriority(visibleRoleA);
+            const priorityB = permissionService.getRolePriority(visibleRoleB);
+
             if (priorityA !== priorityB) {
                 return priorityA - priorityB;
             }
-            // Si la prioridad es la misma, ordenar alfabéticamente.
+            // Si la prioridad es la misma (ej: dos usuarios, o un admin en incógnito y un usuario),
+            // se ordena alfabéticamente por nick.
             return a.nick.localeCompare(b.nick);
         });
         

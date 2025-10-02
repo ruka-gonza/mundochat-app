@@ -381,37 +381,20 @@ function initializeSocket(io) {
             }
         })();
         
-        // =========================================================================
-        // ===            INICIO: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
-        // =========================================================================
         socket.on('change temporary avatar', async ({ avatarBase64 }) => {
             if (!socket.userData || !socket.userData.isIncognito) {
                 return socket.emit('system message', { text: 'Esta función es solo para el modo incógnito.', type: 'error' });
             }
-
-            if (!avatarBase64) {
-                return; // No hacer nada si no se envía imagen
-            }
-
-            // Aquí podrías añadir validación del base64 como en la ruta de subida, pero por simplicidad la omitimos.
-            // Asumimos que el cliente envía un formato válido.
+            if (!avatarBase64) return;
 
             socket.userData.avatar_url = avatarBase64;
-            
-            // Sincronizar los datos en todas las salas en las que está el usuario
             roomService.updateUserDataInAllRooms(socket);
-            
-            // Notificar a todos los clientes del cambio de avatar
             io.emit('user_data_updated', { 
                 nick: socket.userData.nick, 
                 avatar_url: avatarBase64 
             });
         });
-        // =========================================================================
-        // ===             FIN: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
-        // =========================================================================
-
-
+        
         socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
             try {
                 if (socket.userData.nick.toLowerCase() !== targetNick.toLowerCase()) {
@@ -434,6 +417,9 @@ function initializeSocket(io) {
             }
         });
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         socket.on('reauthenticate', async (cookieData) => {
             try {
                 if (closedSessions.has(cookieData.id)) {
@@ -445,13 +431,63 @@ function initializeSocket(io) {
                     return socket.emit('reauth_failed');
                 }
                 
-                socket.userData = { nick: userInDb.nick, id: userInDb.id, role: userInDb.role, isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, ip: userIP, avatar_url: userInDb.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false };
+                socket.userData = { 
+                    nick: userInDb.nick, 
+                    id: userInDb.id, 
+                    role: userInDb.role, 
+                    isMuted: userInDb.isMuted === 1, 
+                    isVIP: userInDb.isVIP === 1, 
+                    ip: userIP, 
+                    avatar_url: userInDb.avatar_url || 'image/default-avatar.png', // <-- Se carga desde la DB
+                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), 
+                    isAFK: false 
+                };
+                
                 closedSessions.delete(userInDb.id);
                 socket.emit('reauth_success');
             } catch (error) {
                 console.error(`Error en el evento 'reauthenticate':`, error);
             }
         });
+
+        socket.on('login', async (data) => {
+            try {
+                let { nick, id, roomName } = data;
+                if (await checkBanStatus(socket, id, userIP)) return;
+
+                const registeredData = await userService.findUserById(id);
+                if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
+                
+                if (['owner', 'admin'].includes(registeredData.role)) {
+                    roomName = roomService.INCOGNITO_ROOM;
+                } else if (['operator', 'mod'].includes(registeredData.role)) {
+                    roomName = '#General';
+                }
+
+                socket.userData = { 
+                    nick: registeredData.nick, 
+                    id: registeredData.id, 
+                    role: registeredData.role, 
+                    isMuted: registeredData.isMuted === 1, 
+                    isVIP: registeredData.isVIP === 1, 
+                    ip: userIP, 
+                    avatar_url: registeredData.avatar_url || 'image/default-avatar.png', // <-- Se carga desde la DB
+                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), 
+                    isAFK: false 
+                };
+                
+                await userService.updateUserIP(registeredData.nick, userIP);
+                closedSessions.delete(id);
+                logActivity('CONNECT', socket.userData);
+                await handleJoinRoom(io, socket, { roomName });
+            } catch (error) {
+                console.error(`Error en el evento 'login':`, error);
+                socket.emit('auth_error', { message: 'Ocurrió un error interno al iniciar sesión.' });
+            }
+        });
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
 
         socket.on('guest_join', async (data) => {
             try {
@@ -467,30 +503,6 @@ function initializeSocket(io) {
             } catch (error) {
                 console.error(`Error en el evento 'guest_join':`, error);
                 socket.emit('system message', { text: 'Ocurrió un error al intentar unirte como invitado.', type: 'error' });
-            }
-        });
-
-        socket.on('login', async (data) => {
-            try {
-                let { nick, id, roomName } = data;
-                if (await checkBanStatus(socket, id, userIP)) return;
-                const registeredData = await userService.findUserById(id);
-                if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
-                
-                if (['owner', 'admin'].includes(registeredData.role)) {
-                    roomName = roomService.INCOGNITO_ROOM;
-                } else if (['operator', 'mod'].includes(registeredData.role)) {
-                    roomName = '#General';
-                }
-
-                socket.userData = { nick: registeredData.nick, id: registeredData.id, role: registeredData.role, isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png', isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false };
-                await userService.updateUserIP(registeredData.nick, userIP);
-                closedSessions.delete(id);
-                logActivity('CONNECT', socket.userData);
-                await handleJoinRoom(io, socket, { roomName });
-            } catch (error) {
-                console.error(`Error en el evento 'login':`, error);
-                socket.emit('auth_error', { message: 'Ocurrió un error interno al iniciar sesión.' });
             }
         });
         

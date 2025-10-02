@@ -29,11 +29,8 @@ async function handleCommand(io, socket, text, currentRoom) {
     const sender = socket.userData;
 
     if (command === '/incognito') {
-        // Si el usuario ya está en modo incógnito, debemos comprobar su rol ORIGINAL.
-        // Si no lo está, comprobamos su rol actual.
         const effectiveRoleForCommand = sender.isIncognito ? sender.originalRole : sender.role;
     
-        // <-- ¡LA CORRECCIÓN CLAVE! Usamos la variable de arriba para la comprobación.
         if (effectiveRoleForCommand !== 'owner' && effectiveRoleForCommand !== 'admin') {
             return socket.emit('system message', { text: 'No tienes permiso para usar este comando.', type: 'error', roomName: currentRoom });
         }
@@ -45,11 +42,18 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (wasIncognito) {
             const oldNick = sender.nick;
             
-            // Restaurar el estado original del socket desde las propiedades guardadas.
-            socket.userData.nick = sender.originalNick;
-            socket.userData.role = sender.originalRole;
-            socket.userData.avatar_url = sender.originalAvatar;
-            socket.userData.isVIP = sender.originalIsVIP;
+            // =========================================================================
+            // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
+            
+            // 1. OBTENER DATOS FRESCOS DE LA BASE DE DATOS
+            const userInDb = await userService.findUserById(sender.id);
+            
+            // 2. Restaurar el estado usando los datos de la DB como fuente de verdad
+            socket.userData.nick = userInDb.nick;
+            socket.userData.role = userInDb.role;
+            socket.userData.avatar_url = userInDb.avatar_url || 'image/default-avatar.png'; // <-- ¡CRUCIAL!
+            socket.userData.isVIP = userInDb.isVIP === 1;
             socket.userData.isIncognito = false;
             
             // Limpiar las propiedades temporales.
@@ -57,10 +61,12 @@ async function handleCommand(io, socket, text, currentRoom) {
             delete socket.userData.originalRole;
             delete socket.userData.originalAvatar;
             delete socket.userData.originalIsVIP;
+            // =========================================================================
+            // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
     
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
     
-            // Notificar a todos los clientes del cambio de datos.
             io.emit('user_data_updated', {
                 oldNick: oldNick,
                 nick: socket.userData.nick,
@@ -71,7 +77,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     
         // --- ENTRAR EN MODO INCÓGNITO ---
         } else {
-            // Verificación previa: Asegurarse de que el nick de incógnito no esté en uso.
             if (newNick) {
                 const isRegistered = await userService.findUserByNick(newNick);
                 const isInUse = roomService.isNickInUse(newNick);
@@ -83,13 +88,11 @@ async function handleCommand(io, socket, text, currentRoom) {
             
             const oldNick = sender.nick;
             
-            // Guardar el estado original de forma segura en la sesión del socket.
             socket.userData.originalNick = sender.nick;
             socket.userData.originalRole = sender.role;
             socket.userData.originalAvatar = sender.avatar_url;
             socket.userData.originalIsVIP = sender.isVIP;
     
-            // Aplicar la máscara de incógnito a la sesión del socket.
             socket.userData.isIncognito = true;
             socket.userData.role = 'user';
             socket.userData.avatar_url = 'image/default-avatar.png';
@@ -101,7 +104,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     
             socket.emit('system message', { text: `Has entrado en modo incógnito. Ahora apareces como '${socket.userData.nick}' con rol de usuario.`, type: 'highlight' });
     
-            // Notificar a los clientes del cambio.
             io.emit('user_data_updated', {
                 oldNick: oldNick,
                 nick: socket.userData.nick,
@@ -110,7 +112,6 @@ async function handleCommand(io, socket, text, currentRoom) {
             });
         }
         
-        // Sincronizar estado en el servidor y actualizar listas de usuarios en todas las salas.
         roomService.updateUserDataInAllRooms(socket);
         socket.joinedRooms.forEach(room => {
             if (room !== socket.id) {
@@ -528,7 +529,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             let whoisMsg = `\n--- Información de ${whoisData.nick} ---\n`;
             whoisMsg += `ID: ${whoisData.id}\n`;
             whoisMsg += `Rol: ${whoisData.role || 'user'}\n`;
-            whoisMsg += `Estado: ${isOnline ? '🟢 Online' : '🔴 Offline'}\n`;
+            whoisMsg += `Estado: ${isOnline ? '🟢 Online' : '🔴 Online'}\n`;
             if (lastConnectLog) whoisMsg += `Última conexión: ${new Date(lastConnectLog.timestamp).toLocaleString('es-ES')}\n`;
             if (!isOnline && lastDisconnectLog) {
                 const timeAgo = ms(Date.now() - new Date(lastDisconnectLog.timestamp).getTime(), { long: true });

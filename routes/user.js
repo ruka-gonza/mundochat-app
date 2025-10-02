@@ -29,6 +29,21 @@ router.post('/avatar', async (req, res) => {
     const { id, nick, role } = req.verifiedUser; // Esto viene del middleware isCurrentUser
     const io = req.io;
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Buscamos el socket activo del usuario que hace la petición.
+    const targetSocketId = roomService.findSocketIdByUserId(id);
+    const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
+
+    // Si el socket existe y tiene la bandera de incógnito, bloqueamos la acción.
+    if (targetSocket && targetSocket.userData && targetSocket.userData.isIncognito) {
+        return res.status(403).json({ error: 'Acción prohibida: No puedes cambiar tu avatar permanente mientras estás en modo incógnito. Sal del modo incógnito para hacerlo.' });
+    }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+
     if (!avatarBase64) {
         return res.status(400).json({ error: 'No se ha proporcionado ninguna imagen.' });
     }
@@ -58,31 +73,30 @@ router.post('/avatar', async (req, res) => {
 
         await fs.writeFile(filePath, imageBuffer);
         
-        const targetSocketId = roomService.findSocketIdByUserId(id); // Buscar por ID de usuario, no por nick
-        const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
-
-        if (targetSocket) { // Solo proceder si el usuario está conectado
-            const currentNick = targetSocket.userData.nick; // Obtener el nick actual del socket (puede ser el de incógnito)
+        // Si el usuario está conectado (targetSocket existe), actualizamos su avatar en tiempo real.
+        if (targetSocket) {
+            const currentNick = targetSocket.userData.nick;
 
             if (isGuest) {
-                // Para invitados, actualizamos el estado en el socket
                 if (targetSocket.userData.temp_avatar_path) {
                     await fs.unlink(targetSocket.userData.temp_avatar_path).catch(err => console.error("No se pudo borrar el avatar temporal antiguo:", err));
                 }
                 targetSocket.userData.avatar_url = avatarUrl;
                 targetSocket.userData.temp_avatar_path = filePath;
-                
                 roomService.updateUserDataInAllRooms(targetSocket);
-
             } else {
-                // Para usuarios registrados, actualizamos la DB y el socket
+                // Para usuarios registrados, actualizamos la DB y el socket.
                 await userService.setAvatarUrl(id, avatarUrl);
                 targetSocket.userData.avatar_url = avatarUrl;
                 roomService.updateUserDataInAllRooms(targetSocket);
             }
             
-            // Notificamos a todos los clientes para que actualicen la UI con el nick actual del socket
             io.emit('user_data_updated', { nick: currentNick, avatar_url: avatarUrl });
+        } else {
+            // Si el usuario no está conectado pero es registrado, solo actualizamos la DB.
+            if (!isGuest) {
+                 await userService.setAvatarUrl(id, avatarUrl);
+            }
         }
         
         res.json({ message: 'Avatar actualizado con éxito.', newAvatarUrl: avatarUrl });
@@ -94,7 +108,7 @@ router.post('/avatar', async (req, res) => {
 });
 
 
-// RUTA DE CAMBIO DE NICK (la dejamos como estaba, ya está correcta)
+// RUTA DE CAMBIO DE NICK (sin cambios)
 router.post('/nick', async (req, res) => {
     const { id: userId, nick: oldNick } = req.verifiedUser;
     const { newNick } = req.body;

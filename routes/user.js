@@ -32,14 +32,11 @@ router.post('/avatar', async (req, res) => {
     // =========================================================================
     // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
-    // Buscamos el socket activo del usuario que hace la petición.
-    const targetSocketId = roomService.findSocketIdByUserId(id);
-    const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
-
-    // Si el socket existe y tiene la bandera de incógnito, bloqueamos la acción.
-    if (targetSocket && targetSocket.userData && targetSocket.userData.isIncognito) {
-        return res.status(403).json({ error: 'Acción prohibida: No puedes cambiar tu avatar permanente mientras estás en modo incógnito. Sal del modo incógnito para hacerlo.' });
-    }
+    // Se ha ELIMINADO el bloque que buscaba el socket y devolvía un error 403.
+    // Ahora esta ruta procesará la petición sin comprobar el modo incógnito,
+    // ya que el cliente (modals.js) ya se encarga de no llamar a esta ruta
+    // para los admins en modo incógnito. Esto permite que los 'guests'
+    // puedan seguir cambiando su avatar.
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
@@ -73,7 +70,9 @@ router.post('/avatar', async (req, res) => {
 
         await fs.writeFile(filePath, imageBuffer);
         
-        // Si el usuario está conectado (targetSocket existe), actualizamos su avatar en tiempo real.
+        const targetSocketId = roomService.findSocketIdByUserId(id);
+        const targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
+        
         if (targetSocket) {
             const currentNick = targetSocket.userData.nick;
 
@@ -85,7 +84,6 @@ router.post('/avatar', async (req, res) => {
                 targetSocket.userData.temp_avatar_path = filePath;
                 roomService.updateUserDataInAllRooms(targetSocket);
             } else {
-                // Para usuarios registrados, actualizamos la DB y el socket.
                 await userService.setAvatarUrl(id, avatarUrl);
                 targetSocket.userData.avatar_url = avatarUrl;
                 roomService.updateUserDataInAllRooms(targetSocket);
@@ -93,7 +91,6 @@ router.post('/avatar', async (req, res) => {
             
             io.emit('user_data_updated', { nick: currentNick, avatar_url: avatarUrl });
         } else {
-            // Si el usuario no está conectado pero es registrado, solo actualizamos la DB.
             if (!isGuest) {
                  await userService.setAvatarUrl(id, avatarUrl);
             }

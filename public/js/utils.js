@@ -47,20 +47,23 @@ export function replaceEmoticons(text) {
 export function getUserIcons(user) {
     if (!user) return '';
 
-    // --- INICIO DE LA CORRECCIÓN CLAVE ---
-    // El cliente ahora decide qué mostrar basado en la bandera del servidor.
     const viewerIsStaff = state.myUserData && (state.myUserData.role === 'owner' || state.myUserData.role === 'admin');
 
-    // 1. Si el usuario tiene la bandera de incógnito...
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    // Si el usuario de la lista tiene la bandera de incógnito...
     if (user.isActuallyStaffIncognito) {
-        // ...y yo (quien está viendo) soy staff, muestro el fantasma.
-        if (viewerIsStaff) {
+        // ...y el que está viendo es staff O el usuario de la lista soy YO MISMO, muestro el fantasma.
+        if (viewerIsStaff || user.nick === state.myNick) {
             return `<span class="user-icon">👻</span>`;
         }
-        // ...si no soy staff, no muestro NINGÚN icono para él.
+        // ...si no, no muestro ningún icono.
         return '';
     }
-    // --- FIN DE LA CORRECCIÓN CLAVE ---
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
 
     const roleIcons = {
         owner: '👑',

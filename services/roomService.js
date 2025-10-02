@@ -171,28 +171,19 @@ async function updateUserList(io, roomName) {
         
         const effectiveRoles = await Promise.all(rolePromises);
 
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN DEFINITIVA               ===
-        // =========================================================================
-        
-        // 1. Construir la lista final de usuarios con la lógica de rol correcta
         const userListFinal = usersToProcess.map((user, index) => {
-            const finalUser = { ...user }; // Copiamos el usuario de la sesión actual
-            
+            const finalUser = { ...user };
             finalUser.isActuallyStaffIncognito = !!user.isIncognito;
 
-            // Si el usuario está en modo incógnito, su rol para la lista SIEMPRE será 'user'.
             if (finalUser.isActuallyStaffIncognito) {
                 finalUser.role = 'user';
             } else {
-                // Si no, usamos el rol efectivo que calculamos (para mods de sala, etc.).
                 finalUser.role = effectiveRoles[index];
             }
             
             return finalUser;
         });
 
-        // 2. Ordenar la lista. Ahora `a.role` y `b.role` tendrán el valor correcto ('user' para incógnitos).
         userListFinal.sort((a, b) => {
             const priorityA = permissionService.getRolePriority(a.role);
             const priorityB = permissionService.getRolePriority(b.role);
@@ -200,14 +191,9 @@ async function updateUserList(io, roomName) {
             if (priorityA !== priorityB) {
                 return priorityA - priorityB;
             }
-            // Si la prioridad es la misma, ordenar alfabéticamente.
             return a.nick.localeCompare(b.nick, 'es', { sensitivity: 'base' });
         });
         
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN DEFINITIVA                 ===
-        // =========================================================================
-
         const socketsInRoom = await io.in(roomName).fetchSockets();
 
         for (const recipientSocket of socketsInRoom) {
@@ -216,11 +202,16 @@ async function updateUserList(io, roomName) {
             const canSeeIncognito = recipientRole === 'owner' || recipientRole === 'admin';
 
             const userListForRecipient = userListFinal.map(user => {
-                // Esta lógica ya era correcta: se ocultan los datos a los no-staff.
-                if (user.isActuallyStaffIncognito && !canSeeIncognito) {
-                    const { role, isVIP, ...rest } = user;
-                    return { ...rest, isActuallyStaffIncognito: false, role: 'user' }; // Forzamos rol user para el cliente
+                // Si el usuario de la lista está en incógnito...
+                if (user.isActuallyStaffIncognito) {
+                    // ...y el receptor NO es un admin, le enviamos una versión "limpia"
+                    if (!canSeeIncognito) {
+                        const { role, isVIP, ...rest } = user;
+                        return { ...rest, role: 'user', isActuallyStaffIncognito: false };
+                    }
                 }
+                // Si el usuario no está en incógnito, o si el receptor ES un admin,
+                // enviamos el objeto de usuario tal cual está en userListFinal.
                 return user;
             });
 

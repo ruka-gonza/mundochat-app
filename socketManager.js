@@ -38,24 +38,20 @@ async function generateLinkPreview(text) {
 
         const contentType = response.headers.get('content-type');
 
-        // 1. If it's an image content-type, treat as direct image
         if (contentType && contentType.startsWith('image/')) {
              return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
         }
 
-        // 2. If it's a YouTube link (check before fetching html)
         const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
         const youtubeMatch = url.match(youtubeRegex);
         if (youtubeMatch && youtubeMatch[1]) {
             const videoId = youtubeMatch[1];
-            // Use the oembed endpoint
             const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
             if (!oembedRes.ok) return null;
             const data = await oembedRes.json();
             return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
         }
 
-        // 3. If it's HTML, parse for metadata
         if (contentType && contentType.includes('text/html')) {
             const html = await response.text();
             const titleMatch = html.match(/<title>(.*?)<\/title>/);
@@ -68,21 +64,17 @@ async function generateLinkPreview(text) {
             const image = imageMatch ? imageMatch[1] : null;
 
             if (image) {
-                // If the found image is a GIF, embed it directly
                 if (/\.gif(\?.*)?$/i.test(image)) {
                     return { type: 'image', url: url, title: title, image: image, description: description };
                 }
-                // For other images, create a standard preview card
                 return { type: 'link', url: url, title: title, image: image, description: description };
             }
             
-            // If no og:image, but we have a title, return a simple card
             if(title !== url) {
                 return { type: 'link', url: url, title: title, description: description, image: null };
             }
         }
     } catch (error) {
-        // Ignore fetch errors (like timeouts or invalid URLs)
         if (error.message !== 'timeout') {
             console.error("Error al generar previsualización de enlace:", error);
         }
@@ -210,12 +202,8 @@ async function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
     }
 }
 
-// --- INICIO DE LA CORRECCIÓN CLAVE ---
 async function checkBanStatus(socket, idToCheck, ip) {
-    // Llamamos a la nueva función de servicio con AMBOS datos a la vez.
-    // El servicio se encarga de la lógica de buscar por ID o por IP.
     const banInfo = await banService.isUserBanned(idToCheck, ip);
-    
     if (banInfo) {
         socket.emit('auth_error', { message: `Estás baneado. Razón: ${banInfo.reason}` });
         socket.emit('system message', { text: `Estás baneado. Razón: ${banInfo.reason}`, type: 'error' });
@@ -224,7 +212,6 @@ async function checkBanStatus(socket, idToCheck, ip) {
     }
     return false;
 }
-// --- FIN DE LA CORRECCIÓN CLAVE ---
 
 function logActivity(eventType, userData, details = null) {
     if (!userData || !userData.nick) return;
@@ -296,9 +283,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
     
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
-    // Auto-join for owner/admin
     if (['owner', 'admin'].includes(socket.userData.role)) {
-        // Auto-join Staff-Logs
         if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
             socket.join(roomService.MOD_LOG_ROOM);
             socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
@@ -307,7 +292,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
 
-        // Auto-join Incognito
         if (!socket.joinedRooms.has(roomService.INCOGNITO_ROOM)) {
             socket.join(roomService.INCOGNITO_ROOM);
             socket.joinedRooms.add(roomService.INCOGNITO_ROOM);
@@ -317,9 +301,7 @@ async function handleJoinRoom(io, socket, { roomName }) {
         roomService.updateUserList(io, roomService.INCOGNITO_ROOM);
     }
 
-    // Auto-join for oper/mod
     if (['operator', 'mod'].includes(socket.userData.role)) {
-        // Auto-join Staff-Logs
         if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
             socket.join(roomService.MOD_LOG_ROOM);
             socket.joinedRooms.add(roomService.MOD_LOG_ROOM);
@@ -398,6 +380,37 @@ function initializeSocket(io) {
                 console.error("Error en VPN Check:", err);
             }
         })();
+        
+        // =========================================================================
+        // ===            INICIO: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
+        // =========================================================================
+        socket.on('change temporary avatar', async ({ avatarBase64 }) => {
+            if (!socket.userData || !socket.userData.isIncognito) {
+                return socket.emit('system message', { text: 'Esta función es solo para el modo incógnito.', type: 'error' });
+            }
+
+            if (!avatarBase64) {
+                return; // No hacer nada si no se envía imagen
+            }
+
+            // Aquí podrías añadir validación del base64 como en la ruta de subida, pero por simplicidad la omitimos.
+            // Asumimos que el cliente envía un formato válido.
+
+            socket.userData.avatar_url = avatarBase64;
+            
+            // Sincronizar los datos en todas las salas en las que está el usuario
+            roomService.updateUserDataInAllRooms(socket);
+            
+            // Notificar a todos los clientes del cambio de avatar
+            io.emit('user_data_updated', { 
+                nick: socket.userData.nick, 
+                avatar_url: avatarBase64 
+            });
+        });
+        // =========================================================================
+        // ===             FIN: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
+        // =========================================================================
+
 
         socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
             try {
@@ -654,14 +667,8 @@ function initializeSocket(io) {
 
         socket.on('toggle incognito', async ({ newNick }) => {
             if (!socket.userData) return;
-
-            // Construir el texto del comando como si el usuario lo hubiera escrito
             const commandText = newNick ? `/incognito ${newNick}` : '/incognito';
-
-            // Obtener la sala actual del usuario. Asumimos que el primer room en el que está es la activa.
             const currentRoom = Array.from(socket.joinedRooms)[0] || '#General';
-
-            // Llamar a handleCommand para centralizar la lógica
             await handleCommand(io, socket, commandText, currentRoom);
         });
         

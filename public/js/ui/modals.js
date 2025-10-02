@@ -216,7 +216,6 @@ export function initModals() {
             stopAdminPanelRefresh();
         }
 
-        // --- INICIO DE LA CORRECCIÓN CLAVE (CLIENTE) ---
         if (target.classList.contains('unban-btn')) {
             const userId = target.dataset.id;
             if (confirm(`¿Estás seguro de que quieres desbanear a ${userId}?`)) {
@@ -227,7 +226,7 @@ export function initModals() {
                         body: JSON.stringify({ userId })
                     });
                     alert(result.message || result.error);
-                    fetchAndShowBannedUsers(); // Refrescar la lista
+                    fetchAndShowBannedUsers();
                 } catch (err) {
                     alert('Error al procesar la solicitud: ' + err.message);
                 }
@@ -244,13 +243,12 @@ export function initModals() {
                         body: JSON.stringify({ nick })
                     });
                     alert(result.message || result.error);
-                    fetchAndShowMutedUsers(); // Refrescar la lista
+                    fetchAndShowMutedUsers();
                 } catch (err) {
                     alert('Error al procesar la solicitud: ' + err.message);
                 }
             }
         }
-        // --- FIN DE LA CORRECCIÓN CLAVE (CLIENTE) ---
     });
 
     dom.adminTabs.forEach(tab => {
@@ -289,6 +287,9 @@ export function initModals() {
         }
     });
     
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     dom.saveProfileButton.addEventListener('click', async () => {
         if (!state.selectedAvatarFile) {
             alert('Por favor, selecciona una imagen para subir.');
@@ -301,22 +302,35 @@ export function initModals() {
         reader.readAsDataURL(state.selectedAvatarFile);
         reader.onload = async () => {
             const avatarBase64 = reader.result;
-            try {
-                const result = await fetchWithCredentials('/api/user/avatar', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ avatarBase64 })
-                });
-                alert(result.message);
+
+            // Si estamos en modo incógnito, usamos el evento de socket para un cambio TEMPORAL.
+            if (state.myUserData.isIncognito) {
+                state.socket.emit('change temporary avatar', { avatarBase64 });
+                alert('Tu avatar de incógnito ha sido actualizado para esta sesión.');
                 dom.profileModal.classList.add('hidden');
-            } catch (error) {
-                console.error('Error al guardar perfil:', error);
-                alert('Hubo un error al conectar con el servidor: ' + error.message);
-            } finally {
                 dom.saveProfileButton.disabled = false;
                 dom.saveProfileButton.textContent = 'Guardar Avatar';
                 state.selectedAvatarFile = null;
                 dom.avatarFileInput.value = '';
+            } else {
+                // Si estamos en modo normal, usamos la API para un cambio PERMANENTE.
+                try {
+                    const result = await fetchWithCredentials('/api/user/avatar', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ avatarBase64 })
+                    });
+                    alert(result.message);
+                    dom.profileModal.classList.add('hidden');
+                } catch (error) {
+                    console.error('Error al guardar perfil:', error);
+                    alert('Hubo un error al conectar con el servidor: ' + error.message);
+                } finally {
+                    dom.saveProfileButton.disabled = false;
+                    dom.saveProfileButton.textContent = 'Guardar Avatar';
+                    state.selectedAvatarFile = null;
+                    dom.avatarFileInput.value = '';
+                }
             }
         };
         reader.onerror = (error) => {
@@ -326,6 +340,9 @@ export function initModals() {
             dom.saveProfileButton.textContent = 'Guardar Avatar';
         };
     });
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
 
     dom.changeNickButton.addEventListener('click', async () => {
         const newNick = dom.newNickInput.value.trim();

@@ -47,23 +47,25 @@ export function replaceEmoticons(text) {
 export function getUserIcons(user) {
     if (!user) return '';
 
-    const viewerIsStaff = state.myUserData && (state.myUserData.role === 'owner' || state.myUserData.role === 'admin');
-
     // =========================================================================
     // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
-    // Si el usuario de la lista tiene la bandera de incógnito...
-    if (user.isActuallyStaffIncognito) {
-        // ...y el que está viendo es staff O el usuario de la lista soy YO MISMO, muestro el fantasma.
-        if (viewerIsStaff || user.nick === state.myNick) {
-            return `<span class="user-icon">👻</span>`;
-        }
-        // ...si no, no muestro ningún icono.
-        return '';
+    // Almacenamos el rol real del usuario en una variable aparte,
+    // que no cambia con el modo incógnito.
+    if (!state.myOriginalRole && (state.myUserData.role === 'owner' || state.myUserData.role === 'admin')) {
+        state.myOriginalRole = state.myUserData.role;
     }
+    const viewerIsStaff = state.myOriginalRole === 'owner' || state.myOriginalRole === 'admin';
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
+
+    if (user.isActuallyStaffIncognito) {
+        if (viewerIsStaff || user.nick === state.myNick) {
+            return `<span class="user-icon">👻</span>`;
+        }
+        return '';
+    }
 
     const roleIcons = {
         owner: '👑',

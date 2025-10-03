@@ -381,32 +381,38 @@ function initializeSocket(io) {
             }
         })();
         
+        // =========================================================================
+        // ===            INICIO: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
+        // =========================================================================
         socket.on('change temporary avatar', async ({ avatarBase64 }) => {
             if (!socket.userData || !socket.userData.isIncognito) {
                 return socket.emit('system message', { text: 'Esta función es solo para el modo incógnito.', type: 'error' });
             }
             if (!avatarBase64) return;
 
+            // Actualiza el avatar solo en la sesión del socket (no en la DB)
             socket.userData.avatar_url = avatarBase64;
+            
+            // Sincroniza los datos en todas las salas en las que está el usuario
             roomService.updateUserDataInAllRooms(socket);
+            
+            // Notifica a todos los clientes del cambio de avatar para actualizar la UI
             io.emit('user_data_updated', { 
                 nick: socket.userData.nick, 
                 avatar_url: avatarBase64 
             });
         });
-        
+        // =========================================================================
+        // ===             FIN: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
+        // =========================================================================
+
         socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
             try {
-                if (socket.userData.nick.toLowerCase() !== targetNick.toLowerCase()) {
-                    return;
-                }
-
+                if (socket.userData.nick.toLowerCase() !== targetNick.toLowerCase()) return;
                 await userService.setUserRole(targetNick, 'admin');
-
                 const successMsg = `${targetNick} ha sido promovido a admin (global) por ${senderNick}.`;
                 io.emit('system message', { text: successMsg, type: 'highlight' });
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[PROMOTE-GLOBAL] ${successMsg}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
-
                 const targetSocket = io.sockets.sockets.get(socket.id);
                 if (targetSocket) {
                     targetSocket.userData.role = 'admin';
@@ -417,14 +423,9 @@ function initializeSocket(io) {
             }
         });
 
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
         socket.on('reauthenticate', async (cookieData) => {
             try {
-                if (closedSessions.has(cookieData.id)) {
-                    return socket.emit('reauth_failed');
-                }
+                if (closedSessions.has(cookieData.id)) return socket.emit('reauth_failed');
                 
                 const userInDb = await userService.findUserById(cookieData.id);
                 if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
@@ -438,7 +439,7 @@ function initializeSocket(io) {
                     isMuted: userInDb.isMuted === 1, 
                     isVIP: userInDb.isVIP === 1, 
                     ip: userIP, 
-                    avatar_url: userInDb.avatar_url || 'image/default-avatar.png', // <-- Se carga desde la DB
+                    avatar_url: userInDb.avatar_url || 'image/default-avatar.png',
                     isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), 
                     isAFK: false 
                 };
@@ -471,7 +472,7 @@ function initializeSocket(io) {
                     isMuted: registeredData.isMuted === 1, 
                     isVIP: registeredData.isVIP === 1, 
                     ip: userIP, 
-                    avatar_url: registeredData.avatar_url || 'image/default-avatar.png', // <-- Se carga desde la DB
+                    avatar_url: registeredData.avatar_url || 'image/default-avatar.png',
                     isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), 
                     isAFK: false 
                 };
@@ -485,9 +486,6 @@ function initializeSocket(io) {
                 socket.emit('auth_error', { message: 'Ocurrió un error interno al iniciar sesión.' });
             }
         });
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
 
         socket.on('guest_join', async (data) => {
             try {

@@ -287,9 +287,6 @@ export function initModals() {
         }
     });
     
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     dom.saveProfileButton.addEventListener('click', async () => {
         if (!state.selectedAvatarFile) {
             alert('Por favor, selecciona una imagen para subir.');
@@ -303,17 +300,25 @@ export function initModals() {
         reader.onload = async () => {
             const avatarBase64 = reader.result;
 
-            // Si estamos en modo incógnito, usamos el evento de socket para un cambio TEMPORAL.
+            // =========================================================================
+            // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
+            // Si el cliente detecta que está en modo incógnito, usa el evento de socket.
             if (state.myUserData.isIncognito) {
                 state.socket.emit('change temporary avatar', { avatarBase64 });
-                alert('Tu avatar de incógnito ha sido actualizado para esta sesión.');
+                
+                // Retroalimentación visual inmediata para el usuario
+                state.myUserData.avatar_url = avatarBase64;
                 dom.profileModal.classList.add('hidden');
                 dom.saveProfileButton.disabled = false;
                 dom.saveProfileButton.textContent = 'Guardar Avatar';
                 state.selectedAvatarFile = null;
                 dom.avatarFileInput.value = '';
             } else {
-                // Si estamos en modo normal, usamos la API para un cambio PERMANENTE.
+            // =========================================================================
+            // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+            // =========================================================================
+                // Si está en modo normal, usa la API para un cambio permanente.
                 try {
                     const result = await fetchWithCredentials('/api/user/avatar', {
                         method: 'POST',
@@ -340,9 +345,6 @@ export function initModals() {
             dom.saveProfileButton.textContent = 'Guardar Avatar';
         };
     });
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     dom.changeNickButton.addEventListener('click', async () => {
         const newNick = dom.newNickInput.value.trim();

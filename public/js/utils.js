@@ -50,8 +50,8 @@ export function getUserIcons(user) {
     // =========================================================================
     // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
-    // Almacenamos el rol real del usuario en una variable aparte,
-    // que no cambia con el modo incógnito.
+    // Almacenamos el rol real del usuario la primera vez que se conecta.
+    // Este valor no cambiará aunque entre en modo incógnito.
     if (!state.myOriginalRole && (state.myUserData.role === 'owner' || state.myUserData.role === 'admin')) {
         state.myOriginalRole = state.myUserData.role;
     }

@@ -92,15 +92,25 @@ router.post('/avatar', async (req, res) => {
                 targetSocket.userData.temp_avatar_path = filePath;
                 roomService.updateUserDataInAllRooms(targetSocket);
             } else {
-                await userService.setAvatarUrl(id, avatarUrl);
-                targetSocket.userData.avatar_url = avatarUrl;
+                // Si el usuario no es guest, es un usuario registrado
+                if (targetSocket.userData.isIncognito) {
+                    // Si está en modo incógnito, solo cambiamos el avatar en la sesión actual
+                    targetSocket.userData.avatar_url = avatarUrl;
+                } else {
+                    // Si no está en modo incógnito, guardamos en la DB
+                    await userService.setAvatarUrl(id, avatarUrl);
+                    targetSocket.userData.avatar_url = avatarUrl;
+                }
                 roomService.updateUserDataInAllRooms(targetSocket);
             }
             
             io.emit('user_data_updated', { nick: currentNick, avatar_url: avatarUrl });
         } else {
-            if (!isGuest) {
-                 await userService.setAvatarUrl(id, avatarUrl);
+            // Si el socket no se encuentra, no podemos saber si está en modo incógnito.
+            // Por seguridad, no actualizamos la DB para usuarios no invitados.
+            if (isGuest) {
+                // Para invitados, podríamos intentar una lógica de limpieza si fuera necesario,
+                // pero por ahora no hacemos nada si no está el socket.
             }
         }
         

@@ -41,37 +41,22 @@ async function handleCommand(io, socket, text, currentRoom) {
         // --- SALIR DEL MODO INCÓGNITO ---
         if (wasIncognito) {
             const oldNick = sender.nick;
-            
-            // =========================================================================
-            // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-            // =========================================================================
-            
-            // 1. OBTENER DATOS FRESCOS Y PERMANENTES DE LA BASE DE DATOS
-            const userInDb = await userService.findUserById(sender.id);
-            if (!userInDb) {
-                // Fallback de seguridad, aunque es muy improbable que ocurra
-                socket.disconnect();
-                return;
-            }
-            
-            // 2. Restaurar el estado del socket usando los datos de la DB como única fuente de verdad
-            socket.userData.nick = userInDb.nick;
-            socket.userData.role = userInDb.role;
-            socket.userData.avatar_url = userInDb.avatar_url || 'image/default-avatar.png'; // <-- ¡CRUCIAL!
-            socket.userData.isVIP = userInDb.isVIP === 1;
+
+            // Restaurar el estado original desde la sesión del socket
+            socket.userData.nick = sender.originalNick;
+            socket.userData.role = sender.originalRole;
+            socket.userData.avatar_url = sender.originalAvatar || 'image/default-avatar.png';
+            socket.userData.isVIP = sender.originalIsVIP;
             socket.userData.isIncognito = false;
-            
-            // 3. Limpiar todas las propiedades temporales de incógnito.
+
+            // Limpiar las propiedades temporales de incógnito
             delete socket.userData.originalNick;
             delete socket.userData.originalRole;
             delete socket.userData.originalAvatar;
             delete socket.userData.originalIsVIP;
-            // =========================================================================
-            // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-            // =========================================================================
-    
+
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
-    
+
             // Notificar a todos los clientes del cambio de datos.
             io.emit('user_data_updated', {
                 oldNick: oldNick,

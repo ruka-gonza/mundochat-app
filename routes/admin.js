@@ -1,9 +1,11 @@
 const express = require('express');
+const path = require('path');
 const router = express.Router();
 const banService = require('../services/banService');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
 
+// Middleware para verificar si el usuario es parte del staff (cualquier nivel)
 const isStaff = async (req, res, next) => {
     try {
         const userAuthCookie = req.cookies.user_auth ? JSON.parse(req.cookies.user_auth) : null;
@@ -17,12 +19,14 @@ const isStaff = async (req, res, next) => {
             return res.status(403).json({ error: 'Acceso denegado: Usuario no encontrado.' });
         }
 
-        let isGlobalStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
+        // Permitimos el acceso a cualquier rol de staff
+        const isGlobalStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
         
         if (!isGlobalStaff) {
-            return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación global.' });
+            return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación.' });
         }
 
+        // Adjuntamos los datos del moderador a la petición para usarlo después
         req.moderator = { nick: user.nick, role: user.role };
         return next();
 
@@ -32,19 +36,33 @@ const isStaff = async (req, res, next) => {
     }
 };
 
+// --- INICIO DE LA LÓGICA DE SEGURIDAD CLAVE ---
+
+// Función para ofuscar (ocultar parcialmente) una dirección IP
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
-    if (ip === '::1' || ip === '127.0.0.1') return ip;
+    if (ip === '::1' || ip === '127.0.0.1') return ip; // No ofuscar IPs locales
+
+    // Para IPv6
     if (ip.includes(':')) {
         const parts = ip.split(':');
+        // Mostramos los primeros 4 bloques si hay suficientes
         return parts.length > 4 ? parts.slice(0, 4).join(':') + ':xxxx:xxxx' : ip;
     }
+    // Para IPv4
     if (ip.includes('.')) {
         const parts = ip.split('.');
         return parts.length === 4 ? parts.slice(0, 2).join('.') + '.x.x' : ip;
     }
     return 'IP Inválida';
 }
+// --- FIN DE LA LÓGICA DE SEGURIDAD CLAVE ---
+
+
+// Nueva ruta para servir el panel de moderadores
+router.get('/mod-panel', isStaff, (req, res) => {
+    res.sendFile(path.join(__dirname, '..', 'public', 'mod-panel.html'));
+});
 
 router.get('/reports', isStaff, (req, res) => {
     const db = require('../services/db-connection').getInstance();
@@ -79,6 +97,7 @@ router.get('/banned', isStaff, async (req, res) => {
                 console.error("Error al obtener baneados:", err);
                 return res.status(500).json({ error: 'Error del servidor' });
             }
+            // --- ¡SEGURIDAD! Si el rol es mod u operator, ofuscamos la IP ---
             if (['mod', 'operator'].includes(req.moderator.role)) {
                 rows.forEach(user => { user.ip = obfuscateIP(user.ip); });
             }
@@ -117,6 +136,7 @@ router.get('/muted', isStaff, async (req, res) => {
             }
         }
         
+        // --- ¡SEGURIDAD! Ofuscamos la IP para roles intermedios ---
         if (['mod', 'operator'].includes(req.moderator.role)) {
             mutedUsers.forEach(user => {
                 user.lastIP = obfuscateIP(user.lastIP);
@@ -131,8 +151,14 @@ router.get('/muted', isStaff, async (req, res) => {
     }
 });
 
+// Rutas solo para Admins/Owner (con IPs completas)
 router.get('/online-users', isStaff, async (req, res) => {
     try {
+        // Bloqueamos el acceso a esta información sensible para mods/ops
+        if (['mod', 'operator'].includes(req.moderator.role)) {
+            return res.status(403).json({ error: 'No tienes permiso para acceder a esta sección.' });
+        }
+
         const io = req.io;
         const onlineUsers = [];
         const allSockets = await io.fetchSockets();
@@ -142,9 +168,6 @@ router.get('/online-users', isStaff, async (req, res) => {
                 if (socket.userData) {
                     const user = { ...socket.userData };
                     user.rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-                    if (req.moderator && ['mod', 'operator'].includes(req.moderator.role)) {
-                        user.ip = obfuscateIP(user.ip);
-                    }
                     onlineUsers.push(user);
                 }
             } catch (e) {
@@ -156,10 +179,14 @@ router.get('/online-users', isStaff, async (req, res) => {
         console.error("Error grave en la ruta /online-users:", error);
         res.status(500).json({ error: 'Error del servidor al obtener usuarios online.' });
     }
-}
-);
+});
 
 router.get('/activity-logs', isStaff, (req, res) => {
+    // Bloqueamos el acceso a esta información sensible para mods/ops
+    if (['mod', 'operator'].includes(req.moderator.role)) {
+        return res.status(403).json({ error: 'No tienes permiso para acceder a esta sección.' });
+    }
+
     const limit = parseInt(req.query.limit) || 100;
     const offset = (parseInt(req.query.page) || 0) * limit;
     const db = require('../services/db-connection').getInstance();
@@ -168,9 +195,6 @@ router.get('/activity-logs', isStaff, (req, res) => {
         if (err) {
             console.error("Error al obtener logs de actividad:", err);
             return res.status(500).json({ error: 'Error del servidor' });
-        }
-        if (['mod', 'operator'].includes(req.moderator.role)) {
-            rows.forEach(log => { log.ip = obfuscateIP(log.ip); });
         }
         res.json(rows);
     });
@@ -183,11 +207,7 @@ router.post('/unban', isStaff, async (req, res) => {
     }
     
     try {
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
-        // Se elimina .toLowerCase() para que funcione con UUIDs de invitados
         const success = await banService.unbanUser(userId); 
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
-
         if (success) {
             req.io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${req.moderator.nick} ha desbaneado a '${userId}' desde el panel.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             res.json({ message: `Usuario '${userId}' desbaneado con éxito.` });
@@ -232,6 +252,10 @@ router.post('/unmute', isStaff, async (req, res) => {
 });
 
 router.get('/registered-users', isStaff, async (req, res) => {
+    // Bloqueamos el acceso a esta información sensible para mods/ops
+    if (['mod', 'operator'].includes(req.moderator.role)) {
+        return res.status(403).json({ error: 'No tienes permiso para acceder a esta sección.' });
+    }
     try {
         const users = await userService.getAllRegisteredUsers();
         res.json(users);

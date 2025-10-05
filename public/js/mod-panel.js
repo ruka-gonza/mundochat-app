@@ -10,20 +10,25 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/admin/banned');
             if (!response.ok) {
-                throw new Error('No tienes permiso para ver esta información.');
+                const err = await response.json();
+                throw new Error(err.error || 'No tienes permiso para ver esta información.');
             }
             const bannedUsers = await response.json();
             bannedUsersList.innerHTML = '';
+            if (bannedUsers.length === 0) {
+                bannedUsersList.innerHTML = `<tr><td colspan="7">No hay usuarios baneados.</td></tr>`;
+                return;
+            }
             bannedUsers.forEach(user => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${user.id}</td>
                     <td>${user.nick}</td>
                     <td>${user.ip}</td>
-                    <td>${user.banned_by}</td>
+                    <td>${user.by}</td>
                     <td>${user.reason}</td>
                     <td>${new Date(user.at).toLocaleString()}</td>
-                    <td><button class="unban-button" data-userid="${user.nick}">Desbanear</button></td>
+                    <td><button class="action-button unban-btn" data-id="${user.id}">Quitar Ban</button></td>
                 `;
                 bannedUsersList.appendChild(row);
             });
@@ -37,10 +42,15 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/admin/reports');
             if (!response.ok) {
-                throw new Error('No tienes permiso para ver esta información.');
+                const err = await response.json();
+                throw new Error(err.error || 'No tienes permiso para ver esta información.');
             }
             const reports = await response.json();
             reportsList.innerHTML = '';
+             if (reports.length === 0) {
+                reportsList.innerHTML = `<tr><td colspan="4">No hay denuncias pendientes.</td></tr>`;
+                return;
+            }
             reports.forEach(report => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
@@ -61,17 +71,22 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const response = await fetch('/api/admin/muted');
             if (!response.ok) {
-                throw new Error('No tienes permiso para ver esta información.');
+                const err = await response.json();
+                throw new Error(err.error || 'No tienes permiso para ver esta información.');
             }
             const mutedUsers = await response.json();
             mutedUsersList.innerHTML = '';
+             if (mutedUsers.length === 0) {
+                mutedUsersList.innerHTML = `<tr><td colspan="4">No hay usuarios silenciados.</td></tr>`;
+                return;
+            }
             mutedUsers.forEach(user => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
                     <td>${user.nick}</td>
                     <td>${user.lastIP}</td>
                     <td>${user.mutedBy}</td>
-                    <td><button class="unmute-button" data-nick="${user.nick}">Des-silenciar</button></td>
+                    <td><button class="action-button unmute-btn" data-nick="${user.nick}">Quitar Mute</button></td>
                 `;
                 mutedUsersList.appendChild(row);
             });
@@ -82,15 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Manejador de eventos para los botones de desbanear
     bannedUsersList.addEventListener('click', async (event) => {
-        if (event.target.classList.contains('unban-button')) {
-            const userId = event.target.dataset.userid;
+        if (event.target.classList.contains('unban-btn')) {
+            const userId = event.target.dataset.id;
             if (confirm(`¿Estás seguro de que quieres desbanear a ${userId}?`)) {
                 try {
                     const response = await fetch('/api/admin/unban', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId })
                     });
                     const result = await response.json();
@@ -109,15 +122,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Manejador de eventos para los botones de des-silenciar
     mutedUsersList.addEventListener('click', async (event) => {
-        if (event.target.classList.contains('unmute-button')) {
+        if (event.target.classList.contains('unmute-btn')) {
             const nick = event.target.dataset.nick;
             if (confirm(`¿Estás seguro de que quieres quitar el silencio a ${nick}?`)) {
                 try {
                     const response = await fetch('/api/admin/unmute', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ nick })
                     });
                     const result = await response.json();
@@ -141,16 +152,15 @@ document.addEventListener('DOMContentLoaded', () => {
             tab.classList.add('active');
             const targetPanelId = tab.dataset.target;
             panels.forEach(panel => {
-                if (panel.id === targetPanelId) {
-                    panel.classList.remove('hidden');
-                } else {
-                    panel.classList.add('hidden');
-                }
+                panel.classList.toggle('hidden', panel.id !== targetPanelId);
             });
+             // Recargar datos al cambiar de pestaña
+            if (targetPanelId === 'banned-users-panel') fetchBannedUsers();
+            if (targetPanelId === 'reports-panel') fetchReports();
+            if (targetPanelId === 'muted-users-panel') fetchMutedUsers();
         });
     });
 
     // Cargar datos iniciales
     fetchBannedUsers();
-    fetchReports();
-    fetchMutedUsers();
+});

@@ -792,7 +792,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 
-    // POPUP DE ACCIONES DE USUARIO
-    // const userActionPopup = document.getElementById('user-action-popup'); // ELIMINADA ESTA LÍNEA DUPLICADA
-    
+   
 });

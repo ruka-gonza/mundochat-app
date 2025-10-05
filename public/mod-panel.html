@@ -4,15 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Panel de Moderación - MundoChat</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <div id="mod-panel-container" class="mod-panel-container">
+    <div id="mod-panel-container" class="mod-panel-container" style="padding: 20px; max-width: 1200px; margin: 20px auto;">
         <h2>Panel de Moderación</h2>
         <div class="admin-tabs">
             <button class="admin-tab active" data-target="banned-users-panel">Baneados</button>
             <button class="admin-tab" data-target="reports-panel">Denuncias</button>
-            <button class="admin-tab" data-target="muted-users-panel">Muteados</button>
+            <button class="admin-tab" data-target="muted-users-panel">Silenciados</button>
         </div>
 
         <div id="banned-users-panel" class="admin-panel">
@@ -23,7 +23,7 @@
                         <tr>
                             <th>ID de Ban</th>
                             <th>Nick</th>
-                            <th>IP</th>
+                            <th>IP (Ofuscada)</th>
                             <th>Baneado por</th>
                             <th>Razón</th>
                             <th>Fecha</th>
@@ -59,7 +59,7 @@
                     <thead>
                         <tr>
                             <th>Nick</th>
-                            <th>IP</th>
+                            <th>IP (Ofuscada)</th>
                             <th>Silenciado por</th>
                             <th>Acciones</th>
                         </tr>
@@ -70,6 +70,6 @@
         </div>
     </div>
 
-    <script src="js/mod-panel.js"></script>
+    <script src="/js/mod-panel.js"></script>
 </body>
 </html>

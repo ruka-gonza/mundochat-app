@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Moderación - MundoChat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="mod-panel-container" class="mod-panel-container">
+        <h2>Panel de Moderación</h2>
+        <div class="admin-tabs">
+            <button class="admin-tab active" data-target="banned-users-panel">Baneados</button>
+            <button class="admin-tab" data-target="reports-panel">Denuncias</button>
+            <button class="admin-tab" data-target="muted-users-panel">Muteados</button>
+        </div>
+
+        <div id="banned-users-panel" class="admin-panel">
+            <h3>Usuarios Baneados</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID de Ban</th>
+                            <th>Nick</th>
+                            <th>IP</th>
+                            <th>Baneado por</th>
+                            <th>Razón</th>
+                            <th>Fecha</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="banned-users-list"></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div id="reports-panel" class="admin-panel hidden">
+            <h3>Denuncias de Usuarios</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Denunciante</th>
+                            <th>Denunciado</th>
+                            <th>Razón</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reports-list"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="muted-users-panel" class="admin-panel hidden">
+            <h3>Usuarios Silenciados</h3>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nick</th>
+                            <th>IP</th>
+                            <th>Silenciado por</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="muted-users-list"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/mod-panel.js"></script>
+</body>
+</html>

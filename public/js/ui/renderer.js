@@ -1,57 +1,3 @@
-import state from '../state.js';
-import { getUserIcons, replaceEmoticons } from '../utils.js';
-import { openImageModal } from './modals.js';
-
-function createPreviewCard(preview) {
-    if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio') {
-        return null;
-    }
-
-    const linkCard = document.createElement('a');
-    linkCard.href = preview.url;
-    linkCard.target = '_blank';
-    linkCard.rel = 'noopener noreferrer';
-    linkCard.className = 'link-preview-card';
-
-    if (preview.type === 'youtube') {
-        const videoIdMatch = preview.url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
-        if (videoIdMatch) {
-            linkCard.dataset.previewType = 'youtube';
-            linkCard.dataset.youtubeId = videoIdMatch[1];
-        }
-    }
-
-    let innerHTML = '';
-    if (preview.image) {
-        innerHTML += `<div class="preview-image-container"><img src="${preview.image}" alt="Previsualización" loading="lazy"></div>`;
-    }
-    innerHTML += '<div class="preview-info">';
-    if (preview.title) {
-        innerHTML += `<strong class="preview-title">${preview.title}</strong>`;
-    }
-    if (preview.description) {
-        innerHTML += `<p class="preview-description">${preview.description}</p>`;
-    }
-    innerHTML += '</div>';
-
-    linkCard.innerHTML = innerHTML;
-    return linkCard;
-}
-
-function processMessageText(text) {
-    const youtubeRegex = /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})$/i;
-    const youtubeMatch = text.match(youtubeRegex);
-
-    if (youtubeMatch && youtubeMatch[1]) {
-        const videoId = youtubeMatch[1];
-        // Usando un iframe simple y directo para depurar
-        return `<iframe width="480" height="270" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
-    }
-
-    const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
-    return text.replace(imageRegex, '<img src="$1" class="chat-image" alt="Image" loading="lazy">');
-}
-
 export function createMessageElement(msg, isPrivate = false) {
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
@@ -97,9 +43,7 @@ export function createMessageElement(msg, isPrivate = false) {
         headerDiv.dataset.messageId = msg.id;
         headerDiv.style.cursor = 'pointer';
     }
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
+
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
@@ -111,7 +55,9 @@ export function createMessageElement(msg, isPrivate = false) {
         const previewText = msg.replyTo.text.length > 70 
             ? msg.replyTo.text.substring(0, 70) + '...' 
             : msg.replyTo.text;
-        quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
+        
+        // --- CAMBIO 1 APLICADO AQUÍ ---
+        quoteText.innerHTML = replaceEmoticons(previewText);
 
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
@@ -144,13 +90,11 @@ export function createMessageElement(msg, isPrivate = false) {
         if (processedText.includes('iframe')) {
             textContainer.innerHTML = processedText;
         } else {
-            textContainer.innerHTML = twemoji.parse(replaceEmoticons(processedText));
+            // --- CAMBIO 2 APLICADO AQUÍ ---
+            textContainer.innerHTML = replaceEmoticons(processedText);
         }
         contentDiv.appendChild(textContainer);
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     const linkPreview = createPreviewCard(msg.preview);
     if (linkPreview) {
@@ -217,24 +161,4 @@ export function createMessageElement(msg, isPrivate = false) {
     }
     
     return item;
-}
-
-export function appendMessageToView(msg, isPrivate) {
-    let listElement;
-    if (isPrivate) {
-        listElement = document.querySelector('#private-chat-window ul');
-        if (!listElement) {
-            listElement = document.createElement('ul');
-            document.getElementById('private-chat-window').innerHTML = '';
-            document.getElementById('private-chat-window').appendChild(listElement);
-        }
-    } else {
-        listElement = document.getElementById('messages');
-    }
-    const isScrolledToBottom = listElement.scrollHeight - listElement.clientHeight <= listElement.scrollTop + 50;
-    const isMyOwnMessage = msg.from === state.myNick || msg.nick === state.myNick;
-    listElement.appendChild(createMessageElement(msg, isPrivate));
-    if (isMyOwnMessage || isScrolledToBottom) {
-        listElement.scrollTop = listElement.scrollHeight;
-    }
 }

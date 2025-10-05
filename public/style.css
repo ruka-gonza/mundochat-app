@@ -511,20 +511,15 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
 /* ===         ESTILOS PERSONALIZADOS PARA EMOJIS      === */
 /* ======================================================= */
 
-.message-text {
-    /* Esto ayuda a que el texto y los emojis se alineen mejor verticalmente */
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap; /* Permite que el texto continúe en la siguiente línea */
-}
+/* Apunta específicamente a las imágenes con la clase .emoji dentro de los mensajes */
+.message-text img.emoji, .reply-quote p img.emoji {
+    /* Ajusta el tamaño. 1.4em es un 40% más grande que el texto. */
+    width: 1.4em;
+    height: 1.4em;
 
-.message-text .emoji {
-    /* Tamaño del emoji. Puedes ajustarlo a tu gusto (ej: 1.5em, 22px, etc.) */
-    font-size: 1.7em; 
-    
     /* Pequeños ajustes para que no se pegue al texto */
-    margin: 0 0.1em;
+    margin: 0 .1em;
     
-    /* Alineación vertical para que quede centrado con el texto */
-    vertical-align: middle; 
+    /* Alineación vertical para que quede centrado con la línea de texto */
+    vertical-align: -0.3em;
 }

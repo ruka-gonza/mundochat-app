@@ -109,7 +109,7 @@ export function createMessageElement(msg, isPrivate = false) {
             ? msg.replyTo.text.substring(0, 70) + '...' 
             : msg.replyTo.text;
         
-        quoteText.innerHTML = replaceEmoticons(previewText);
+        quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
 
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
@@ -142,7 +142,7 @@ export function createMessageElement(msg, isPrivate = false) {
         if (processedText.includes('iframe')) {
             textContainer.innerHTML = processedText;
         } else {
-            textContainer.innerHTML = replaceEmoticons(processedText);
+            textContainer.innerHTML = twemoji.parse(replaceEmoticons(processedText));
         }
         contentDiv.appendChild(textContainer);
     }
@@ -214,7 +214,7 @@ export function createMessageElement(msg, isPrivate = false) {
     return item;
 }
 
-// --- CORRECCIÓN APLICADA AQUÍ ---
+// --- FUNCIÓN QUE FALTABA ---
 export function appendMessageToView(msg, isPrivate) {
     let listElement;
     if (isPrivate) {

@@ -520,7 +520,7 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
 
 .message-text .emoji {
     /* Tamaño del emoji. Puedes ajustarlo a tu gusto (ej: 1.5em, 22px, etc.) */
-    font-size: 1.4em; 
+    font-size: 1.7em; 
     
     /* Pequeños ajustes para que no se pegue al texto */
     margin: 0 0.1em;

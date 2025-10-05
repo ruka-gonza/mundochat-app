@@ -1,14 +1,19 @@
 const bcrypt = require('bcrypt');
 const config = require('../config');
 
-let admins = ["Basajaun", "namor"];
-let mods = ["Mod1"];
+// --- INICIO DE LA CORRECCIÓN CLAVE ---
 
+// ELIMINADO: Se quitan las listas estáticas de admins y mods.
+// let admins = ["Basajaun", "namor"];
+// let mods = ["Mod1"];
+
+// SIMPLIFICADO: La función getRole ahora solo se usa para asignar el rol de 'owner'
+// al nick especificado en la configuración, o 'user' por defecto.
+// Ya no asigna 'admin' o 'mod' desde aquí.
 function getRole(nick) {
-    const db = require('./db-connection').getInstance();
-    if (nick.toLowerCase() === config.ownerNick.toLowerCase()) return 'owner';
-    if (admins.map(a => a.toLowerCase()).includes(nick.toLowerCase())) return 'admin';
-    if (mods.map(m => m.toLowerCase()).includes(nick.toLowerCase())) return 'mod';
+    if (nick.toLowerCase() === config.ownerNick.toLowerCase()) {
+        return 'owner';
+    }
     return 'user';
 }
 
@@ -18,16 +23,8 @@ function findUserByNick(nick) {
         const lowerCaseNick = nick.toLowerCase();
         db.get('SELECT * FROM users WHERE lower(nick) = ?', [lowerCaseNick], (err, row) => {
             if (err) return reject(err);
-            if (row) {
-                const dbRole = row.role;
-                const hardcodedRole = getRole(row.nick);
-
-                if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
-                    row.role = dbRole;
-                } else {
-                    row.role = hardcodedRole;
-                }
-            }
+            // ELIMINADO: Se quita la lógica que sobrescribía el rol de la base de datos.
+            // Ahora simplemente devolvemos lo que la base de datos nos da.
             resolve(row);
         });
     });
@@ -39,16 +36,7 @@ function findUserByEmail(email) {
         const lowerCaseEmail = email.toLowerCase();
         db.get('SELECT * FROM users WHERE lower(email) = ?', [lowerCaseEmail], (err, row) => {
             if (err) return reject(err);
-            if (row) {
-                const dbRole = row.role;
-                const hardcodedRole = getRole(row.nick);
-
-                if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
-                    row.role = dbRole;
-                } else {
-                    row.role = hardcodedRole;
-                }
-            }
+            // ELIMINADO: Se quita la lógica que sobrescribía el rol.
             resolve(row);
         });
     });
@@ -59,25 +47,20 @@ function findUserById(id) {
     return new Promise((resolve, reject) => {
         db.get('SELECT * FROM users WHERE id = ?', [id], (err, row) => {
             if (err) return reject(err);
-            if (row) {
-                const dbRole = row.role;
-                const hardcodedRole = getRole(row.nick);
-
-                if (['owner', 'admin', 'mod', 'operator'].includes(dbRole)) {
-                    row.role = dbRole;
-                } else {
-                    row.role = hardcodedRole;
-                }
-            }
+            // ELIMINADO: Se quita la lógica que sobrescribía el rol.
             resolve(row);
         });
     });
 }
+// --- FIN DE LA CORRECCIÓN CLAVE ---
+
 
 async function createUser(nick, email, password, ip) {
     const db = require('./db-connection').getInstance();
     const hashedPassword = await bcrypt.hash(password, 10);
     return new Promise((resolve, reject) => {
+        // Al crear un usuario, se le asigna 'owner' si coincide, o 'user' en cualquier otro caso.
+        // Los roles de admin/mod/oper se asignan con comandos, no al registrarse.
         const initialRole = getRole(nick);
         const stmt = db.prepare('INSERT INTO users (nick, email, password, registeredAt, isVIP, role, isMuted, lastIP) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
         stmt.run(nick, email, hashedPassword, new Date().toISOString(), 0, initialRole, 0, ip, function(err) {
@@ -148,11 +131,7 @@ function setAvatarUrl(userId, avatarUrl) {
 function setUserRole(nick, role) {
     const db = require('./db-connection').getInstance();
     return new Promise((resolve, reject) => {
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
-        // Añadimos 'operator' a la lista de roles válidos para una promoción global.
         const validRoles = ['admin', 'mod', 'operator', 'user'];
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
-        
         if (!validRoles.includes(role)) {
             return reject(new Error('Rol no válido.'));
         }
@@ -201,7 +180,7 @@ function getAllRegisteredUsers() {
 }
 
 module.exports = {
-    getRole,
+    // getRole se mantiene pero ahora es de uso interno
     findUserByNick,
     findUserByEmail,
     findUserById,

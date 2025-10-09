@@ -166,7 +166,7 @@ export function createMessageElement(msg, isPrivate = false) {
 
     mainContentWrapper.appendChild(contentDiv);
 
-    const iAmModerator = ['owner', 'admin'].includes(state.myUserData.role);
+    const iAmModerator = (state.myUserData.role === 'owner' || state.myUserData.role === 'admin') || (state.myOriginalRole === 'owner' || state.myOriginalRole === 'admin');
     if (!isPrivate) {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';

@@ -63,7 +63,8 @@ async function handleCommand(io, socket, text, currentRoom) {
                 nick: socket.userData.nick,
                 role: socket.userData.role,
                 avatar_url: socket.userData.avatar_url,
-                isVIP: socket.userData.isVIP
+                isVIP: socket.userData.isVIP,
+                isIncognito: false
             });
     
         // --- ENTRAR EN MODO INCÓGNITO ---
@@ -102,7 +103,8 @@ async function handleCommand(io, socket, text, currentRoom) {
                 oldNick: oldNick,
                 nick: socket.userData.nick,
                 role: 'user',
-                avatar_url: 'image/default-avatar.png'
+                avatar_url: 'image/default-avatar.png',
+                isIncognito: true
             });
         }
         

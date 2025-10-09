@@ -146,13 +146,16 @@ function handleEditMessage(io, socket, { messageId, newText, roomName }) {
 }
 
 function handleDeleteMessage(io, socket, { messageId, roomName }) {
-    const senderNick = socket.userData.nick;
+    const sender = socket.userData;
     if (!messageId || !roomName) return;
 
     db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
         if (err || !row) return;
 
-        if (row.nick.toLowerCase() === senderNick.toLowerCase()) {
+        const isOwner = row.nick.toLowerCase() === sender.nick.toLowerCase();
+        const canDelete = ['owner', 'admin'].includes(sender.role);
+
+        if (isOwner || canDelete) {
             db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
                 if (err) return;
                 io.to(roomName).emit('message deleted', { messageId, roomName });

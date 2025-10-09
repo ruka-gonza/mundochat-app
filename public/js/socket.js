@@ -139,6 +139,14 @@ export function initializeSocketEvents(socket) {
         state.allUsersData[lowerNewNick] = { ...state.allUsersData[lowerNewNick], ...data };
         
         if (state.myNick.toLowerCase() === lowerOldNick) {
+            if (data.isIncognito) {
+                if(state.myUserData.role === 'owner' || state.myUserData.role === 'admin') {
+                    state.myOriginalRole = state.myUserData.role;
+                }
+            } else if (data.isIncognito === false) {
+                delete state.myOriginalRole;
+            }
+
             state.myNick = data.nick;
             state.myUserData = { ...state.myUserData, ...data };
             if (data.isAFK !== undefined) state.isAFK = data.isAFK;

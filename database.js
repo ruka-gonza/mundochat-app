@@ -210,6 +210,24 @@ db.serialize(async () => {
         });
     });
 
+    // --- Tabla 'offline_messages' ---
+    await new Promise(resolve => {
+        db.run(`
+            CREATE TABLE IF NOT EXISTS offline_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sender_nick TEXT NOT NULL,
+                recipient_nick TEXT NOT NULL,
+                message TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                is_delivered INTEGER DEFAULT 0
+            )
+        `, (err) => {
+            if (err) console.error("Error creando tabla offline_messages:", err.message);
+            else console.log("Tabla 'offline_messages' creada o ya existente.");
+            resolve();
+        });
+    });
+
     db.close((err) => {
         if (err) return console.error(err.message);
         console.log('Base de datos inicializada correctamente.');

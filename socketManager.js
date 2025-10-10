@@ -221,6 +221,26 @@ function logActivity(eventType, userData, details = null) {
     if (global.io) { global.io.emit('admin panel refresh'); }
 }
 
+async function deliverOfflineMessages(socket, nick) {
+    const messages = await new Promise((resolve, reject) => {
+        db.all('SELECT * FROM offline_messages WHERE recipient_nick = ? AND is_delivered = 0', [nick], (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows);
+        });
+    });
+
+    if (messages && messages.length > 0) {
+        socket.emit('offline_messages', messages);
+        const ids = messages.map(m => m.id);
+        const placeholders = ids.map(() => '?').join(',');
+        db.run(`UPDATE offline_messages SET is_delivered = 1 WHERE id IN (${placeholders})`, ids, (err) => {
+            if (err) {
+                console.error("Error marcando mensajes offline como entregados:", err);
+            }
+        });
+    }
+}
+
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
 
@@ -269,6 +289,12 @@ async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.joinedRooms) socket.joinedRooms = new Set();
     socket.joinedRooms.add(roomName);
     
+    // --- INICIO DE LA CORRECCIÓN ---
+    // La propiedad `isStaff` ya fue calculada correctamente en el evento 'login'
+    // basándose únicamente en el rol global de la tabla `users`.
+    // Ya no es necesario recalcularla aquí, lo que evita que un rol de sala fantasma
+    // otorgue permisos de panel de admin incorrectamente.
+    /*
     let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(socket.userData.role);
     if (!isAnyStaff && socket.userData.id) {
         const staffRooms = await new Promise((resolve) => {
@@ -280,6 +306,8 @@ async function handleJoinRoom(io, socket, { roomName }) {
         if (staffRooms.length > 0) isAnyStaff = true;
     }
     socket.userData.isStaff = isAnyStaff;
+    */
+    // --- FIN DE LA CORRECCIÓN ---
     
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
@@ -381,30 +409,21 @@ function initializeSocket(io) {
             }
         })();
         
-        // =========================================================================
-        // ===            INICIO: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
-        // =========================================================================
         socket.on('change temporary avatar', async ({ avatarBase64 }) => {
             if (!socket.userData || !socket.userData.isIncognito) {
                 return socket.emit('system message', { text: 'Esta función es solo para el modo incógnito.', type: 'error' });
             }
             if (!avatarBase64) return;
 
-            // Actualiza el avatar solo en la sesión del socket (no en la DB)
             socket.userData.avatar_url = avatarBase64;
             
-            // Sincroniza los datos en todas las salas en las que está el usuario
             roomService.updateUserDataInAllRooms(socket);
             
-            // Notifica a todos los clientes del cambio de avatar para actualizar la UI
             io.emit('user_data_updated', { 
                 nick: socket.userData.nick, 
                 avatar_url: avatarBase64 
             });
         });
-        // =========================================================================
-        // ===             FIN: NUEVO EVENTO PARA AVATAR DE INCÓGNITO            ===
-        // =========================================================================
 
         socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
             try {
@@ -480,6 +499,7 @@ function initializeSocket(io) {
                 await userService.updateUserIP(registeredData.nick, userIP);
                 closedSessions.delete(id);
                 logActivity('CONNECT', socket.userData);
+                await deliverOfflineMessages(socket, registeredData.nick);
                 await handleJoinRoom(io, socket, { roomName });
             } catch (error) {
                 console.error(`Error en el evento 'login':`, error);
@@ -497,6 +517,7 @@ function initializeSocket(io) {
                 roomService.guestSocketMap.set(id, socket.id);
                 closedSessions.delete(id);
                 logActivity('CONNECT', socket.userData);
+                await deliverOfflineMessages(socket, nick);
                 await handleJoinRoom(io, socket, { roomName });
             } catch (error) {
                 console.error(`Error en el evento 'guest_join':`, error);

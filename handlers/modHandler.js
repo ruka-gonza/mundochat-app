@@ -28,6 +28,31 @@ async function handleCommand(io, socket, text, currentRoom) {
     const command = args[0].toLowerCase();
     const sender = socket.userData;
 
+    if (command === '/memoserv') {
+        const recipientNick = args[1];
+        const message = args.slice(2).join(' ');
+
+        if (!recipientNick || !message) {
+            return socket.emit('system message', { text: 'Uso: /memoserv <nick> <mensaje>', type: 'error', roomName: currentRoom });
+        }
+
+        const dbUser = await userService.findUserByNick(recipientNick);
+        if (!dbUser) {
+            return socket.emit('system message', { text: `El usuario '${recipientNick}' no está registrado.`, type: 'error', roomName: currentRoom });
+        }
+
+        const stmt = db.prepare('INSERT INTO offline_messages (sender_nick, recipient_nick, message, timestamp) VALUES (?, ?, ?, ?)');
+        stmt.run(sender.nick, recipientNick, message, new Date().toISOString(), function(err) {
+            if (err) {
+                console.error("Error guardando mensaje offline:", err);
+                return socket.emit('system message', { text: 'Error al guardar el mensaje.', type: 'error', roomName: currentRoom });
+            }
+            socket.emit('system message', { text: `Mensaje para '${recipientNick}' guardado. Se entregará cuando se conecte.`, type: 'highlight', roomName: currentRoom });
+        });
+        stmt.finalize();
+        return;
+    }
+
     if (command === '/incognito') {
         const effectiveRoleForCommand = sender.isIncognito ? sender.originalRole : sender.role;
     

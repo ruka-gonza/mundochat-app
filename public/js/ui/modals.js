@@ -422,3 +422,38 @@ export function showAdminAgreementModal(targetNick, senderNick) {
         console.error('[DEBUG] Admin agreement modal elements not found.');
     }
 }
+
+export function showOfflineMessagesModal(messages) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.id = 'offline-messages-modal';
+
+    const content = document.createElement('div');
+    content.className = 'modal-content';
+
+    const closeButton = document.createElement('span');
+    closeButton.className = 'modal-close-button';
+    closeButton.innerHTML = '&times;';
+    closeButton.onclick = () => modal.remove();
+
+    const title = document.createElement('h2');
+    title.textContent = 'Mensajes Recibidos';
+
+    const messageList = document.createElement('ul');
+    messageList.style.listStyle = 'none';
+    messageList.style.padding = '0';
+
+    messages.forEach(msg => {
+        const item = document.createElement('li');
+        item.style.marginBottom = '10px';
+        item.innerHTML = `<b>${msg.sender_nick}</b> (${new Date(msg.timestamp).toLocaleString()}):<br>${msg.message}`;
+        messageList.appendChild(item);
+    });
+
+    content.appendChild(closeButton);
+    content.appendChild(title);
+    content.appendChild(messageList);
+    modal.appendChild(content);
+
+    document.body.appendChild(modal);
+}

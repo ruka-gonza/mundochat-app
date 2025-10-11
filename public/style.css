@@ -65,7 +65,7 @@ body {
 /* ===         3. ESTRUCTURA Y PANELES LATERALES       === */
 /* ======================================================= */
 #chat-container { display: grid; grid-template-columns: 260px 1fr 260px; grid-template-rows: minmax(0, 1fr); height: 100vh; background-color: var(--bg-main); overflow: hidden; }
-#conversations-panel, #user-list-container { background-color: var(--bg-panel); padding: 10px; display: flex; flex-direction: column; overflow: hidden; border-right: 1px solid var(--border-color); }
+#conversations-panel, #user-list-container { background-color: var(--bg-panel); padding: 10px; display: flex; flex-direction: column; border-right: 1px solid var(--border-color); }
 #user-list-container { border-right: none; border-left: 1px solid var(--border-color); }
 #chat-area-wrapper { display: flex; flex-direction: column; overflow: hidden; position: relative; background-color: var(--bg-content); }
 #conversations-panel h3, #user-list-container h3 { margin: 10px 10px 15px; font-size: 1.1rem; color: var(--text-primary); font-weight: 600; }

@@ -121,13 +121,10 @@ body {
 .message-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; margin-top: 2px; flex-shrink: 0; }
 .message-main-wrapper { position: relative; display: flex; flex-direction: column; align-items: flex-start; max-width: calc(100% - 46px); }
 
-/* --- INICIO DE LA CORRECCIÓN CLAVE PARA MÓVILES --- */
-/* Esta regla asegura que el contenido de tus mensajes enviados se alinee a la derecha */
 #messages > li.sent-by-me .message-main-wrapper, 
 #private-chat-window ul li.sent .message-main-wrapper { 
     align-items: flex-end; 
 }
-/* --- FIN DE LA CORRECCIÓN CLAVE --- */
 
 #messages > li.sent-by-me .message-main-wrapper, #private-chat-window ul li.sent .message-main-wrapper { align-items: flex-end; }
 
@@ -284,6 +281,26 @@ tbody tr:nth-child(even) { background-color: var(--bg-panel); }
         width: 32px;
         height: 32px;
         font-size: 18px;
+    }
+
+    #reply-context-bar {
+        align-items: flex-start;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    .reply-info {
+        flex-grow: 1;
+        min-width: 0;
+        margin-right: 10px;
+    }
+
+    .reply-info .reply-text-preview {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        max-width: 100%;
+        word-break: break-word;
     }
 }
 

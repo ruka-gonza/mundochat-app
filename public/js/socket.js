@@ -7,6 +7,8 @@ import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal, showAdminAgreementModal, showOfflineMessagesModal } from './ui/modals.js';
 
+let backButtonListenerAdded = false; // Variable de control para el listener del botón "atrás"
+
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
     if (!container) return;
@@ -270,6 +272,23 @@ export function initializeSocketEvents(socket) {
         updateConversationList();
         switchToChat(roomName, 'room');
         dom.roomSwitcher.classList.remove('show');
+
+        // --- INICIO DE LA LÓGICA DE ADVERTENCIA DE SALIDA ---
+        if (!backButtonListenerAdded) {
+            history.pushState(null, '', location.href);
+            window.addEventListener('popstate', function(event) {
+                if (!dom.chatContainer.classList.contains('hidden')) {
+                    const confirmExit = confirm('¿Estás seguro de que deseas salir del chat?');
+                    if (confirmExit) {
+                        document.getElementById('logout-button').click();
+                    } else {
+                        history.pushState(null, '', location.href);
+                    }
+                }
+            });
+            backButtonListenerAdded = true;
+        }
+        // --- FIN DE LA LÓGICA DE ADVERTENCIA DE SALIDA ---
     });
 
     socket.on('leave_success', ({ roomName, joinedRooms: serverJoinedRooms }) => {

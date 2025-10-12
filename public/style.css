@@ -302,6 +302,13 @@ tbody tr:nth-child(even) { background-color: var(--bg-panel); }
         max-width: 100%;
         word-break: break-word;
     }
+    
+    .reply-quote p {
+        white-space: normal;
+        overflow: visible;
+        text-overflow: clip;
+        word-break: break-word;
+    }
 }
 
 @media (min-width: 1025px) {

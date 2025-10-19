@@ -62,7 +62,7 @@ router.post('/avatar', async (req, res) => {
     const base64Data = match[3];
     const imageBuffer = Buffer.from(base64Data, 'base64');
     
-    const MAX_SIZE_MB = 5;
+    const MAX_SIZE_MB = 15;
     if (imageBuffer.length > MAX_SIZE_MB * 1024 * 1024) {
         return res.status(413).json({ error: `La imagen es demasiado grande (máx ${MAX_SIZE_MB}MB).` });
     }

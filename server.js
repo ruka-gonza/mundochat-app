@@ -63,8 +63,11 @@ async function startServer() {
         app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
         app.use('/data/chat_uploads', express.static(path.join(__dirname, 'data', 'chat_uploads')));
 
-        app.use(express.json({ limit: '20mb' }));
-        app.use(express.urlencoded({ limit: '20mb', extended: true }));
+        // --- INICIO DE LA CORRECCIÓN ---
+        app.use(express.json({ limit: '50mb' }));
+        app.use(express.urlencoded({ limit: '50mb', extended: true }));
+        // --- FIN DE LA CORRECCIÓN ---
+        
         app.use(cookieParser());
 
         app.use((req, res, next) => {

@@ -362,23 +362,83 @@ async function handleCommand(io, socket, text, currentRoom) {
         }
         return;
     }
-    
+
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
 
     const commandPermissions = {
-        '/help':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/help - Muestra esta lista de comandos.' },
-        '/kick':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/kick <nick> (razón) - Expulsa a un usuario actual de la sala.' },
-        '/ban':     { roles: ['owner', 'admin', 'operator', 'mod'], description: '/ban <nick> <razón> - Banea permanentemente a un usuario.' },
-        '/unban':   { roles: ['owner', 'admin', 'operator', 'mod'], description: '/unban <nick> - Quita el ban a un usuario.' },
-        '/mute':    { roles: ['owner', 'admin', 'operator', 'mod'], description: '/mute <nick> - Silencia o des-silencia a un usuario en el chat.' },
-        '/whois':   { roles: ['owner', 'admin', 'operator'], description: '/whois <nick> - Muestra información detallada de un usuario.' },
-        '/delsala': { roles: ['owner', 'admin', 'operator'], description: '/delsala <nombre de la sala> - Elimina la sala de chat creada.' },
-        '/vip':     { roles: ['owner', 'admin', 'operator'], description: '/vip <nick> - Otorga o quita el status nick a un usuario registrado.' },
-        '/promote': { roles: ['owner', 'admin', 'operator'], description: '/promote <nick> <rol> [sala] - Asciende a un usuario a mod/oper en la sala.' },
-        '/demote':  { roles: ['owner', 'admin', 'operator'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal en la sala.' },
-        '/global':  { roles: ['owner', 'admin'], description: '/global <mensaje> - Envía un anuncio a todas las salas activas.' }
+        '/help':      { roles: ['owner', 'admin', 'operator', 'mod', 'user', 'guest'], description: '/help - Muestra esta lista de comandos.' },
+        '/kick':      { roles: ['owner', 'admin', 'operator', 'mod'], description: '/kick <nick> (razón) - Expulsa a un usuario de la sala.' },
+        '/ban':       { roles: ['owner', 'admin', 'operator', 'mod'], description: '/ban <nick> <razón> - Banea a un usuario de esta sala.' },
+        '/unbanroom': { roles: ['owner', 'admin', 'operator', 'mod'], description: '/unbanroom <nick> [sala] - Quita el ban de sala a un usuario.' },
+        '/unban':     { roles: ['owner', 'admin'], description: '/unban <nick> - Quita un ban global (zline) a un usuario.' },
+        '/zlined':    { roles: ['owner', 'admin'], description: '/zlined <nick> [tiempo] <razón> - Banea globalmente del chat (ej. 1h, 1d).' },
+        '/mute':      { roles: ['owner', 'admin', 'operator', 'mod'], description: '/mute <nick> - Silencia o des-silencia a un usuario.' },
+        '/whois':     { roles: ['owner', 'admin', 'operator'], description: '/whois <nick> - Muestra información detallada de un usuario.' },
+        '/delsala':   { roles: ['owner', 'admin', 'operator'], description: '/delsala <nombre de la sala> - Elimina una sala creada.' },
+        '/vip':       { roles: ['owner', 'admin', 'operator'], description: '/vip <nick> - Otorga o quita el status VIP a un usuario.' },
+        '/promote':   { roles: ['owner', 'admin', 'operator'], description: '/promote <nick> <rol> [sala] - Asciende a un usuario a mod/oper.' },
+        '/demote':    { roles: ['owner', 'admin', 'operator'], description: '/demote <nick> [sala] - Degrada a un usuario a rol normal.' },
+        '/global':    { roles: ['owner', 'admin'], description: '/global <mensaje> - Envía un anuncio a todas las salas.' }
     };
+
+    if (command === '/zlined') {
+        if (!['owner', 'admin'].includes(senderEffectiveRole)) {
+            return socket.emit('system message', { text: 'Comando denegado.', type: 'error', roomName: currentRoom });
+        }
+        if (!targetNick) {
+            return socket.emit('system message', { text: 'Uso: /zlined <nick> [tiempo] <razón>', type: 'error', roomName: currentRoom });
+        }
+
+        const userToBan = await userService.findUserByNick(targetNick);
+        if (!userToBan) {
+            return socket.emit('system message', { text: `El usuario '${targetNick}' no está registrado.`, type: 'error', roomName: currentRoom });
+        }
+        
+        const senderPriority = permissionService.getRolePriority(senderEffectiveRole);
+        const targetPriority = permissionService.getRolePriority(userToBan.role);
+        if (senderPriority >= targetPriority) {
+            return socket.emit('system message', { text: 'No puedes banear a un usuario de tu mismo rango o superior.', type: 'error', roomName: currentRoom });
+        }
+
+        let duration = null;
+        let reasonIndex = 2;
+        let expiresAt = null;
+        
+        if (args[2] && ms(args[2]) !== undefined) {
+            duration = ms(args[2]);
+            expiresAt = new Date(Date.now() + duration).toISOString();
+            reasonIndex = 3;
+        }
+
+        const reason = args.slice(reasonIndex).join(' ') || 'No se especificó una razón.';
+        
+        await banService.addGlobalBan(
+            userToBan.nick.toLowerCase(),
+            userToBan.nick,
+            userToBan.lastIP,
+            reason,
+            sender.nick,
+            expiresAt
+        );
+        
+        const durationText = duration ? ` por ${ms(duration, { long: true })}` : ' permanentemente';
+        const logMessage = `[ZLINED] ${sender.nick} BANEÓ GLOBALMENTE a ${userToBan.nick}${durationText}. Razón: ${reason}`;
+        
+        io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+        io.emit('system message', { text: `${userToBan.nick} ha sido BANEADO del chat${durationText} por ${sender.nick}.`, type: 'error' });
+        
+        const targetSocketId = roomService.findSocketIdByNick(userToBan.nick);
+        if (targetSocketId) {
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+                targetSocket.emit('system message', { text: `Has sido baneado${durationText}. Razón: ${reason}`, type: 'error' });
+                targetSocket.disconnect(true);
+            }
+        }
+        io.emit('admin panel refresh');
+        return;
+    }
 
     if (!commandPermissions[command]) {
         return socket.emit('system message', { text: `Comando '${command}' no reconocido.`, type: 'error', roomName: currentRoom });
@@ -408,24 +468,35 @@ async function handleCommand(io, socket, text, currentRoom) {
     }
     
     if (command === '/unban') {
-        const nickToUnban = targetNick.toLowerCase();
-        
-        const banEntry = await new Promise((resolve, reject) => {
-            db.get('SELECT id FROM banned_users WHERE lower(nick) = ?', [nickToUnban], (err, row) => {
-                if (err) return reject(err);
-                resolve(row);
-            });
-        });
-
-        if (!banEntry) {
-            return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra en la lista de baneados.`, type: 'error', roomName: currentRoom });
+        if (!['owner', 'admin'].includes(senderEffectiveRole)) {
+            return socket.emit('system message', { text: 'Comando denegado.', type: 'error', roomName: currentRoom });
         }
+        const banId = targetNick.toLowerCase();
+        const success = await banService.removeGlobalBan(banId);
+        if (success) {
+            io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN-GLOBAL] ${sender.nick} quitó el baneo global a ${targetNick}.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+            io.emit('system message', { text: `${targetNick} ha sido desbaneado (global) por ${sender.nick}.`, type: 'highlight' });
+            io.emit('admin panel refresh');
+        } else {
+            socket.emit('system message', { text: `No se encontró un baneo global para '${targetNick}'.`, type: 'error', roomName: currentRoom });
+        }
+        return;
+    }
 
-        await banService.unbanUser(banEntry.id);
-        
-        io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${sender.nick} DESBANEÓ a ${targetNick}.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
-        io.emit('system message', { text: `${targetNick} ha sido DESBANEADO por ${sender.nick}.`, type: 'highlight' });
-        io.emit('admin panel refresh');
+    if (command === '/unbanroom') {
+        const roomToUnban = args[2] || currentRoom;
+        const userToUnban = await userService.findUserByNick(targetNick);
+        if (!userToUnban) {
+            return socket.emit('system message', { text: `Usuario '${targetNick}' no encontrado.`, type: 'error', roomName: currentRoom });
+        }
+        const success = await banService.removeRoomBan(userToUnban.id, roomToUnban);
+        if (success) {
+            const msg = `${targetNick} ha sido desbaneado de la sala ${roomToUnban} por ${sender.nick}.`;
+            io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN-SALA] ${msg}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+            socket.emit('system message', { text: msg, type: 'highlight', roomName: currentRoom });
+        } else {
+            socket.emit('system message', { text: `No se encontró un baneo para '${targetNick}' en la sala '${roomToUnban}'.`, type: 'error', roomName: currentRoom });
+        }
         return;
     }
 
@@ -594,28 +665,27 @@ async function handleCommand(io, socket, text, currentRoom) {
             }
 
             if (command === '/ban') {
-                const userToBan = targetSocket ? targetSocket.userData : dbUser;
-                const reasonBan = args.slice(2).join(' ') || 'No se especificó una razón.';
-                const isGuest = userToBan.role === 'guest';
-                const banId = isGuest ? userToBan.id : userToBan.nick.toLowerCase();
-                const banNick = userToBan.nick;
-                const banIp = userToBan.ip || (dbUser ? dbUser.lastIP : null);
+                if (!dbUser) {
+                    return socket.emit('system message', { text: `El usuario '${targetNick}' debe estar registrado para ser baneado de una sala.`, type: 'error', roomName: currentRoom });
+                }
+                const reason = args.slice(2).join(' ') || 'No se especificó una razón.';
                 
-                await banService.banUser(banId, banNick, banIp, reasonBan, sender.nick);
+                await banService.addRoomBan(dbUser.id, currentRoom, reason, sender.nick);
                 
-                io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[BAN] ${sender.nick} BANEÓ a ${banNick}. Razón: ${reasonBan}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
-                if (targetSocket) {
-                    targetSocket.joinedRooms.forEach(room => {
-                        if (room !== targetSocket.id) {
-                            io.to(room).emit('system message', { text: `${targetNick} ha sido BANEADO permanentemente por ${sender.nick}.`, type: 'error', roomName: room });
-                        }
-                    });
-                    targetSocket.emit('system message', { text: `Has sido baneado permanentemente. Razón: ${reasonBan}`, type: 'error' });
-                    targetSocket.disconnect(true);
-                } else {
-                    io.emit('system message', { text: `${banNick} ha sido BANEADO permanentemente por ${sender.nick}.`, type: 'error' });
+                const logMessage = `[BAN-SALA] ${sender.nick} baneó a ${targetNick} de la sala ${currentRoom}. Razón: ${reason}`;
+                io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+                io.to(currentRoom).emit('system message', { text: `${targetNick} ha sido baneado de esta sala por ${sender.nick}.`, type: 'error', roomName: currentRoom });
+                
+                if (targetSocket && targetSocket.rooms.has(currentRoom)) {
+                    targetSocket.leave(currentRoom);
+                    if (targetSocket.joinedRooms) {
+                        targetSocket.joinedRooms.delete(currentRoom);
+                    }
+                    targetSocket.emit('leave_success', { roomName: currentRoom, joinedRooms: Array.from(targetSocket.joinedRooms || []) });
+                    roomService.updateUserList(io, currentRoom);
                 }
                 io.emit('admin panel refresh');
+                break;
             }
             
             if (command === '/mute') {

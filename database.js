@@ -91,23 +91,53 @@ db.serialize(async () => {
         });
     });
 
-    // --- Tabla 'banned_users' ---
+    // --- Tabla 'global_bans' (RENOMBRADA Y MODIFICADA) ---
     await new Promise(resolve => {
+        // Renombramos la tabla si existe la antigua
+        db.run(`ALTER TABLE banned_users RENAME TO global_bans`, (err) => {
+            if (err && !err.message.includes('no such table')) {
+                console.error("Error al renombrar banned_users a global_bans:", err.message);
+            }
+        });
+
         db.run(`
-            CREATE TABLE IF NOT EXISTS banned_users (
+            CREATE TABLE IF NOT EXISTS global_bans (
                 id TEXT PRIMARY KEY,
                 nick TEXT NOT NULL,
                 ip TEXT,
                 reason TEXT NOT NULL,
                 by TEXT NOT NULL,
-                at TEXT NOT NULL
+                at TEXT NOT NULL,
+                expiresAt TEXT DEFAULT NULL 
             )
         `, (err) => {
-            if (err) console.error("Error creando tabla banned_users:", err.message);
-            else console.log("Tabla 'banned_users' creada o ya existente.");
+            if (err) console.error("Error creando tabla global_bans:", err.message);
+            else console.log("Tabla 'global_bans' creada o ya existente.");
             resolve();
         });
     });
+    await addColumn('global_bans', 'expiresAt', 'TEXT DEFAULT NULL');
+    
+    // --- Tabla 'room_bans' (NUEVA TABLA) ---
+    await new Promise(resolve => {
+        db.run(`
+            CREATE TABLE IF NOT EXISTS room_bans (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                userId INTEGER NOT NULL,
+                roomName TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                by TEXT NOT NULL,
+                at TEXT NOT NULL,
+                FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+                UNIQUE(userId, roomName)
+            )
+        `, (err) => {
+            if (err) console.error("Error creando tabla room_bans:", err.message);
+            else console.log("Tabla 'room_bans' creada o ya existente.");
+            resolve();
+        });
+    });
+
 
     // --- Tabla 'messages' ---
     await new Promise(resolve => {
@@ -129,7 +159,6 @@ db.serialize(async () => {
             resolve();
         });
     });
-    // Añadir columnas de previsualización
     await addColumn('messages', 'preview_type', 'TEXT');
     await addColumn('messages', 'preview_url', 'TEXT');
     await addColumn('messages', 'preview_title', 'TEXT');
@@ -166,7 +195,6 @@ db.serialize(async () => {
         });
     });
     
-    // Añadimos las columnas de previsualización para archivos en mensajes privados
     await addColumn('private_messages', 'preview_type', 'TEXT');
     await addColumn('private_messages', 'preview_url', 'TEXT');
     await addColumn('private_messages', 'preview_title', 'TEXT');

@@ -202,12 +202,19 @@ async function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
     }
 }
 
-async function checkBanStatus(socket, idToCheck, ip) {
-    const banInfo = await banService.isUserBanned(idToCheck, ip);
+async function checkBanStatus(socket, idToCheck, ip, roomName) {
+    const banInfo = await banService.isUserBanned(idToCheck, ip, roomName);
     if (banInfo) {
-        socket.emit('auth_error', { message: `Estás baneado. Razón: ${banInfo.reason}` });
-        socket.emit('system message', { text: `Estás baneado. Razón: ${banInfo.reason}`, type: 'error' });
-        socket.disconnect(true);
+        let message = `Estás baneado. Razón: ${banInfo.reason}`;
+        if (banInfo.scope === 'room') {
+            message = `Tienes prohibida la entrada a la sala '${roomName}'. Razón: ${banInfo.reason}`;
+        }
+        socket.emit('auth_error', { message });
+        socket.emit('system message', { text: message, type: 'error' });
+        
+        if (banInfo.scope === 'global') {
+            socket.disconnect(true);
+        }
         return true;
     }
     return false;
@@ -288,26 +295,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
     socket.join(roomName);
     if (!socket.joinedRooms) socket.joinedRooms = new Set();
     socket.joinedRooms.add(roomName);
-    
-    // --- INICIO DE LA CORRECCIÓN ---
-    // La propiedad `isStaff` ya fue calculada correctamente en el evento 'login'
-    // basándose únicamente en el rol global de la tabla `users`.
-    // Ya no es necesario recalcularla aquí, lo que evita que un rol de sala fantasma
-    // otorgue permisos de panel de admin incorrectamente.
-    /*
-    let isAnyStaff = ['owner', 'admin', 'mod', 'operator'].includes(socket.userData.role);
-    if (!isAnyStaff && socket.userData.id) {
-        const staffRooms = await new Promise((resolve) => {
-            db.all('SELECT 1 FROM room_staff WHERE userId = ? LIMIT 1', [socket.userData.id], (err, rows) => {
-                if (err) resolve([]);
-                resolve(rows);
-            });
-        });
-        if (staffRooms.length > 0) isAnyStaff = true;
-    }
-    socket.userData.isStaff = isAnyStaff;
-    */
-    // --- FIN DE LA CORRECCIÓN ---
     
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
 
@@ -473,7 +460,7 @@ function initializeSocket(io) {
         socket.on('login', async (data) => {
             try {
                 let { nick, id, roomName } = data;
-                if (await checkBanStatus(socket, id, userIP)) return;
+                if (await checkBanStatus(socket, id, userIP, roomName)) return;
 
                 const registeredData = await userService.findUserById(id);
                 if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
@@ -511,7 +498,7 @@ function initializeSocket(io) {
             try {
                 const { nick, roomName, id } = data;
                 if (!nick || !roomName) return; 
-                if (await checkBanStatus(socket, id, userIP)) return;
+                if (await checkBanStatus(socket, id, userIP, roomName)) return;
                 
                 socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isStaff: false, isAFK: false };
                 roomService.guestSocketMap.set(id, socket.id);

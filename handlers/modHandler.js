@@ -67,14 +67,12 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (wasIncognito) {
             const oldNick = sender.nick;
 
-            // Restaurar el estado original desde la sesión del socket
             socket.userData.nick = sender.originalNick;
             socket.userData.role = sender.originalRole;
             socket.userData.avatar_url = sender.originalAvatar || 'image/default-avatar.png';
             socket.userData.isVIP = sender.originalIsVIP;
             socket.userData.isIncognito = false;
 
-            // Limpiar las propiedades temporales de incógnito
             delete socket.userData.originalNick;
             delete socket.userData.originalRole;
             delete socket.userData.originalAvatar;
@@ -82,7 +80,6 @@ async function handleCommand(io, socket, text, currentRoom) {
 
             socket.emit('system message', { text: 'Has salido del modo incógnito. Tu estado normal ha sido restaurado.', type: 'highlight' });
 
-            // Notificar a todos los clientes del cambio de datos.
             io.emit('user_data_updated', {
                 oldNick: oldNick,
                 nick: socket.userData.nick,
@@ -105,13 +102,11 @@ async function handleCommand(io, socket, text, currentRoom) {
             
             const oldNick = sender.nick;
             
-            // Guardar el estado original de forma segura en la sesión del socket.
             socket.userData.originalNick = sender.nick;
             socket.userData.originalRole = sender.role;
             socket.userData.originalAvatar = sender.avatar_url;
             socket.userData.originalIsVIP = sender.isVIP;
     
-            // Aplicar la máscara de incógnito a la sesión del socket.
             socket.userData.isIncognito = true;
             socket.userData.role = 'user';
             socket.userData.avatar_url = 'image/default-avatar.png';
@@ -123,7 +118,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     
             socket.emit('system message', { text: `Has entrado en modo incógnito. Ahora apareces como '${socket.userData.nick}' con rol de usuario.`, type: 'highlight' });
     
-            // Notificar a los clientes del cambio.
             io.emit('user_data_updated', {
                 oldNick: oldNick,
                 nick: socket.userData.nick,
@@ -362,9 +356,25 @@ async function handleCommand(io, socket, text, currentRoom) {
         }
         return;
     }
-
+    
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
+
+    // --- LÓGICA UNIFICADA PARA ENCONTRAR AL USUARIO OBJETIVO ---
+    async function findTargetUser(nick) {
+        if (!nick) return null;
+        // 1. Busca si el usuario está conectado
+        const targetSocketId = roomService.findSocketIdByNick(nick);
+        if (targetSocketId) {
+            const sockets = await io.fetchSockets();
+            const targetSocket = sockets.find(s => s.id === targetSocketId);
+            if (targetSocket && targetSocket.userData) {
+                return targetSocket.userData; // Devuelve los datos del usuario conectado
+            }
+        }
+        // 2. Si no, busca en la base de datos (para usuarios registrados)
+        return await userService.findUserByNick(nick);
+    }
 
     const commandPermissions = {
         '/help':      { roles: ['owner', 'admin', 'operator', 'mod', 'user', 'guest'], description: '/help - Muestra esta lista de comandos.' },
@@ -390,9 +400,9 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: 'Uso: /zlined <nick> [tiempo] <razón>', type: 'error', roomName: currentRoom });
         }
 
-        const userToBan = await userService.findUserByNick(targetNick);
+        const userToBan = await findTargetUser(targetNick);
         if (!userToBan) {
-            return socket.emit('system message', { text: `El usuario '${targetNick}' no está registrado.`, type: 'error', roomName: currentRoom });
+            return socket.emit('system message', { text: `No se encontró al usuario '${targetNick}'.`, type: 'error', roomName: currentRoom });
         }
         
         const senderPriority = permissionService.getRolePriority(senderEffectiveRole);
@@ -412,11 +422,12 @@ async function handleCommand(io, socket, text, currentRoom) {
         }
 
         const reason = args.slice(reasonIndex).join(' ') || 'No se especificó una razón.';
+        const banId = userToBan.role === 'guest' ? userToBan.id : userToBan.nick.toLowerCase();
         
         await banService.addGlobalBan(
-            userToBan.nick.toLowerCase(),
+            banId,
             userToBan.nick,
-            userToBan.lastIP,
+            userToBan.ip || userToBan.lastIP,
             reason,
             sender.nick,
             expiresAt
@@ -457,15 +468,6 @@ async function handleCommand(io, socket, text, currentRoom) {
     
     const targetSocketId = targetNick ? roomService.findSocketIdByNick(targetNick) : null;
     let targetSocket = targetSocketId ? io.sockets.sockets.get(targetSocketId) : null;
-    if (!targetSocket && targetNick) {
-        const allSockets = await io.fetchSockets();
-        for (const sock of allSockets) {
-            if (sock.userData && sock.userData.nick.toLowerCase() === targetNick.toLowerCase()) {
-                targetSocket = sock;
-                break;
-            }
-        }
-    }
     
     if (command === '/unban') {
         if (!['owner', 'admin'].includes(senderEffectiveRole)) {
@@ -539,7 +541,6 @@ async function handleCommand(io, socket, text, currentRoom) {
             });
 
             socket.emit('system message', { text: 'Tu anuncio global ha sido enviado correctamente.', type: 'highlight', roomName: currentRoom });
-
             return;
         }
 
@@ -637,14 +638,19 @@ async function handleCommand(io, socket, text, currentRoom) {
         
         default: {
             const dbUser = await userService.findUserByNick(targetNick);
-            if (!dbUser && !targetSocket) {
+            const userToActOn = await findTargetUser(targetNick);
+
+            if (!userToActOn) {
                 return socket.emit('system message', { text: `No se encontró al usuario '${targetNick}'.`, type: 'error', roomName: currentRoom });
             }
+
             const rolesOrder = { 'owner': 0, 'admin': 1, 'operator': 2, 'mod': 3, 'user': 4, 'vip': 4, 'guest': 5 };
-            const targetEffectiveRole = dbUser ? await permissionService.getUserEffectiveRole(dbUser.id, currentRoom) : (targetSocket ? 'guest' : 'user');
+            const targetEffectiveRole = await permissionService.getUserEffectiveRole(userToActOn.id, currentRoom);
+
             if (rolesOrder[senderEffectiveRole] >= rolesOrder[targetEffectiveRole]) {
                 return socket.emit('system message', { text: 'No puedes ejecutar acciones sobre un usuario de tu mismo rango o superior en esta sala.', type: 'error', roomName: currentRoom });
             }
+            
             if (command === '/kick') {
                 if (!targetSocket) return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra conectado.`, type: 'error', roomName: currentRoom });
                 if (!targetSocket.rooms.has(currentRoom)) return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra en esta sala.`, type: 'error', roomName: currentRoom });
@@ -665,17 +671,14 @@ async function handleCommand(io, socket, text, currentRoom) {
             }
 
             if (command === '/ban') {
-                if (!dbUser) {
-                    return socket.emit('system message', { text: `El usuario '${targetNick}' debe estar registrado para ser baneado de una sala.`, type: 'error', roomName: currentRoom });
+                if (userToActOn.role === 'guest') {
+                    return socket.emit('system message', { text: `El comando /ban es solo para usuarios registrados. Para invitados, usa /kick o /zlined.`, type: 'error', roomName: currentRoom });
                 }
                 const reason = args.slice(2).join(' ') || 'No se especificó una razón.';
-                
-                await banService.addRoomBan(dbUser.id, currentRoom, reason, sender.nick);
-                
+                await banService.addRoomBan(userToActOn.id, currentRoom, reason, sender.nick);
                 const logMessage = `[BAN-SALA] ${sender.nick} baneó a ${targetNick} de la sala ${currentRoom}. Razón: ${reason}`;
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
                 io.to(currentRoom).emit('system message', { text: `${targetNick} ha sido baneado de esta sala por ${sender.nick}.`, type: 'error', roomName: currentRoom });
-                
                 if (targetSocket && targetSocket.rooms.has(currentRoom)) {
                     targetSocket.leave(currentRoom);
                     if (targetSocket.joinedRooms) {

@@ -35,11 +35,9 @@ async function isUserBanned(userId, ip, roomName) {
 
     if (globalBan) {
         if (globalBan.expiresAt && new Date(globalBan.expiresAt) < new Date()) {
-            // El baneo ha expirado, lo eliminamos y permitimos el acceso
             await removeGlobalBan(globalBan.id);
             return null;
         }
-        // Baneo global activo encontrado
         return { ...globalBan, scope: 'global' };
     }
     
@@ -56,7 +54,6 @@ async function isUserBanned(userId, ip, roomName) {
         }
     }
 
-    // 3. No se encontró ningún baneo
     return null;
 }
 
@@ -65,7 +62,9 @@ async function isUserBanned(userId, ip, roomName) {
  */
 function addGlobalBan(id, nick, ip, reason, by, expiresAt = null) {
     return new Promise((resolve, reject) => {
-        const stmt = db.prepare('INSERT INTO global_bans (id, nick, ip, reason, by, at, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        // --- INICIO DE LA CORRECCIÓN ---
+        const stmt = db.prepare('INSERT OR REPLACE INTO global_bans (id, nick, ip, reason, by, at, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        // --- FIN DE LA CORRECCIÓN ---
         stmt.run(id, nick, ip, reason, by, new Date().toISOString(), expiresAt, function(err) {
             if (err) return reject(err);
             resolve({ id });
@@ -79,7 +78,9 @@ function addGlobalBan(id, nick, ip, reason, by, expiresAt = null) {
  */
 function addRoomBan(userId, roomName, reason, by) {
     return new Promise((resolve, reject) => {
-        const stmt = db.prepare('INSERT INTO room_bans (userId, roomName, reason, by, at) VALUES (?, ?, ?, ?, ?)');
+        // --- INICIO DE LA CORRECCIÓN ---
+        const stmt = db.prepare('INSERT OR REPLACE INTO room_bans (userId, roomName, reason, by, at) VALUES (?, ?, ?, ?, ?)');
+        // --- FIN DE LA CORRECCIÓN ---
         stmt.run(userId, roomName, reason, by, new Date().toISOString(), function(err) {
             if (err) return reject(err);
             resolve(true);

@@ -4,13 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
-    <!-- Título optimizado para búsqueda -->
     <title>MundoChat - Salas de Chat Gratis en Español para Conocer Gente</title>
-    
-    <!-- Descripción que aparecerá en los resultados de Google -->
     <meta name="description" content="Únete a MundoChat, una comunidad de chat en español. Entra a nuestras salas gratis, conoce gente nueva, haz amigos y diviértete. ¡Registro opcional!">
-    
-    <!-- Palabras clave (ayudan un poco) -->
     <meta name="keywords" content="chat, chat gratis, chatear, salas de chat, conocer gente, chat en español, mundochat, chat de sexo, chile, españa, mexico, argentina, colombia, venezuela, peru, ecuador, bolivia, uruguay, paraguay, costa rica, cuba, republica dominicana, el salvador, guatemala, honduras, nicaragua, panama, puerto rico">
     
     <link rel="stylesheet" href="style.css">
@@ -18,21 +13,15 @@
 </head>
 <body>
 
-    <!-- PANTALLA DE BIENVENIDA -->
     <div id="welcome-container">
         <div class="welcome-box">
             <h1>Bienvenido a MundoChat</h1>
-            <!-- INICIO DEL CONTENIDO AÑADIDO -->
-            <p style="margin: 15px 0; color: #555; line-height: 1.5;">
-              <!--  Explora nuestras salas de chat en español, conoce gente de todo el mundo, haz nuevos amigos y diviértete en una comunidad segura y moderada. ¡Entra como invitado o regístrate para guardar tu nick! -->
-            </p>
-            <!-- FIN DEL CONTENIDO AÑADIDO -->
+            <p style="margin: 15px 0; color: #555; line-height: 1.5;"></p>
             <div class="auth-tabs">
                 <button id="show-guest-tab" class="auth-tab active" data-form="guest-form">Entrar como Invitado</button>
                 <button id="show-login-tab" class="auth-tab" data-form="login-form">Entrar como Registrado</button>
                 <button id="show-register-tab" class="auth-tab" data-form="register-form">Registrarse</button>
             </div>
-
             <div id="guest-form" class="auth-form">
                 <input type="text" id="guest-nick-input" placeholder="Elige un nick de invitado" maxlength="15">
                 <label for="guest-room-select" class="room-label">Elige una sala para entrar:</label>
@@ -62,9 +51,7 @@
         </div>
     </div>
 
-    <!-- CONTENEDOR PRINCIPAL DEL CHAT -->
     <div id="chat-container" class="hidden">
-        
         <div id="conversations-panel">
             <h3>Conversaciones</h3>
             <div id="conversation-list-container">
@@ -77,7 +64,6 @@
                     <ul id="private-chat-list"></ul>
                 </div>
             </div>
-
             <div class="theme-switcher-container">
                 <span>Modo Oscuro</span>
                 <label class="theme-switcher">
@@ -85,12 +71,8 @@
                     <span class="slider round"></span>
                 </label>
             </div>
-
-            <div id="action-buttons-container">
-            </div>
-            
+            <div id="action-buttons-container"></div>
             <button id="logout-button" class="action-button-logout">Salir del Chat</button>
-
         </div>
         
         <div id="chat-area-wrapper">
@@ -102,12 +84,10 @@
                     </button>
                     <h2 id="room-name-header"></h2>
                     <button id="toggle-users-btn" class="mobile-nav-button">👥</button>
-
                     <div id="room-switcher" class="room-switcher">
                         <ul id="room-switcher-list"></ul>
                     </div>
                 </div>
-
                 <div id="chat-window">
                     <ul id="messages"></ul>
                     <div id="typing-indicator"></div>
@@ -144,16 +124,12 @@
                     <button type="button" id="send-audio-button" class="chat-action-button hidden">▶️</button>
                     <button type="button" id="cancel-recording-button" class="chat-action-button">✖️</button>
                 </div>
-
                 <button type="submit" id="send-icon-button" class="chat-action-button">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="transform: rotate(45deg); margin-left: -2px; margin-top: 2px;"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
-                
                 <div id="command-suggestions" class="hidden"></div>
                 <div id="emoji-picker" class="hidden"></div>
             </form>
-            
-            
         </div>
         
         <div id="user-list-container">
@@ -163,12 +139,11 @@
             </div>
             <ul id="user-list"></ul>
         </div>
-
     </div>
     
     <script src="/socket.io/socket.io.js"></script>
     
-     <div id="welcome-popup-overlay" class="modal-overlay hidden">
+    <div id="welcome-popup-overlay" class="modal-overlay hidden">
         <div class="modal-content" id="welcome-popup-content">
             <span class="modal-close-button" id="close-welcome-popup">×</span>
             <div class="popup-body">
@@ -178,20 +153,17 @@
                 <p><strong>🌍 Recuerda que estás hablando con personas reales.</strong> Valora las diferencias, sé amable, y usa el chat para construir cosas buenas.</p>
                 <p style="text-align: center; font-size: 0.9em; color: #666; margin-top: 20px;"><em>Al hacer clic en "Entendido", activarás las notificaciones de sonido.</em></p>
                 <p style="text-align: center; font-weight: bold; margin-top: 10px;">👉 Disfruta del chat y gracias por ser parte de esta comunidad. 💖</p>
-                <p>
                 <h5 style="text-align: center;">Copyright © -- 2025</h5>
             </div>
             <button class="action-button" id="confirm-welcome-popup" style="margin: 0 auto; display: block; background-color: #1877f2;">¡Entendido!</button>
         </div>
     </div>
 
-    <!-- Admin Agreement Modal -->
     <div id="admin-agreement-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h2 class="modal-title">ACUERDO DE CONFIDENCIALIDAD</h2>
-                        <div id="admin-agreement-text">
+            <div id="admin-agreement-text">
                 <p><strong>Entre:</strong> Owner (mundochat) y el usuario interesado (nuevo Admin)</p>
-                <p>Ambas partes acuerdan lo siguiente:</p>
                 <ol>
                     <li>Toda la información compartida entre las partes de manera escrita o por cualquier medio (audio o imágenes), relacionada con el chat o con el resto de usuarios/as de las diferentes salas, será considerada confidencial.</li>
                     <li>No se podrá divulgar, compartir ni utilizar dicha información para fines distintos que no sean los relacionados con el chat.</li>
@@ -211,7 +183,6 @@
         </div>
     </div>
 
-    <!-- MODAL DE RECUPERACIÓN DE CONTRASEÑA -->
     <div id="forgot-password-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <span class="modal-close-button" id="close-forgot-password-modal">×</span>
@@ -245,7 +216,14 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>ID de Ban</th><th>Nick</th><th>IP</th><th>Baneado por</th><th>Razón</th><th>Fecha</th><th>Acciones</th>
+                                <th>ID de Ban</th>
+                                <th>Nick</th>
+                                <th>IP</th>
+                                <th>Baneado por</th>
+                                <th>Razón</th>
+                                <th>Fecha</th>
+                                <th>Expira</th>
+                                <th>Acciones</th>
                             </tr>
                         </thead>
                         <tbody id="banned-users-list"></tbody>
@@ -294,7 +272,10 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Nick</th><th>Rol</th><th>IP</th><th>Salas</th>
+                                <th>Nick</th>
+                                <th>Rol</th>
+                                <th>IP</th>
+                                <th>Salas</th>
                             </tr>
                         </thead>
                         <tbody id="online-users-list"></tbody>
@@ -306,7 +287,12 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Fecha</th><th>Evento</th><th>Nick</th><th>Rol</th><th>IP</th><th>Detalles</th>
+                                <th>Fecha</th>
+                                <th>Evento</th>
+                                <th>Nick</th>
+                                <th>Rol</th>
+                                <th>IP</th>
+                                <th>Detalles</th>
                             </tr>
                         </thead>
                         <tbody id="activity-logs-list"></tbody>
@@ -331,7 +317,7 @@
         </div>
     </div>
 
-     <div id="profile-modal" class="modal-overlay hidden">
+    <div id="profile-modal" class="modal-overlay hidden">
         <div class="modal-content" id="profile-modal-content">
             <span class="modal-close-button">×</span>
             <h2>Mi Perfil</h2>
@@ -340,9 +326,7 @@
                     <img id="profile-avatar-preview" src="image/default-avatar.png" alt="Avatar actual" class="profile-avatar">
                     <label for="avatar-file-input" class="avatar-edit-label" title="Cambiar avatar">✏️</label>
                 </div>
-                
                 <p class="profile-nick-display"><strong>Nick actual:</strong> <span id="profile-nick"></span></p>
-                
                 <div class="profile-section">
                     <label for="new-nick-input">Cambiar Nick</label>
                     <div class="input-group">
@@ -350,7 +334,6 @@
                         <button id="change-nick-button" class="action-button">Cambiar</button>
                     </div>
                 </div>
-
                 <div class="profile-section">
                     <label for="avatar-file-input">Cambiar Avatar</label>
                      <input type="file" id="avatar-file-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
@@ -363,7 +346,8 @@
             </div>
         </div>
     </div>
-     <div id="sexo-warning-modal" class="modal-overlay hidden">
+
+    <div id="sexo-warning-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <h2>⚠️ Advertencia</h2>
             <div class="popup-body">
@@ -383,10 +367,8 @@
             <button id="accept-sexo-warning" class="action-button">Aceptar y Entrar</button>
         </div>
     </div>
-    <div id="avatar-hover-popup" class="hidden">
-        <img src="" alt="Avatar a tamaño completo">
-    </div>
-
+    
+    <div id="avatar-hover-popup" class="hidden"><img src="" alt="Avatar a tamaño completo"></div>
     <div id="user-action-popup" class="hidden">
         <div class="user-info">
             <strong><span id="popup-user-nick"></span></strong>
@@ -399,26 +381,19 @@
         </div>
         <div id="popup-arrow"></div>
     </div>
-    
     <div id="nick-context-menu" class="hidden">
         <button id="context-pm-button">Mensaje Privado</button>
         <button id="context-reply-button">Responder</button>
     </div>
-
     <div id="self-context-menu" class="hidden">
         <button id="self-afk-button">Ausentar</button>
-        <label for="guest-avatar-input" id="self-avatar-label-guest" class="hidden context-menu-button">
-            Cambiar Avatar
-        </label>
+        <label for="guest-avatar-input" id="self-avatar-label-guest" class="hidden context-menu-button">Cambiar Avatar</label>
     </div>
-
-     <div id="image-modal-overlay" class="modal-overlay hidden">
+    <div id="image-modal-overlay" class="modal-overlay hidden">
         <span id="close-image-modal" class="modal-close-button">&times;</span>
         <img id="modal-image" src="" alt="Vista a tamaño completo">
     </div>
     <div id="mobile-overlay"></div>
-
-    <!-- MODAL DE AYUDA PARA CREADOR DE SALA -->
     <div id="room-creator-help-modal" class="modal-overlay hidden">
         <div class="modal-content">
             <span class="modal-close-button">×</span>
@@ -435,9 +410,7 @@
             </div>
         </div>
     </div>
-
     <input type="file" id="guest-avatar-input" class="hidden" accept="image/png, image/jpeg, image/gif, image/webp">
-
     <script type="module" src="js/main.js"></script>
 </body>
 </html>

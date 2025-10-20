@@ -63,20 +63,42 @@ export async function fetchAndShowReports() {
     }
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 export async function fetchAndShowBannedUsers() {
     try {
         const users = await fetchWithCredentials('/api/admin/banned');
         dom.bannedUsersList.innerHTML = '';
         users.forEach(user => {
             const row = document.createElement('tr');
-            row.innerHTML = `<td>${user.id}</td><td>${user.nick}</td><td>${user.ip || 'N/A'}</td><td>${user.by}</td><td>${user.reason}</td><td>${new Date(user.at).toLocaleString()}</td><td><button class="action-button unban-btn" data-id="${user.id}">Quitar Ban</button></td>`;
+            // Formateamos la fecha de expiración para mostrar "Permanente" si es nula
+            const expiresText = user.expiresAt 
+                ? new Date(user.expiresAt).toLocaleString() 
+                : 'Permanente';
+            
+            // Añadimos la nueva celda <td> para la fecha de expiración
+            row.innerHTML = `
+                <td>${user.id}</td>
+                <td>${user.nick}</td>
+                <td>${user.ip || 'N/A'}</td>
+                <td>${user.by}</td>
+                <td>${user.reason}</td>
+                <td>${new Date(user.at).toLocaleString()}</td>
+                <td>${expiresText}</td>
+                <td><button class="action-button unban-btn" data-id="${user.id}">Quitar Ban</button></td>
+            `;
             dom.bannedUsersList.appendChild(row);
         });
     } catch (error) {
         console.error(error);
-        dom.bannedUsersList.innerHTML = `<tr><td colspan="7">${error.message}</td></tr>`;
+        dom.bannedUsersList.innerHTML = `<tr><td colspan="8">${error.message}</td></tr>`; // Aumentado a 8 columnas
     }
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+
 
 export async function fetchAndShowMutedUsers() {
     try {
@@ -92,7 +114,6 @@ export async function fetchAndShowMutedUsers() {
         dom.mutedUsersList.innerHTML = `<tr><td colspan="6">${error.message}</td></tr>`;
     }
 }
-
 export async function fetchAndShowOnlineUsers() {
     try {
         const users = await fetchWithCredentials('/api/admin/online-users');

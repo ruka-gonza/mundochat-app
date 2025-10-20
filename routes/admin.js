@@ -19,14 +19,12 @@ const isStaff = async (req, res, next) => {
             return res.status(403).json({ error: 'Acceso denegado: Usuario no encontrado.' });
         }
 
-        // Permitimos el acceso a cualquier rol de staff
         const isGlobalStaff = ['owner', 'admin', 'mod', 'operator'].includes(user.role);
         
         if (!isGlobalStaff) {
             return res.status(403).json({ error: 'Acceso denegado: No tienes permisos de moderación.' });
         }
 
-        // Adjuntamos los datos del moderador a la petición para usarlo después
         req.moderator = { nick: user.nick, role: user.role };
         return next();
 
@@ -36,30 +34,22 @@ const isStaff = async (req, res, next) => {
     }
 };
 
-// --- INICIO DE LA LÓGICA DE SEGURIDAD CLAVE ---
-
-// Función para ofuscar (ocultar parcialmente) una dirección IP
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
-    if (ip === '::1' || ip === '127.0.0.1') return ip; // No ofuscar IPs locales
+    if (ip === '::1' || ip === '127.0.0.1') return ip;
 
-    // Para IPv6
     if (ip.includes(':')) {
         const parts = ip.split(':');
-        // Mostramos los primeros 4 bloques si hay suficientes
         return parts.length > 4 ? parts.slice(0, 4).join(':') + ':xxxx:xxxx' : ip;
     }
-    // Para IPv4
     if (ip.includes('.')) {
         const parts = ip.split('.');
         return parts.length === 4 ? parts.slice(0, 2).join('.') + '.x.x' : ip;
     }
     return 'IP Inválida';
 }
-// --- FIN DE LA LÓGICA DE SEGURIDAD CLAVE ---
 
 
-// Nueva ruta para servir el panel de moderadores
 router.get('/mod-panel', isStaff, (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'public', 'mod-panel.html'));
 });
@@ -89,15 +79,18 @@ router.get('/reports', isStaff, (req, res) => {
     });
 });
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 router.get('/banned', isStaff, async (req, res) => {
     try {
         const db = require('../services/db-connection').getInstance();
-        db.all('SELECT * FROM banned_users ORDER BY at DESC', [], (err, rows) => {
+        // Se cambia 'banned_users' por 'global_bans'
+        db.all('SELECT id, nick, ip, reason, by, at, expiresAt FROM global_bans ORDER BY at DESC', [], (err, rows) => {
             if (err) {
                 console.error("Error al obtener baneados:", err);
                 return res.status(500).json({ error: 'Error del servidor' });
             }
-            // --- ¡SEGURIDAD! Si el rol es mod u operator, ofuscamos la IP ---
             if (['mod', 'operator'].includes(req.moderator.role)) {
                 rows.forEach(user => { user.ip = obfuscateIP(user.ip); });
             }
@@ -107,6 +100,9 @@ router.get('/banned', isStaff, async (req, res) => {
         res.status(500).json({ error: 'Error del servidor' });
     }
 });
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 router.get('/muted', isStaff, async (req, res) => {
     const io = req.io;
@@ -136,7 +132,6 @@ router.get('/muted', isStaff, async (req, res) => {
             }
         }
         
-        // --- ¡SEGURIDAD! Ofuscamos la IP para roles intermedios ---
         if (['mod', 'operator'].includes(req.moderator.role)) {
             mutedUsers.forEach(user => {
                 user.lastIP = obfuscateIP(user.lastIP);
@@ -151,10 +146,8 @@ router.get('/muted', isStaff, async (req, res) => {
     }
 });
 
-// Rutas solo para Admins/Owner (con IPs completas)
 router.get('/online-users', isStaff, async (req, res) => {
     try {
-        // Bloqueamos el acceso a esta información sensible para mods/ops
         if (['mod', 'operator'].includes(req.moderator.role)) {
             return res.status(403).json({ error: 'No tienes permiso para acceder a esta sección.' });
         }
@@ -182,7 +175,6 @@ router.get('/online-users', isStaff, async (req, res) => {
 });
 
 router.get('/activity-logs', isStaff, (req, res) => {
-    // Bloqueamos el acceso a esta información sensible para mods/ops
     if (['mod', 'operator'].includes(req.moderator.role)) {
         return res.status(403).json({ error: 'No tienes permiso para acceder a esta sección.' });
     }
@@ -207,7 +199,8 @@ router.post('/unban', isStaff, async (req, res) => {
     }
     
     try {
-        const success = await banService.unbanUser(userId); 
+        // Se usa la función del servicio de baneos, que ahora apunta a `global_bans`
+        const success = await banService.removeGlobalBan(userId); 
         if (success) {
             req.io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN] ${req.moderator.nick} ha desbaneado a '${userId}' desde el panel.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             res.json({ message: `Usuario '${userId}' desbaneado con éxito.` });
@@ -252,7 +245,6 @@ router.post('/unmute', isStaff, async (req, res) => {
 });
 
 router.get('/registered-users', isStaff, async (req, res) => {
-    // Bloqueamos el acceso a esta información sensible para mods/ops
     if (['mod', 'operator'].includes(req.moderator.role)) {
         return res.status(403).json({ error: 'No tienes permiso para acceder a esta sección.' });
     }

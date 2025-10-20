@@ -66,7 +66,6 @@ async function handleCommand(io, socket, text, currentRoom) {
         // --- SALIR DEL MODO INCÓGNITO ---
         if (wasIncognito) {
             const oldNick = sender.nick;
-
             socket.userData.nick = sender.originalNick;
             socket.userData.role = sender.originalRole;
             socket.userData.avatar_url = sender.originalAvatar || 'image/default-avatar.png';
@@ -139,37 +138,28 @@ async function handleCommand(io, socket, text, currentRoom) {
 
     if (command === '/avatar') {
         const avatarUrl = args[1];
-
         if (sender.role !== 'guest') {
             return socket.emit('system message', { text: 'Los usuarios registrados deben cambiar su avatar desde el panel "Mi Perfil".', type: 'error' });
         }
-
         if (!avatarUrl) {
             return socket.emit('system message', { text: 'Uso: /avatar <URL de la imagen>', type: 'error' });
         }
-
         const urlRegex = /^(https?:\/\/[^\s]+(\.jpg|\.jpeg|\.png|\.gif|\.webp))$/i;
         if (!urlRegex.test(avatarUrl)) {
             return socket.emit('system message', { text: 'La URL proporcionada no parece ser una imagen válida (debe terminar en .jpg, .png, .gif, etc.).', type: 'error' });
         }
-
         socket.userData.avatar_url = avatarUrl;
-        
         roomService.updateUserDataInAllRooms(socket);
-
         io.emit('user_data_updated', {
             nick: sender.nick,
             avatar_url: avatarUrl
         });
-
         socket.emit('system message', { text: '¡Tu avatar ha sido actualizado!', type: 'highlight' });
-
         io.to(roomService.MOD_LOG_ROOM).emit('system message', {
             text: `[AVATAR] El invitado ${sender.nick} ha establecido un nuevo avatar.`,
             type: 'mod-log',
             roomName: roomService.MOD_LOG_ROOM
         });
-        
         return;
     }
 
@@ -360,19 +350,16 @@ async function handleCommand(io, socket, text, currentRoom) {
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
 
-    // --- LÓGICA UNIFICADA PARA ENCONTRAR AL USUARIO OBJETIVO ---
     async function findTargetUser(nick) {
         if (!nick) return null;
-        // 1. Busca si el usuario está conectado
         const targetSocketId = roomService.findSocketIdByNick(nick);
         if (targetSocketId) {
             const sockets = await io.fetchSockets();
             const targetSocket = sockets.find(s => s.id === targetSocketId);
             if (targetSocket && targetSocket.userData) {
-                return targetSocket.userData; // Devuelve los datos del usuario conectado
+                return targetSocket.userData;
             }
         }
-        // 2. Si no, busca en la base de datos (para usuarios registrados)
         return await userService.findUserByNick(nick);
     }
 
@@ -399,31 +386,25 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (!targetNick) {
             return socket.emit('system message', { text: 'Uso: /zlined <nick> [tiempo] <razón>', type: 'error', roomName: currentRoom });
         }
-
         const userToBan = await findTargetUser(targetNick);
         if (!userToBan) {
             return socket.emit('system message', { text: `No se encontró al usuario '${targetNick}'.`, type: 'error', roomName: currentRoom });
         }
-        
         const senderPriority = permissionService.getRolePriority(senderEffectiveRole);
         const targetPriority = permissionService.getRolePriority(userToBan.role);
         if (senderPriority >= targetPriority) {
             return socket.emit('system message', { text: 'No puedes banear a un usuario de tu mismo rango o superior.', type: 'error', roomName: currentRoom });
         }
-
         let duration = null;
         let reasonIndex = 2;
         let expiresAt = null;
-        
         if (args[2] && ms(args[2]) !== undefined) {
             duration = ms(args[2]);
             expiresAt = new Date(Date.now() + duration).toISOString();
             reasonIndex = 3;
         }
-
         const reason = args.slice(reasonIndex).join(' ') || 'No se especificó una razón.';
         const banId = userToBan.role === 'guest' ? userToBan.id : userToBan.nick.toLowerCase();
-        
         await banService.addGlobalBan(
             banId,
             userToBan.nick,
@@ -432,13 +413,10 @@ async function handleCommand(io, socket, text, currentRoom) {
             sender.nick,
             expiresAt
         );
-        
         const durationText = duration ? ` por ${ms(duration, { long: true })}` : ' permanentemente';
         const logMessage = `[ZLINED] ${sender.nick} BANEÓ GLOBALMENTE a ${userToBan.nick}${durationText}. Razón: ${reason}`;
-        
         io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
         io.emit('system message', { text: `${userToBan.nick} ha sido BANEADO del chat${durationText} por ${sender.nick}.`, type: 'error' });
-        
         const targetSocketId = roomService.findSocketIdByNick(userToBan.nick);
         if (targetSocketId) {
             const targetSocket = io.sockets.sockets.get(targetSocketId);
@@ -522,17 +500,43 @@ async function handleCommand(io, socket, text, currentRoom) {
         }
 
         case '/global': {
+            if (!['owner', 'admin'].includes(senderEffectiveRole)) {
+                return socket.emit('system message', { text: 'Comando denegado.', type: 'error', roomName: currentRoom });
+            }
             const message = args.slice(1).join(' ');
             if (!message) {
                 return socket.emit('system message', { text: 'Uso: /global <mensaje>', type: 'error', roomName: currentRoom });
             }
 
-            const announcement = `[📢 ANUNCIO GLOBAL de ${sender.nick}]: ${message}`;
+            const announcementText = `[📢 ANUNCIO GLOBAL]: ${message}`;
 
-            io.emit('system message', {
-                text: announcement,
-                type: 'highlight' 
-            });
+            const publicRooms = Object.keys(roomService.rooms).filter(
+                room => room !== roomService.MOD_LOG_ROOM && room !== roomService.INCOGNITO_ROOM
+            );
+
+            for (const roomName of publicRooms) {
+                const timestamp = new Date().toISOString();
+                
+                const messagePayload = {
+                    text: announcementText,
+                    nick: sender.nick,
+                    role: sender.role,
+                    isVIP: sender.isVIP,
+                    roomName: roomName,
+                    timestamp: timestamp
+                };
+
+                const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
+                stmt.run(roomName, sender.nick, announcementText, sender.role, sender.isVIP ? 1 : 0, timestamp, function(err) {
+                    if (err) {
+                        console.error(`Error guardando anuncio global en la sala ${roomName}:`, err);
+                        return;
+                    }
+                    messagePayload.id = this.lastID;
+                    io.to(roomName).emit('chat message', messagePayload);
+                });
+                stmt.finalize();
+            }
 
             io.to(roomService.MOD_LOG_ROOM).emit('system message', {
                 text: `[GLOBAL] ${sender.nick} envió un anuncio global: "${message}"`,
@@ -540,7 +544,8 @@ async function handleCommand(io, socket, text, currentRoom) {
                 roomName: roomService.MOD_LOG_ROOM
             });
 
-            socket.emit('system message', { text: 'Tu anuncio global ha sido enviado correctamente.', type: 'highlight', roomName: currentRoom });
+            socket.emit('system message', { text: 'Tu anuncio global ha sido enviado a todas las salas activas.', type: 'highlight', roomName: currentRoom });
+            
             return;
         }
 

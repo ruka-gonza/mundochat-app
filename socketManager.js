@@ -126,18 +126,12 @@ async function handlePrivateMessage(io, socket, { to, text }) {
     const targetSocketId = roomService.findSocketIdByNick(to);
     if (targetSocketId) {
         const timestamp = new Date().toISOString();
-        const messagePayload = { text, from: sender.nick, to: to, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
-        const stmt = db.prepare('INSERT INTO private_messages (from_nick, to_nick, text, timestamp) VALUES (?, ?, ?, ?)');
-        await new Promise((resolve, reject) => {
-            stmt.run(sender.nick, to, text, timestamp, function(err) {
-                if (err) { console.error("Error guardando mensaje privado:", err); return reject(err); }
-                messagePayload.id = this.lastID;
-                io.to(targetSocketId).emit('private message', messagePayload);
-                socket.emit('private message', messagePayload);
-                resolve();
-            });
-            stmt.finalize();
-        });
+        // ID aleatorio para mensajes privados efímeros
+        const tempId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const messagePayload = { id: tempId, text, from: sender.nick, to: to, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
+        
+        io.to(targetSocketId).emit('private message', messagePayload);
+        socket.emit('private message', messagePayload);
     } else {
         socket.emit('system message', { text: `El usuario '${to}' no se encuentra conectado.`, type: 'error' });
     }
@@ -251,6 +245,10 @@ async function deliverOfflineMessages(socket, nick) {
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
 
+    if (await checkBanStatus(socket, socket.userData.role === 'guest' ? socket.userData.id : socket.userData.nick.toLowerCase(), socket.userData.ip, roomName)) {
+        return;
+    }
+
     const lowerCaseRoomName = roomName.toLowerCase();
     const isModLog = lowerCaseRoomName === roomService.MOD_LOG_ROOM.toLowerCase();
     const isIncognito = lowerCaseRoomName === roomService.INCOGNITO_ROOM.toLowerCase();
@@ -339,19 +337,15 @@ async function handleJoinRoom(io, socket, { roomName }) {
     });
     
     roomService.updateUserList(io, roomName);
-    
     roomService.updateRoomData(io);
 }
 
 function handleDefinitiveDisconnect(io, socketData) {
     if (!socketData.userData || !socketData.userData.nick) return;
-
     closedSessions.add(socketData.userData.id);
     setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000);
-
     logActivity('DISCONNECT', socketData.userData);
     io.emit('user disconnected', { nick: socketData.userData.nick });
-
     socketData.joinedRooms.forEach(roomName => {
         if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socketData.id]) {
             delete roomService.rooms[roomName].users[socketData.id];
@@ -359,9 +353,7 @@ function handleDefinitiveDisconnect(io, socketData) {
             roomService.updateUserList(io, roomName);
         }
     });
-    
     roomService.updateRoomData(io);
-
     if (socketData.userData.role === 'guest') {
         roomService.guestSocketMap.delete(socketData.userData.id);
         if (socketData.userData.temp_avatar_path) {
@@ -375,7 +367,6 @@ function handleDefinitiveDisconnect(io, socketData) {
 function initializeSocket(io) {
     global.io = io;
     io.on('connection', (socket) => {
-        
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
 
@@ -401,11 +392,8 @@ function initializeSocket(io) {
                 return socket.emit('system message', { text: 'Esta función es solo para el modo incógnito.', type: 'error' });
             }
             if (!avatarBase64) return;
-
             socket.userData.avatar_url = avatarBase64;
-            
             roomService.updateUserDataInAllRooms(socket);
-            
             io.emit('user_data_updated', { 
                 nick: socket.userData.nick, 
                 avatar_url: avatarBase64 
@@ -432,24 +420,16 @@ function initializeSocket(io) {
         socket.on('reauthenticate', async (cookieData) => {
             try {
                 if (closedSessions.has(cookieData.id)) return socket.emit('reauth_failed');
-                
                 const userInDb = await userService.findUserById(cookieData.id);
                 if (!userInDb || userInDb.nick.toLowerCase() !== cookieData.nick.toLowerCase()) {
                     return socket.emit('reauth_failed');
                 }
-                
                 socket.userData = { 
-                    nick: userInDb.nick, 
-                    id: userInDb.id, 
-                    role: userInDb.role, 
-                    isMuted: userInDb.isMuted === 1, 
-                    isVIP: userInDb.isVIP === 1, 
-                    ip: userIP, 
-                    avatar_url: userInDb.avatar_url || 'image/default-avatar.png',
-                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), 
-                    isAFK: false 
+                    nick: userInDb.nick, id: userInDb.id, role: userInDb.role, 
+                    isMuted: userInDb.isMuted === 1, isVIP: userInDb.isVIP === 1, 
+                    ip: userIP, avatar_url: userInDb.avatar_url || 'image/default-avatar.png',
+                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(userInDb.role), isAFK: false 
                 };
-                
                 closedSessions.delete(userInDb.id);
                 socket.emit('reauth_success');
             } catch (error) {
@@ -461,28 +441,19 @@ function initializeSocket(io) {
             try {
                 let { nick, id, roomName } = data;
                 if (await checkBanStatus(socket, id, userIP, roomName)) return;
-
                 const registeredData = await userService.findUserById(id);
                 if (!registeredData || registeredData.nick.toLowerCase() !== nick.toLowerCase()) return;
-                
                 if (['owner', 'admin'].includes(registeredData.role)) {
                     roomName = roomService.INCOGNITO_ROOM;
                 } else if (['operator', 'mod'].includes(registeredData.role)) {
                     roomName = '#General';
                 }
-
                 socket.userData = { 
-                    nick: registeredData.nick, 
-                    id: registeredData.id, 
-                    role: registeredData.role, 
-                    isMuted: registeredData.isMuted === 1, 
-                    isVIP: registeredData.isVIP === 1, 
-                    ip: userIP, 
-                    avatar_url: registeredData.avatar_url || 'image/default-avatar.png',
-                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), 
-                    isAFK: false 
+                    nick: registeredData.nick, id: registeredData.id, role: registeredData.role, 
+                    isMuted: registeredData.isMuted === 1, isVIP: registeredData.isVIP === 1, 
+                    ip: userIP, avatar_url: registeredData.avatar_url || 'image/default-avatar.png',
+                    isStaff: ['owner', 'admin', 'mod', 'operator'].includes(registeredData.role), isAFK: false 
                 };
-                
                 await userService.updateUserIP(registeredData.nick, userIP);
                 closedSessions.delete(id);
                 logActivity('CONNECT', socket.userData);
@@ -499,7 +470,6 @@ function initializeSocket(io) {
                 const { nick, roomName, id } = data;
                 if (!nick || !roomName) return; 
                 if (await checkBanStatus(socket, id, userIP, roomName)) return;
-                
                 socket.userData = { nick, id: id, role: 'guest', isMuted: false, isVIP: false, ip: userIP, avatar_url: 'image/default-avatar.png', isStaff: false, isAFK: false };
                 roomService.guestSocketMap.set(id, socket.id);
                 closedSessions.delete(id);
@@ -610,28 +580,10 @@ function initializeSocket(io) {
         
         socket.on('request private history', ({ withNick }) => {
             try {
-                const myNick = socket.userData.nick;
-                if (!myNick || !withNick) return;
-                const query = `
-                    SELECT id, from_nick, to_nick, text, timestamp, 
-                           preview_type, preview_url, preview_title, preview_description, preview_image 
-                    FROM private_messages 
-                    WHERE (from_nick = ? AND to_nick = ?) OR (from_nick = ? AND to_nick = ?) 
-                    ORDER BY timestamp DESC LIMIT 50`;
-                db.all(query, [myNick, withNick, withNick, myNick], (err, rows) => {
-                    if (err) { console.error("Error al cargar historial privado:", err); return; }
-                    const history = rows.reverse().map(row => ({
-                        id: row.id, 
-                        text: row.text, 
-                        from: row.from_nick, 
-                        to: row.to_nick, 
-                        timestamp: row.timestamp,
-                        preview: row.preview_type ? { type: row.preview_type, url: row.preview_url, title: row.preview_title, description: row.preview_description, image: row.preview_image } : null
-                    }));
-                    socket.emit('load private history', { withNick, history });
-                });
+                if (!socket.userData.nick || !withNick) return;
+                socket.emit('load private history', { withNick, history: [] });
             } catch (error) {
-                console.error(`Error en el evento 'request private history':`, error);
+                console.error(`Error en 'request private history' (modificado):`, error);
             }
         });
         
@@ -659,22 +611,17 @@ function initializeSocket(io) {
         
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
-
             socket.userData.isAFK = !socket.userData.isAFK;
-
             roomService.updateUserDataInAllRooms(socket);
-
             socket.emit('user_data_updated', { 
                 nick: socket.userData.nick, 
                 isAFK: socket.userData.isAFK 
             });
-
             socket.joinedRooms.forEach(room => {
                 if (room !== socket.id) {
                     roomService.updateUserList(io, room);
                 }
             });
-            
             const statusMessage = socket.userData.isAFK ? `${socket.userData.nick} ahora está ausente.` : `${socket.userData.nick} ha vuelto.`;
             socket.joinedRooms.forEach(room => {
                 if (room !== socket.id) {

@@ -1,6 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-/* Definimos variables de color para un control fácil del tema */
 :root {
     --bg-main: #f0f2f5;
     --bg-content: #ffffff;
@@ -138,7 +137,7 @@ body {
 
 .message-header { margin-right: 0.5ch; font-size: 1em; color: var(--text-secondary); white-space: nowrap; }
 .message-header strong { font-weight: 600; color: var(--primary-color); }
-#private-chat-window ul li .message-header { display: none; }
+/* #private-chat-window ul li .message-header { display: none; } */
 .media-only-content .message-header { display: block !important; margin-bottom: 6px; }
 
 .media-message { margin-top: 6px; }
@@ -453,7 +452,7 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
 
 .preview-image-container {
     width: 100%;
-    max-height: 200px; /* Control max height on desktop */
+    max-height: 200px;
     overflow: hidden;
     display: flex;
     justify-content: center;
@@ -492,7 +491,6 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
     text-overflow: ellipsis;
 }
 
-/* Specific adjustments for YouTube previews */
 [data-preview-type="youtube"] .preview-image-container {
     position: relative;
 }
@@ -518,11 +516,10 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
 
 @media (max-width: 768px) {
     .preview-image-container {
-        max-height: 180px; /* Adjust height for mobile */
+        max-height: 180px;
     }
 }
 
-/* === Video Embedding Styles === */
 .message-text iframe {
     aspect-ratio: 16 / 9;
     width: 100%;
@@ -536,15 +533,9 @@ body.dark-mode .action-button-logout:hover { background-color: #c0392b; }
 /* ===         ESTILOS PERSONALIZADOS PARA EMOJIS      === */
 /* ======================================================= */
 
-/* Apunta específicamente a las imágenes con la clase .emoji dentro de los mensajes */
 .message-text img.emoji, .reply-quote p img.emoji {
-    /* Ajusta el tamaño. 1.4em es un 40% más grande que el texto. */
     width: 1.4em;
     height: 1.4em;
-
-    /* Pequeños ajustes para que no se pegue al texto */
     margin: 0 .1em;
-    
-    /* Alineación vertical para que quede centrado con la línea de texto */
     vertical-align: -0.3em;
 }

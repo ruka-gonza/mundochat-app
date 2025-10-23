@@ -89,28 +89,24 @@ export function createMessageElement(msg, isPrivate = false) {
     
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
-    headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${senderNick}</strong>`;
     
-    if (!isSent && !isPrivate) {
+    const displayName = isSent ? 'Yo' : senderNick;
+    headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${displayName}</strong>`;
+    
+    if (!isSent) {
         headerDiv.dataset.nick = senderNick;
         headerDiv.dataset.messageId = msg.id;
         headerDiv.style.cursor = 'pointer';
     }
-
+    
     if (msg.replyTo) {
         const quoteDiv = document.createElement('div');
         quoteDiv.className = 'reply-quote';
-        
         const quoteNick = document.createElement('strong');
         quoteNick.textContent = msg.replyTo.nick;
-        
         const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 
-            ? msg.replyTo.text.substring(0, 70) + '...' 
-            : msg.replyTo.text;
-        
+        const previewText = msg.replyTo.text.length > 70 ? msg.replyTo.text.substring(0, 70) + '...' : msg.replyTo.text;
         quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
-
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
         contentDiv.appendChild(quoteDiv);
@@ -138,7 +134,6 @@ export function createMessageElement(msg, isPrivate = false) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
         const processedText = processMessageText(msg.text);
-
         if (processedText.includes('iframe')) {
             textContainer.innerHTML = processedText;
         } else {
@@ -170,7 +165,6 @@ export function createMessageElement(msg, isPrivate = false) {
     if (!isPrivate) {
         const actionsDiv = document.createElement('div');
         actionsDiv.className = 'message-actions';
-        
         if (isSent && msg.text && !isMediaOnly) {
             const editBtn = document.createElement('button');
             editBtn.textContent = '✏️';
@@ -179,7 +173,6 @@ export function createMessageElement(msg, isPrivate = false) {
             editBtn.dataset.messageId = msg.id;
             actionsDiv.appendChild(editBtn);
         }
-
         if (isSent || iAmModerator) {
             const deleteBtn = document.createElement('button');
             deleteBtn.textContent = '🗑️';
@@ -191,7 +184,6 @@ export function createMessageElement(msg, isPrivate = false) {
             }
             actionsDiv.appendChild(deleteBtn);
         }
-        
         if (actionsDiv.hasChildNodes()) {
             mainContentWrapper.appendChild(actionsDiv);
         }
@@ -214,7 +206,6 @@ export function createMessageElement(msg, isPrivate = false) {
     return item;
 }
 
-// --- FUNCIÓN QUE FALTABA ---
 export function appendMessageToView(msg, isPrivate) {
     let listElement;
     if (isPrivate) {

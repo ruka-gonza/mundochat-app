@@ -22,6 +22,12 @@ async function generateLinkPreview(text) {
     if (!match) return null;
     const url = match[0];
 
+    // Ignoramos los enlaces de YouTube para que el frontend los maneje siempre.
+    const youtubeRegexSimple = /(?:youtube\.com|youtu\.be)/;
+    if (youtubeRegexSimple.test(url)) {
+        return null;
+    }
+
     const fetchWithTimeout = (url, options, timeout = 2000) => {
         return Promise.race([
             fetch(url, options),
@@ -33,43 +39,27 @@ async function generateLinkPreview(text) {
 
     try {
         const response = await fetchWithTimeout(url);
-
         if (!response.ok) return null;
-
         const contentType = response.headers.get('content-type');
 
         if (contentType && contentType.startsWith('image/')) {
              return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
         }
 
-        const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-        const youtubeMatch = url.match(youtubeRegex);
-        if (youtubeMatch && youtubeMatch[1]) {
-            const videoId = youtubeMatch[1];
-            const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
-            if (!oembedRes.ok) return null;
-            const data = await oembedRes.json();
-            return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
-        }
-
         if (contentType && contentType.includes('text/html')) {
             const html = await response.text();
             const titleMatch = html.match(/<title>(.*?)<\/title>/);
             const title = titleMatch ? titleMatch[1] : url;
-
             const descriptionMatch = html.match(/<meta\s+(?:name=[^'"']"description"['"]|property=[^'"']"og:description"['"])\s+content=[^'"']"(.*?)"['"]\s*\/?>/i);
             const description = descriptionMatch ? descriptionMatch[1] : '';
-
             const imageMatch = html.match(/<meta\s+property=[^'"']"og:image"['"]\s+content=[^'"']"(.*?)"['"]\s*\/?>/i);
             const image = imageMatch ? imageMatch[1] : null;
-
             if (image) {
                 if (/\.gif(\?.*)?$/i.test(image)) {
                     return { type: 'image', url: url, title: title, image: image, description: description };
                 }
                 return { type: 'link', url: url, title: title, image: image, description: description };
             }
-            
             if(title !== url) {
                 return { type: 'link', url: url, title: title, description: description, image: null };
             }
@@ -128,7 +118,7 @@ async function handlePrivateMessage(io, socket, { to, text, replyToId }) {
     const targetSocketId = roomService.findSocketIdByNick(to);
     if (targetSocketId) {
         const timestamp = new Date().toISOString();
-        const messageId = uuidv4(); // Generamos un ID único en el servidor
+        const messageId = uuidv4();
 
         const messagePayload = {
             id: messageId,
@@ -141,9 +131,6 @@ async function handlePrivateMessage(io, socket, { to, text, replyToId }) {
             replyToId: replyToId || null
         };
         
-        // La lógica para adjuntar el `replyTo` ahora se maneja en el frontend
-        // donde ambos clientes tienen acceso a su propio historial de mensajes en memoria.
-
         io.to(targetSocketId).emit('private message', messagePayload);
         socket.emit('private message', messagePayload);
     } else {
@@ -170,7 +157,6 @@ async function handleDeletePrivateMessage(io, socket, { messageId, toNick }) {
     }
     socket.emit('private message deleted', payload);
 }
-
 
 async function handleEditMessage(io, socket, { messageId, newText, roomName }) {
     const senderNick = socket.userData.nick;

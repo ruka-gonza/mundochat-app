@@ -55,7 +55,6 @@ function handlePrivateMessageReception(msg) {
     const partnerNick = msg.from === state.myNick ? msg.to : msg.from; 
     if (!state.privateMessageHistories[partnerNick]) { state.privateMessageHistories[partnerNick] = []; } 
 
-    // Adjuntar la información de la respuesta si es necesario
     if (msg.replyToId) {
         const originalMsg = state.privateMessageHistories[partnerNick].find(m => m.id === msg.replyToId);
         if (originalMsg) {

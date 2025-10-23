@@ -163,6 +163,13 @@ function showNickContextMenu(event, nick, messageId) {
     const pmButton = document.getElementById('context-pm-button');
     const replyButton = document.getElementById('context-reply-button');
 
+    // Ocultamos el botón "Enviar Privado" si ya estamos en un chat privado.
+    if (state.currentChatContext.type === 'private') {
+        pmButton.style.display = 'none';
+    } else {
+        pmButton.style.display = 'block';
+    }
+
     pmButton.onclick = () => {
         switchToChat(nick, 'private');
         menu.classList.add('hidden');

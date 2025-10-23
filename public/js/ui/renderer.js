@@ -90,7 +90,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     
-    const displayName = isSent ? 'Yo' : senderNick;
+    const displayName = senderNick; // Se muestra el nick real en lugar de "Yo"
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${displayName}</strong>`;
     
     if (!isSent) {
@@ -105,8 +105,12 @@ export function createMessageElement(msg, isPrivate = false) {
         const quoteNick = document.createElement('strong');
         quoteNick.textContent = msg.replyTo.nick;
         const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 ? msg.replyTo.text.substring(0, 70) + '...' : msg.replyTo.text;
+        const previewText = msg.replyTo.text.length > 70 
+            ? msg.replyTo.text.substring(0, 70) + '...' 
+            : msg.replyTo.text;
+        
         quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
+
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
         contentDiv.appendChild(quoteDiv);
@@ -134,6 +138,7 @@ export function createMessageElement(msg, isPrivate = false) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
         const processedText = processMessageText(msg.text);
+
         if (processedText.includes('iframe')) {
             textContainer.innerHTML = processedText;
         } else {
@@ -162,31 +167,32 @@ export function createMessageElement(msg, isPrivate = false) {
     mainContentWrapper.appendChild(contentDiv);
 
     const iAmModerator = (state.myUserData.role === 'owner' || state.myUserData.role === 'admin') || (state.myOriginalRole === 'owner' || state.myOriginalRole === 'admin');
-    if (!isPrivate) {
-        const actionsDiv = document.createElement('div');
-        actionsDiv.className = 'message-actions';
-        if (isSent && msg.text && !isMediaOnly) {
-            const editBtn = document.createElement('button');
-            editBtn.textContent = '✏️';
-            editBtn.title = 'Editar mensaje';
-            editBtn.className = 'action-btn edit-btn';
-            editBtn.dataset.messageId = msg.id;
-            actionsDiv.appendChild(editBtn);
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message-actions';
+    
+    if (isSent && msg.text && !isMediaOnly) {
+        const editBtn = document.createElement('button');
+        editBtn.textContent = '✏️';
+        editBtn.title = 'Editar mensaje';
+        editBtn.className = 'action-btn edit-btn';
+        editBtn.dataset.messageId = msg.id;
+        actionsDiv.appendChild(editBtn);
+    }
+
+    if (isSent || iAmModerator) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = '🗑️';
+        deleteBtn.title = 'Eliminar mensaje';
+        deleteBtn.className = 'action-btn delete-btn';
+        deleteBtn.dataset.messageId = msg.id;
+        if (iAmModerator && !isSent) {
+            deleteBtn.dataset.isModAction = 'true';
         }
-        if (isSent || iAmModerator) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.textContent = '🗑️';
-            deleteBtn.title = 'Eliminar mensaje';
-            deleteBtn.className = 'action-btn delete-btn';
-            deleteBtn.dataset.messageId = msg.id;
-            if (iAmModerator && !isSent) {
-                deleteBtn.dataset.isModAction = 'true';
-            }
-            actionsDiv.appendChild(deleteBtn);
-        }
-        if (actionsDiv.hasChildNodes()) {
-            mainContentWrapper.appendChild(actionsDiv);
-        }
+        actionsDiv.appendChild(deleteBtn);
+    }
+    
+    if (actionsDiv.hasChildNodes()) {
+        mainContentWrapper.appendChild(actionsDiv);
     }
 
     item.appendChild(mainContentWrapper);

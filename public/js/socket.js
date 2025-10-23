@@ -7,40 +7,32 @@ import { appendMessageToView, createMessageElement } from './ui/renderer.js';
 import { switchToChat, updateTypingIndicator } from './ui/chatInput.js'; 
 import { openProfileModal, showSexoWarningModal, fetchAndShowBannedUsers, fetchAndShowMutedUsers, fetchAndShowOnlineUsers, fetchAndShowActivityLogs, fetchAndShowReports, showRoomCreatorHelpModal, showAdminAgreementModal, showOfflineMessagesModal } from './ui/modals.js';
 
-let backButtonListenerAdded = false; // Variable de control para el listener del botón "atrás"
+let backButtonListenerAdded = false;
 
 function renderHistoryInBatches(history, isPrivate) {
     const container = isPrivate ? dom.privateChatWindow : dom.messagesContainer;
     if (!container) return;
-
     container.innerHTML = '';
-
     if (isPrivate && !container.querySelector('ul')) {
         container.appendChild(document.createElement('ul'));
     }
     const listElement = isPrivate ? container.querySelector('ul') : container;
-
     let index = 0;
     const batchSize = 5;
-
     function renderBatch() {
         const fragment = document.createDocumentFragment();
         const batchEnd = Math.min(index + batchSize, history.length);
-
         for (let i = index; i < batchEnd; i++) {
             fragment.appendChild(createMessageElement(history[i], isPrivate));
         }
-
         listElement.appendChild(fragment);
         index = batchEnd;
-
         if (index < history.length) {
             requestAnimationFrame(renderBatch);
         } else {
             container.scrollTop = container.scrollHeight;
         }
     }
-
     renderBatch();
 }
 
@@ -62,22 +54,40 @@ export function updateUnreadCounts() {
 function handlePrivateMessageReception(msg) { 
     const partnerNick = msg.from === state.myNick ? msg.to : msg.from; 
     if (!state.privateMessageHistories[partnerNick]) { state.privateMessageHistories[partnerNick] = []; } 
+
+    // Adjuntar la información de la respuesta si es necesario
+    if (msg.replyToId) {
+        const originalMsg = state.privateMessageHistories[partnerNick].find(m => m.id === msg.replyToId);
+        if (originalMsg) {
+            msg.replyTo = { nick: originalMsg.from, text: originalMsg.text };
+        }
+    }
+
     state.privateMessageHistories[partnerNick].push(msg); 
-    if (state.currentChatContext.type === 'private' && state.currentChatContext.with === partnerNick) { appendMessageToView(msg, true); } else { if (msg.from !== state.myNick) { addPrivateChat(partnerNick); state.usersWithUnreadMessages.add(partnerNick); updateConversationList(); updateUnreadCounts(); const notificationBody = msg.file ? `Te ha enviado un archivo.` : msg.text; showNotification(`Nuevo mensaje de ${msg.from}`, notificationBody, true); } } }
+    if (state.currentChatContext.type === 'private' && state.currentChatContext.with === partnerNick) { 
+        appendMessageToView(msg, true); 
+    } else { 
+        if (msg.from !== state.myNick) { 
+            addPrivateChat(partnerNick); 
+            state.usersWithUnreadMessages.add(partnerNick); 
+            updateConversationList(); 
+            updateUnreadCounts(); 
+            const notificationBody = msg.file ? `Te ha enviado un archivo.` : msg.text; 
+            showNotification(`Nuevo mensaje de ${msg.from}`, notificationBody, true); 
+        } 
+    } 
+}
 
 function handlePublicMessage(msg) {
     if (!state.publicMessageHistories[msg.roomName]) {
         state.publicMessageHistories[msg.roomName] = [];
     }
-
     const isMention = state.myNick && msg.nick && msg.text && msg.nick !== state.myNick && msg.text.toLowerCase().includes(state.myNick.toLowerCase());
     if (isMention) {
         msg.isMention = true;
         showNotification(`Nueva mención de ${msg.nick}`, msg.text);
     }
-    
     state.publicMessageHistories[msg.roomName].push(msg);
-
     if (state.currentChatContext.type === 'room' && state.currentChatContext.with === msg.roomName) {
         appendMessageToView(msg, false);
     } else {
@@ -96,28 +106,15 @@ export function initializeSocketEvents(socket) {
     socket.on('set admin cookie', (data) => { document.cookie = `adminUser=${JSON.stringify(data)}; path=/; max-age=86400`; });
 
     socket.on('set session cookie', (data) => {
-        console.log('[DEBUG] Received set session cookie event:', data);
-        if (data.token) {
-            state.authToken = data.token;
-        }
-        if (data.nick) {
-            state.myNick = data.nick;
-        }
-        if (data.id && data.nick && data.role) {
-            state.myUserData = {
-                ...state.myUserData,
-                id: data.id,
-                nick: data.nick,
-                role: data.role
-            };
-        }
+        if (data.token) { state.authToken = data.token; }
+        if (data.nick) { state.myNick = data.nick; }
+        if (data.id && data.nick && data.role) { state.myUserData = { ...state.myUserData, id: data.id, nick: data.nick, role: data.role }; }
         document.cookie = `user_auth=${JSON.stringify(data)}; path=/; max-age=86400`;
     });
 
     socket.on('update user list', ({ roomName, users }) => {
         if (!state.roomUserLists) state.roomUserLists = {};
         state.roomUserLists[roomName] = users;
-
         if (state.currentChatContext.type === 'room' && state.currentChatContext.with === roomName) {
             state.currentRoomUsers = users;
             users.forEach(user => {
@@ -132,14 +129,11 @@ export function initializeSocketEvents(socket) {
     socket.on('user_data_updated', (data) => {
         const lowerOldNick = (data.oldNick || data.nick).toLowerCase();
         const lowerNewNick = data.nick.toLowerCase();
-    
         if (data.oldNick && lowerOldNick !== lowerNewNick) {
             state.allUsersData[lowerNewNick] = state.allUsersData[lowerOldNick];
             delete state.allUsersData[lowerOldNick];
         }
-
         state.allUsersData[lowerNewNick] = { ...state.allUsersData[lowerNewNick], ...data };
-        
         if (state.myNick.toLowerCase() === lowerOldNick) {
             if (data.isIncognito) {
                 if(state.myUserData.role === 'owner' || state.myUserData.role === 'admin') {
@@ -148,14 +142,12 @@ export function initializeSocketEvents(socket) {
             } else if (data.isIncognito === false) {
                 delete state.myOriginalRole;
             }
-
             state.myNick = data.nick;
             state.myUserData = { ...state.myUserData, ...data };
             if (data.isAFK !== undefined) state.isAFK = data.isAFK;
             if (dom.profileNickSpan) dom.profileNickSpan.textContent = state.myNick;
             if (dom.newNickInput) dom.newNickInput.value = state.myNick;
         }
-    
         Object.values(state.roomUserLists || {}).forEach(list => {
             const userInList = list.find(u => u.nick.toLowerCase() === lowerOldNick);
             if (userInList) {
@@ -165,11 +157,9 @@ export function initializeSocketEvents(socket) {
                 }
             }
         });
-
         if (state.currentChatContext.type === 'room') {
             renderUserList();
         }
-    
         if (data.oldNick && lowerOldNick !== lowerNewNick) {
             if (state.activePrivateChats.has(data.oldNick)) {
                 state.activePrivateChats.delete(data.oldNick);
@@ -188,16 +178,13 @@ export function initializeSocketEvents(socket) {
                 dom.privateChatWithUser.textContent = `Chat con ${data.nick}`;
             }
         }
-    
         updateConversationList();
     });
 
     socket.on('open private chat', ({ with: partnerNick }) => { if (partnerNick !== state.myNick) switchToChat(partnerNick, 'private'); });
     socket.on('private chat requested', ({ from: partnerNick }) => { if (partnerNick !== state.myNick) addPrivateChat(partnerNick); });
-    
     socket.on('private message', handlePrivateMessageReception);
     socket.on('private file message', handlePrivateMessageReception);
-    
     socket.on('chat message', handlePublicMessage);
     socket.on('file message', handlePublicMessage);
 
@@ -263,17 +250,13 @@ export function initializeSocketEvents(socket) {
             dom.welcomePopup.classList.remove('hidden');
             state.isFirstLogin = false;
         }
-        
         if (roomName.toLowerCase() === 'sexo') {
             showSexoWarningModal();
         }
-
         state.joinedRooms = new Set(serverJoinedRooms);
         updateConversationList();
         switchToChat(roomName, 'room');
         dom.roomSwitcher.classList.remove('show');
-
-        // --- INICIO DE LA LÓGICA DE ADVERTENCIA DE SALIDA ---
         if (!backButtonListenerAdded) {
             history.pushState(null, '', location.href);
             window.addEventListener('popstate', function(event) {
@@ -288,7 +271,6 @@ export function initializeSocketEvents(socket) {
             });
             backButtonListenerAdded = true;
         }
-        // --- FIN DE LA LÓGICA DE ADVERTENCIA DE SALIDA ---
     });
 
     socket.on('leave_success', ({ roomName, joinedRooms: serverJoinedRooms }) => {
@@ -386,7 +368,7 @@ export function initializeSocketEvents(socket) {
         if (state.currentChatContext.with === roomName) {
             const messageElement = document.getElementById(`message-${messageId}`);
             if (messageElement) {
-                                const textSpan = messageElement.querySelector('.message-text');
+                const textSpan = messageElement.querySelector('.message-text');
                 if (textSpan) {
                     textSpan.innerHTML = twemoji.parse(replaceEmoticons(newText));
                 }
@@ -406,6 +388,45 @@ export function initializeSocketEvents(socket) {
             state.publicMessageHistories[roomName] = state.publicMessageHistories[roomName].filter(m => Number(m.id) !== Number(messageId));
         }
         if (state.currentChatContext.with === roomName) {
+            document.getElementById(`message-${messageId}`)?.remove();
+        }
+    });
+
+    socket.on('private message edited', ({ messageId, newText, from, to }) => {
+        const partnerNick = from === state.myNick ? to : from;
+        const history = state.privateMessageHistories[partnerNick];
+        if (history) {
+            const message = history.find(m => m.id === messageId);
+            if (message) {
+                message.text = newText;
+                message.editedAt = new Date().toISOString();
+            }
+        }
+        if (state.currentChatContext.type === 'private' && state.currentChatContext.with === partnerNick) {
+            const messageElement = document.getElementById(`message-${messageId}`);
+            if (messageElement) {
+                const textSpan = messageElement.querySelector('.message-text');
+                if (textSpan) {
+                    textSpan.innerHTML = twemoji.parse(replaceEmoticons(newText));
+                }
+                let editedIndicator = messageElement.querySelector('.edited-indicator');
+                if (!editedIndicator) {
+                    editedIndicator = document.createElement('span');
+                    editedIndicator.className = 'edited-indicator';
+                    editedIndicator.textContent = ' (editado)';
+                    messageElement.querySelector('.message-content').appendChild(editedIndicator);
+                }
+            }
+        }
+    });
+
+    socket.on('private message deleted', ({ messageId, from, to }) => {
+        const partnerNick = from === state.myNick ? to : from;
+        const history = state.privateMessageHistories[partnerNick];
+        if (history) {
+            state.privateMessageHistories[partnerNick] = history.filter(m => m.id !== messageId);
+        }
+        if (state.currentChatContext.type === 'private' && state.currentChatContext.with === partnerNick) {
             document.getElementById(`message-${messageId}`)?.remove();
         }
     });

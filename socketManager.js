@@ -117,25 +117,60 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
     io.to(roomName).emit('chat message', messagePayload);
 }
 
-async function handlePrivateMessage(io, socket, { to, text }) {
+async function handlePrivateMessage(io, socket, { to, text, replyToId }) {
     const sender = socket.userData;
     if (!sender || !sender.nick) return;
+
     if (sender.nick.toLowerCase() === to.toLowerCase()) {
         return socket.emit('system message', { text: 'No puedes enviarte mensajes a ti mismo.', type: 'error' });
     }
+
     const targetSocketId = roomService.findSocketIdByNick(to);
     if (targetSocketId) {
         const timestamp = new Date().toISOString();
-        // ID aleatorio para mensajes privados efímeros
-        const tempId = `pm-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const messagePayload = { id: tempId, text, from: sender.nick, to: to, role: sender.role, isVIP: sender.isVIP, timestamp: timestamp };
+        const messageId = uuidv4(); // Generamos un ID único en el servidor
+
+        const messagePayload = {
+            id: messageId,
+            text,
+            from: sender.nick,
+            to: to,
+            role: sender.role,
+            isVIP: sender.isVIP,
+            timestamp: timestamp,
+            replyToId: replyToId || null
+        };
         
+        // La lógica para adjuntar el `replyTo` ahora se maneja en el frontend
+        // donde ambos clientes tienen acceso a su propio historial de mensajes en memoria.
+
         io.to(targetSocketId).emit('private message', messagePayload);
         socket.emit('private message', messagePayload);
     } else {
         socket.emit('system message', { text: `El usuario '${to}' no se encuentra conectado.`, type: 'error' });
     }
 }
+
+async function handleEditPrivateMessage(io, socket, { messageId, newText, toNick }) {
+    const senderNick = socket.userData.nick;
+    const payload = { messageId, newText, from: senderNick, to: toNick };
+    const targetSocketId = roomService.findSocketIdByNick(toNick);
+    if (targetSocketId) {
+        io.to(targetSocketId).emit('private message edited', payload);
+    }
+    socket.emit('private message edited', payload);
+}
+
+async function handleDeletePrivateMessage(io, socket, { messageId, toNick }) {
+    const senderNick = socket.userData.nick;
+    const payload = { messageId, from: senderNick, to: toNick };
+    const targetSocketId = roomService.findSocketIdByNick(toNick);
+    if (targetSocketId) {
+        io.to(targetSocketId).emit('private message deleted', payload);
+    }
+    socket.emit('private message deleted', payload);
+}
+
 
 async function handleEditMessage(io, socket, { messageId, newText, roomName }) {
     const senderNick = socket.userData.nick;
@@ -563,6 +598,22 @@ function initializeSocket(io) {
             } catch (error) {
                 console.error(`Error en el evento 'private message':`, error);
                 socket.emit('system message', { text: 'Ocurrió un error al enviar tu mensaje privado.', type: 'error' });
+            }
+        });
+
+        socket.on('edit private message', async (data) => {
+            try {
+                await handleEditPrivateMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'edit private message':`, error);
+            }
+        });
+
+        socket.on('delete private message', async (data) => {
+            try {
+                await handleDeletePrivateMessage(io, socket, data);
+            } catch (error) {
+                console.error(`Error en el evento 'delete private message':`, error);
             }
         });
 

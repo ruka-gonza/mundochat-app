@@ -163,7 +163,6 @@ function showNickContextMenu(event, nick, messageId) {
     const pmButton = document.getElementById('context-pm-button');
     const replyButton = document.getElementById('context-reply-button');
 
-    // Ocultamos el botón "Enviar Privado" si ya estamos en un chat privado.
     if (state.currentChatContext.type === 'private') {
         pmButton.style.display = 'none';
     } else {
@@ -201,32 +200,39 @@ function showNickContextMenu(event, nick, messageId) {
 function promptForEdit(messageId) {
     const messageElement = document.getElementById(`message-${messageId}`);
     if (!messageElement) return;
-
     const textSpan = messageElement.querySelector('.message-text');
     if (!textSpan) return;
-
     const textContentClone = textSpan.cloneNode(true);
     const nickElementInClone = textContentClone.querySelector('.message-nick');
     if (nickElementInClone) nickElementInClone.remove();
     const currentText = textContentClone.textContent.trim();
-
     const newText = prompt('Edita tu mensaje:', currentText);
+
     if (newText && newText.trim() !== '' && newText !== currentText) {
-        state.socket.emit('edit message', { messageId, newText, roomName: state.currentChatContext.with });
+        if (state.currentChatContext.type === 'private') {
+            state.socket.emit('edit private message', { 
+                messageId, 
+                newText, 
+                toNick: state.currentChatContext.with 
+            });
+        } else {
+            state.socket.emit('edit message', { 
+                messageId, 
+                newText, 
+                roomName: state.currentChatContext.with 
+            });
+        }
     }
 }
 
 function showAvatarPopup(avatarElement) {
     const avatarSrc = avatarElement.src;
     if (!avatarSrc || avatarSrc.endsWith('default-avatar.png')) return;
-    
     const popupImg = dom.avatarHoverPopup.querySelector('img');
     popupImg.src = avatarSrc;
-    
     const rect = avatarElement.getBoundingClientRect();
     const popupWidth = 210;
     const isMobile = window.innerWidth <= 1024;
-    
     if (isMobile) {
         dom.avatarHoverPopup.style.left = '50%';
         dom.avatarHoverPopup.style.top = '50%';
@@ -241,7 +247,6 @@ function showAvatarPopup(avatarElement) {
         dom.avatarHoverPopup.style.top = `${top}px`;
         dom.avatarHoverPopup.style.transform = 'none';
     }
-    
     dom.avatarHoverPopup.classList.remove('hidden');
     setTimeout(() => dom.avatarHoverPopup.classList.add('visible'), 10);
 }
@@ -265,67 +270,56 @@ function closeImageModal() {
 function createYoutubeEmbed(youtubeId, targetContainer) {
     const embedWrapper = document.createElement('div');
     embedWrapper.className = 'youtube-embed-wrapper';
-    
     const iframe = document.createElement('iframe');
     iframe.src = `https://www.youtube-nocookie.com/embed/${youtubeId}?autoplay=1`;
     iframe.title = "Reproductor de video de YouTube";
     iframe.frameBorder = "0";
     iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
     iframe.allowFullscreen = true;
-    
     embedWrapper.appendChild(iframe);
-    
     targetContainer.parentNode.replaceChild(embedWrapper, targetContainer);
 }
 
 export function initUserInteractions() {
     dom.userSearchInput.addEventListener('input', renderUserList);
-    
     const guestAvatarInput = document.getElementById('guest-avatar-input');
     if (guestAvatarInput) {
         guestAvatarInput.addEventListener('change', handleGuestAvatarUpload);
     }
-
     dom.chatContainer.addEventListener('mouseover', (e) => {
         if (window.innerWidth > 1024) {
             const avatar = e.target.closest('.message-avatar, .user-list-avatar');
             if (avatar) showAvatarPopup(avatar);
         }
     });
-
     dom.chatContainer.addEventListener('mouseout', (e) => {
         if (window.innerWidth > 1024) {
             const avatar = e.target.closest('.message-avatar, .user-list-avatar');
             if (avatar) hideAvatarPopup();
         }
     });
-    
     dom.chatContainer.addEventListener('click', (e) => {
         const avatar = e.target.closest('.message-avatar, .user-list-avatar');
         if (avatar) {
             e.stopPropagation();
             showAvatarPopup(avatar);
         }
-
         const chatImage = e.target.closest('.media-message.image-message');
         if (chatImage) {
             e.preventDefault();
             openImageModal(chatImage.src);
             return;
         }
-        
         const previewCard = e.target.closest('.link-preview-card');
         if (previewCard && previewCard.dataset.previewType === 'youtube') {
             e.preventDefault();
             createYoutubeEmbed(previewCard.dataset.youtubeId, previewCard);
             return;
         }
-        
         const currentlyVisible = document.querySelector('#messages > li.actions-visible, #private-chat-window li.actions-visible');
         if (currentlyVisible && !e.target.closest('li')) {
             currentlyVisible.classList.remove('actions-visible');
         }
-
         const messageItem = e.target.closest('li[id^="message-"]');
         if (messageItem && currentlyVisible && currentlyVisible !== messageItem) {
             currentlyVisible.classList.remove('actions-visible');
@@ -333,25 +327,34 @@ export function initUserInteractions() {
         if (messageItem) {
             messageItem.classList.toggle('actions-visible');
         }
-        
         const actionButton = e.target.closest('.action-btn');
         if (actionButton) {
             e.stopPropagation();
             const messageId = actionButton.dataset.messageId;
+            const isPrivate = state.currentChatContext.type === 'private';
             if (actionButton.classList.contains('edit-btn')) {
                 promptForEdit(messageId);
             } else if (actionButton.classList.contains('delete-btn')) {
                 const isModAction = actionButton.dataset.isModAction === 'true';
                 const confirmationMessage = isModAction ? '¿Estás seguro de que quieres borrar este mensaje como moderador?' : '¿Estás seguro de que quieres eliminar este mensaje?';
                 if (confirm(confirmationMessage)) {
-                    const eventName = isModAction ? 'delete any message' : 'delete message';
-                    state.socket.emit(eventName, { messageId, roomName: state.currentChatContext.with });
+                    if (isPrivate) {
+                        state.socket.emit('delete private message', { 
+                            messageId, 
+                            toNick: state.currentChatContext.with 
+                        });
+                    } else {
+                        const eventName = isModAction ? 'delete any message' : 'delete message';
+                        state.socket.emit(eventName, { 
+                            messageId, 
+                            roomName: state.currentChatContext.with 
+                        });
+                    }
                 }
             }
             actionButton.closest('li.actions-visible')?.classList.remove('actions-visible');
             return;
         }
-
         const headerElement = e.target.closest('.message-header');
         if (headerElement && headerElement.dataset.nick) {
             e.stopPropagation();
@@ -362,20 +365,17 @@ export function initUserInteractions() {
             return;
         }
     });
-
     dom.closeImageModalButton.addEventListener('click', closeImageModal);
     dom.imageModalOverlay.addEventListener('click', (e) => {
         if (e.target === dom.imageModalOverlay) {
             closeImageModal();
         }
     });
-
     document.addEventListener('keydown', (e) => {
         if (e.key === "Escape" && !dom.imageModalOverlay.classList.contains('hidden')) {
             closeImageModal();
         }
     });
-
     document.addEventListener('click', (e) => {
         if (dom.roomSwitcher.classList.contains('show') && !dom.roomHeaderContainer.contains(e.target)) {
             dom.roomSwitcher.classList.remove('show');
@@ -393,7 +393,6 @@ export function initUserInteractions() {
         if (menu && !menu.contains(e.target)) {
             menu.classList.add('hidden');
         }
-        
         const selfMenu = document.getElementById('self-context-menu');
         if (selfMenu && !selfMenu.contains(e.target)) {
             selfMenu.classList.add('hidden');

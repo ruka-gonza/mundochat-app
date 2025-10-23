@@ -6,13 +6,11 @@ function createPreviewCard(preview) {
     if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio') {
         return null;
     }
-
     const linkCard = document.createElement('a');
     linkCard.href = preview.url;
     linkCard.target = '_blank';
     linkCard.rel = 'noopener noreferrer';
     linkCard.className = 'link-preview-card';
-
     if (preview.type === 'youtube') {
         const videoIdMatch = preview.url.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
         if (videoIdMatch) {
@@ -20,7 +18,6 @@ function createPreviewCard(preview) {
             linkCard.dataset.youtubeId = videoIdMatch[1];
         }
     }
-
     let innerHTML = '';
     if (preview.image) {
         innerHTML += `<div class="preview-image-container"><img src="${preview.image}" alt="Previsualización" loading="lazy"></div>`;
@@ -33,7 +30,6 @@ function createPreviewCard(preview) {
         innerHTML += `<p class="preview-description">${preview.description}</p>`;
     }
     innerHTML += '</div>';
-
     linkCard.innerHTML = innerHTML;
     return linkCard;
 }
@@ -41,12 +37,10 @@ function createPreviewCard(preview) {
 function processMessageText(text) {
     const youtubeRegex = /^https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})$/i;
     const youtubeMatch = text.match(youtubeRegex);
-
     if (youtubeMatch && youtubeMatch[1]) {
         const videoId = youtubeMatch[1];
         return `<iframe width="480" height="270" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
     }
-
     const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
     return text.replace(imageRegex, '<img src="$1" class="chat-image" alt="Image" loading="lazy">');
 }
@@ -90,7 +84,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
     
-    const displayName = senderNick; // Se muestra el nick real en lugar de "Yo"
+    const displayName = senderNick;
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${displayName}</strong>`;
     
     if (!isSent) {
@@ -110,7 +104,6 @@ export function createMessageElement(msg, isPrivate = false) {
             : msg.replyTo.text;
         
         quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
-
         quoteDiv.appendChild(quoteNick);
         quoteDiv.appendChild(quoteText);
         contentDiv.appendChild(quoteDiv);
@@ -138,7 +131,6 @@ export function createMessageElement(msg, isPrivate = false) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
         const processedText = processMessageText(msg.text);
-
         if (processedText.includes('iframe')) {
             textContainer.innerHTML = processedText;
         } else {

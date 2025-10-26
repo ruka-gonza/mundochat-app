@@ -29,8 +29,14 @@ async function startServer() {
         app.set('trust proxy', 1);
         const server = http.createServer(app);
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         const closedSessions = new Set();
-        app.locals.closedSessions = closedSessions;
+        app.locals.closedSessions = closedSessions; // Hacemos accesible para el middleware
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
 
         const isProduction = process.env.NODE_ENV === 'production';
         const allowedOrigins = [
@@ -71,35 +77,14 @@ async function startServer() {
             req.io = io;
             next();
         });
-
-        app.post('/api/auth/keep-alive', (req, res) => {
-            const userAuthCookie = req.cookies.user_auth;
-            if (userAuthCookie) {
-                try {
-                    const cookieOptions = {
-                        httpOnly: false,
-                    };
-                    if (isProduction) {
-                        cookieOptions.sameSite = 'none';
-                        cookieOptions.secure = true;
-                    } else {
-                        cookieOptions.sameSite = 'lax';
-                    }
-                    res.cookie('user_auth', userAuthCookie, cookieOptions);
-                    return res.status(200).json({ message: 'Session extended.' });
-                } catch (e) {
-                    return res.status(400).json({ error: 'Invalid session cookie.' });
-                }
-            }
-            return res.status(401).json({ error: 'No active session.' });
-        });
-
+        
         app.use('/api/admin', adminRoutes);
         app.use('/api/user', isCurrentUser, userRoutes);
         app.use('/api/auth', authRoutes);
         app.use('/api/guest', guestRoutes);
         app.use('/api/upload', isCurrentUser, uploadRoutes);
-
+        
+        // Pasamos 'closedSessions' como argumento
         initializeSocket(io, closedSessions);
         botService.initialize(io);
 

@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
 
-const { closedSessions } = require('../socketManager');
+// ¡LA IMPORTACIÓN CIRCULAR HA SIDO ELIMINADA DE AQUÍ!
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -19,6 +19,11 @@ async function generateLinkPreview(text) {
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
+
+    const youtubeRegexSimple = /(?:youtube\.com|youtu\.be)/;
+    if (youtubeRegexSimple.test(url)) {
+        return null;
+    }
 
     const fetchWithTimeout = (url, options, timeout = 2000) => {
         return Promise.race([
@@ -36,16 +41,6 @@ async function generateLinkPreview(text) {
 
         if (contentType && contentType.startsWith('image/')) {
              return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
-        }
-
-        const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
-        const youtubeMatch = url.match(youtubeRegex);
-        if (youtubeMatch && youtubeMatch[1]) {
-            const videoId = youtubeMatch[1];
-            const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
-            if (!oembedRes.ok) return null;
-            const data = await oembedRes.json();
-            return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
         }
 
         if (contentType && contentType.includes('text/html')) {
@@ -350,32 +345,33 @@ async function handleJoinRoom(io, socket, { roomName }) {
     roomService.updateRoomData(io);
 }
 
-function handleDefinitiveDisconnect(io, socketData, closedSessions) {
-    if (!socketData.userData || !socketData.userData.nick) return;
-    closedSessions.add(socketData.userData.id);
-    setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000);
-    logActivity('DISCONNECT', socketData.userData);
-    io.emit('user disconnected', { nick: socketData.userData.nick });
-    socketData.joinedRooms.forEach(roomName => {
-        if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socketData.id]) {
-            delete roomService.rooms[roomName].users[socketData.id];
-            io.to(roomName).emit('system message', { text: `${socketData.userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
-            roomService.updateUserList(io, roomName);
-        }
-    });
-    roomService.updateRoomData(io);
-    if (socketData.userData.role === 'guest') {
-        roomService.guestSocketMap.delete(socketData.userData.id);
-        if (socketData.userData.temp_avatar_path) {
-            fs.unlink(socketData.userData.temp_avatar_path, (err) => {
-                if (err) console.error(`Error al borrar avatar temporal de ${socketData.userData.nick}:`, err);
-            });
-        }
-    }
-}
-
 function initializeSocket(io, closedSessions) {
     global.io = io;
+
+    function handleDefinitiveDisconnect(io, socketData) {
+        if (!socketData.userData || !socketData.userData.nick) return;
+        closedSessions.add(socketData.userData.id);
+        setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000);
+        logActivity('DISCONNECT', socketData.userData);
+        io.emit('user disconnected', { nick: socketData.userData.nick });
+        socketData.joinedRooms.forEach(roomName => {
+            if (roomService.rooms[roomName] && roomService.rooms[roomName].users[socketData.id]) {
+                delete roomService.rooms[roomName].users[socketData.id];
+                io.to(roomName).emit('system message', { text: `${socketData.userData.nick} ha abandonado el chat.`, type: 'leave', roomName });
+                roomService.updateUserList(io, roomName);
+            }
+        });
+        roomService.updateRoomData(io);
+        if (socketData.userData.role === 'guest') {
+            roomService.guestSocketMap.delete(socketData.userData.id);
+            if (socketData.userData.temp_avatar_path) {
+                fs.unlink(socketData.userData.temp_avatar_path, (err) => {
+                    if (err) console.error(`Error al borrar avatar temporal de ${socketData.userData.nick}:`, err);
+                });
+            }
+        }
+    }
+
     io.on('connection', (socket) => {
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
@@ -502,11 +498,11 @@ function initializeSocket(io, closedSessions) {
             roomService.updateRoomData(io);
         });
         socket.on('logout', () => {
-            handleDefinitiveDisconnect(io, { id: socket.id, userData: socket.userData, joinedRooms: Array.from(socket.joinedRooms || []) }, closedSessions);
+            handleDefinitiveDisconnect(io, { id: socket.id, userData: socket.userData, joinedRooms: Array.from(socket.joinedRooms || []) });
             socket.disconnect(true);
         });
         socket.on('disconnect', () => {
-            handleDefinitiveDisconnect(io, { id: socket.id, userData: socket.userData, joinedRooms: Array.from(socket.joinedRooms || []) }, closedSessions);
+            handleDefinitiveDisconnect(io, { id: socket.id, userData: socket.userData, joinedRooms: Array.from(socket.joinedRooms || []) });
         });
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
         socket.on('chat message', async (data) => {

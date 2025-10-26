@@ -28,6 +28,8 @@ function createPreviewCard(preview) {
 }
 
 function processMessageText(text) {
+    if (!text) return ''; // Prevenir errores si el texto es nulo o undefined
+    
     const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
     const youtubeMatch = text.match(youtubeRegex);
 
@@ -39,14 +41,14 @@ function processMessageText(text) {
                     src="https://www.youtube.com/embed/${videoId}" 
                     frameborder="0" 
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowfullscreen>
+                    allowfullscreen 
+                    referrerpolicy="strict-origin-when-cross-origin">
                 </iframe>`;
     }
 
     const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
     return text.replace(imageRegex, '<a href="$1" target="_blank"><img src="$1" class="chat-image" alt="Image" loading="lazy"></a>');
 }
-
 
 export function createMessageElement(msg, isPrivate = false) {
     if (!msg.nick && !msg.from) {
@@ -61,7 +63,6 @@ export function createMessageElement(msg, isPrivate = false) {
         return document.createDocumentFragment();
     }
 
-    const isMediaOnly = msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio');
     const isSent = msg.from === state.myNick || msg.nick === state.myNick;
     
     const item = document.createElement('li');
@@ -80,13 +81,9 @@ export function createMessageElement(msg, isPrivate = false) {
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    if (isMediaOnly) {
-        contentDiv.classList.add('media-only-content');
-    }
     
     const headerDiv = document.createElement('div');
     headerDiv.className = 'message-header';
-    
     const displayName = senderNick;
     headerDiv.innerHTML = `${getUserIcons(senderData)} <strong>${displayName}</strong>`;
     
@@ -111,30 +108,57 @@ export function createMessageElement(msg, isPrivate = false) {
     
     contentDiv.appendChild(headerDiv);
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    
+    // Simplificamos la lógica de renderizado
     const processedHTML = processMessageText(msg.text);
     const isYoutubeVideo = processedHTML.startsWith('<iframe');
 
-    if (isMediaOnly) {
-        // (Lógica para archivos de audio/imagen subidos directamente, sin cambios)
+    if (msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio')) {
+        // CASO 1: Es un archivo subido (imagen o audio)
+        contentDiv.classList.add('media-only-content');
+        if (msg.preview.type === 'image') {
+            const img = document.createElement('img');
+            img.src = msg.preview.url;
+            img.alt = msg.preview.title;
+            img.className = 'media-message image-message';
+            img.loading = 'lazy';
+            const link = document.createElement('a');
+            link.href = msg.preview.url;
+            link.target = '_blank';
+            link.appendChild(img);
+            contentDiv.appendChild(link);
+        } else if (msg.preview.type === 'audio') {
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.src = msg.preview.url;
+            audioPlayer.controls = true;
+            audioPlayer.preload = 'metadata';
+            audioPlayer.className = 'media-message audio-message';
+            contentDiv.appendChild(audioPlayer);
+        }
     } else if (isYoutubeVideo) {
-        // Si es un video de YouTube, solo mostramos el video.
+        // CASO 2: Es un enlace de YouTube
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
         textContainer.innerHTML = processedHTML;
         contentDiv.appendChild(textContainer);
     } else {
-        // Si es texto normal, lo procesamos y luego añadimos el link preview si existe.
+        // CASO 3: Es un mensaje de texto normal (puede contener otras imágenes o previews)
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
         textContainer.innerHTML = twemoji.parse(replaceEmoticons(processedHTML));
         contentDiv.appendChild(textContainer);
         
-        // El `link preview` del backend solo se mostrará para enlaces que NO son de YouTube.
         const linkPreview = createPreviewCard(msg.preview);
         if (linkPreview) {
             contentDiv.appendChild(linkPreview);
         }
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'message-timestamp';
@@ -154,7 +178,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
     
-    if (isSent && msg.text && !isMediaOnly && !isYoutubeVideo) {
+    if (isSent && msg.text && !isYoutubeVideo) {
         const editBtn = document.createElement('button');
         editBtn.textContent = '✏️';
         editBtn.title = 'Editar mensaje';

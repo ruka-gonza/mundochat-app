@@ -4,7 +4,7 @@ import { createMessageElement } from './renderer.js';
 import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
-import { fetchWithCredentials } from './modals.js'; // <-- IMPORTAMOS LA FUNCIÓN
+import { fetchWithCredentials } from './modals.js'; // <-- ¡ESTA LÍNEA ES CLAVE!
 
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
@@ -148,9 +148,6 @@ export function sendMessage() {
     hideReplyContextBar();
 }
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 export async function handleFileUpload(file) {
     if (!file || !state.currentChatContext.with || state.currentChatContext.type === 'none') {
         alert('Por favor, selecciona una sala o chat privado para enviar el archivo.');
@@ -209,10 +206,6 @@ export async function handleFileUpload(file) {
         if(indicator) indicator.remove();
     };
 };
-// =========================================================================
-// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
-
 
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {

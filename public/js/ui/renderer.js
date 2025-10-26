@@ -71,25 +71,19 @@ function checkIframeLoad(iframe, originalUrl) {
 
 function createYoutubeEmbed(text) {
     if (!text) return null;
-    const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
-    const youtubeMatch = text.match(youtubeRegex);
-
-    if (youtubeMatch && youtubeMatch[1]) {
-        const videoId = youtubeMatch[1];
-        console.log('YouTube Video ID:', videoId); // DEBUG
+    const youtubeRegex = /(?:https?:\/\/)??(?:www\\.)?(?:youtube\\.com\\/watch\\?v=|youtu\\.be\\/)([a-zA-Z0-9_-]{11})/;\n    const youtubeMatch = text.match(youtubeRegex);\n\n    if (youtubeMatch && youtubeMatch[1]) {\n        const videoId = youtubeMatch[1];
         const originalUrl = youtubeMatch[0];
         
         const iframe = document.createElement('iframe');
         iframe.width = "480";
         iframe.height = "270";
         iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?origin=${window.location.origin}`;
-        console.log('iFrame SRC:', iframe.src); // DEBUG
         iframe.frameBorder = "0";
         iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
         iframe.allowFullscreen = true;
         iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
         
-        // checkIframeLoad(iframe, originalUrl);
+        checkIframeLoad(iframe, originalUrl);
         
         return iframe;
     }

@@ -32,6 +32,11 @@ async function startServer() {
         app.set('trust proxy', 1);
         const server = http.createServer(app);
 
+        // Definimos closedSessions aquí en el punto de entrada principal.
+        const closedSessions = new Set();
+        // Hacemos que sea accesible para otros módulos (como el middleware) a través de 'app.locals'.
+        app.locals.closedSessions = closedSessions;
+
         const isProduction = process.env.NODE_ENV === 'production';
         const allowedOrigins = [
             'https://mundochat.me',
@@ -63,11 +68,8 @@ async function startServer() {
         app.use('/data/temp_avatars', express.static(path.join(__dirname, 'data', 'temp_avatars')));
         app.use('/data/chat_uploads', express.static(path.join(__dirname, 'data', 'chat_uploads')));
 
-        // --- INICIO DE LA CORRECCIÓN ---
         app.use(express.json({ limit: '50mb' }));
         app.use(express.urlencoded({ limit: '50mb', extended: true }));
-        // --- FIN DE LA CORRECCIÓN ---
-        
         app.use(cookieParser());
 
         app.use((req, res, next) => {
@@ -103,7 +105,8 @@ async function startServer() {
         app.use('/api/guest', guestRoutes);
         app.use('/api/upload', isCurrentUser, uploadRoutes);
 
-        initializeSocket(io);
+        // Pasamos 'closedSessions' como argumento a initializeSocket.
+        initializeSocket(io, closedSessions);
         botService.initialize(io);
 
         server.listen(config.port, () => {

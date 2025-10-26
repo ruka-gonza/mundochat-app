@@ -10,7 +10,7 @@ const db = require('./services/db-connection').getInstance();
 const fs = require('fs');
 const fetch = require('node-fetch');
 
-const { closedSessions } = require('../socketManager');
+// Ya no se define 'closedSessions' aquí.
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -18,7 +18,6 @@ async function generateLinkPreview(text) {
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
-
     const fetchWithTimeout = (url, options, timeout = 2000) => {
         return Promise.race([
             fetch(url, options),
@@ -27,22 +26,18 @@ async function generateLinkPreview(text) {
             )
         ]);
     };
-
     try {
         const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
         const youtubeMatch = url.match(youtubeRegex);
         if (youtubeMatch && youtubeMatch[1]) {
             return { type: 'youtube', url: url, videoId: youtubeMatch[1] };
         }
-
         const response = await fetchWithTimeout(url);
         if (!response.ok) return null;
         const contentType = response.headers.get('content-type');
-
         if (contentType && contentType.startsWith('image/')) {
              return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
         }
-
         if (contentType && contentType.includes('text/html')) {
             const html = await response.text();
             const titleMatch = html.match(/<title>(.*?)<\/title>/);
@@ -67,7 +62,6 @@ async function generateLinkPreview(text) {
         }
         return null;
     }
-
     return null;
 }
 
@@ -107,16 +101,13 @@ async function handleChatMessage(io, socket, { text, roomName, replyToId }) {
 async function handlePrivateMessage(io, socket, { to, text, replyToId }) {
     const sender = socket.userData;
     if (!sender || !sender.nick) return;
-
     if (sender.nick.toLowerCase() === to.toLowerCase()) {
         return socket.emit('system message', { text: 'No puedes enviarte mensajes a ti mismo.', type: 'error' });
     }
-
     const targetSocketId = roomService.findSocketIdByNick(to);
     if (targetSocketId) {
         const timestamp = new Date().toISOString();
         const messageId = uuidv4();
-
         const messagePayload = {
             id: messageId,
             text,
@@ -127,7 +118,6 @@ async function handlePrivateMessage(io, socket, { to, text, replyToId }) {
             timestamp: timestamp,
             replyToId: replyToId || null
         };
-        
         io.to(targetSocketId).emit('private message', messagePayload);
         socket.emit('private message', messagePayload);
     } else {
@@ -223,7 +213,6 @@ async function checkBanStatus(socket, idToCheck, ip, roomName) {
         }
         socket.emit('auth_error', { message });
         socket.emit('system message', { text: message, type: 'error' });
-        
         if (banInfo.scope === 'global') {
             socket.disconnect(true);
         }
@@ -247,7 +236,6 @@ async function deliverOfflineMessages(socket, nick) {
             resolve(rows);
         });
     });
-
     if (messages && messages.length > 0) {
         socket.emit('offline_messages', messages);
         const ids = messages.map(m => m.id);
@@ -262,15 +250,12 @@ async function deliverOfflineMessages(socket, nick) {
 
 async function handleJoinRoom(io, socket, { roomName }) {
     if (!socket.userData || !socket.userData.nick || !roomName) return;
-
     if (await checkBanStatus(socket, socket.userData.role === 'guest' ? socket.userData.id : socket.userData.nick.toLowerCase(), socket.userData.ip, roomName)) {
         return;
     }
-
     const lowerCaseRoomName = roomName.toLowerCase();
     const isModLog = lowerCaseRoomName === roomService.MOD_LOG_ROOM.toLowerCase();
     const isIncognito = lowerCaseRoomName === roomService.INCOGNITO_ROOM.toLowerCase();
-
     if (isIncognito) {
         const allowedRoles = ['owner', 'admin'];
         if (!allowedRoles.includes(socket.userData.role)) {
@@ -278,7 +263,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
             return;
         }
     }
-
     if (isModLog) {
         const allowedRoles = ['owner', 'admin', 'operator', 'mod'];
         if (!allowedRoles.includes(socket.userData.role)) {
@@ -286,15 +270,12 @@ async function handleJoinRoom(io, socket, { roomName }) {
             return;
         }
     }
-    
     if (!roomService.rooms[roomName]) {
         roomService.rooms[roomName] = { users: {} };
     }
-
     const wasAlreadyInRoom = Object.values(roomService.rooms[roomName].users).some(
         user => user.id === socket.userData.id
     );
-
     const existingSocketId = Object.keys(roomService.rooms[roomName].users).find(
         sid => roomService.rooms[roomName].users[sid].id === socket.userData.id && sid !== socket.id
     );
@@ -307,13 +288,10 @@ async function handleJoinRoom(io, socket, { roomName }) {
             delete roomService.rooms[roomName].users[existingSocketId];
         }
     }
-    
     socket.join(roomName);
     if (!socket.joinedRooms) socket.joinedRooms = new Set();
     socket.joinedRooms.add(roomName);
-    
     roomService.rooms[roomName].users[socket.id] = { ...socket.userData, socketId: socket.id };
-
     if (['owner', 'admin'].includes(socket.userData.role)) {
         if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
             socket.join(roomService.MOD_LOG_ROOM);
@@ -322,7 +300,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
         }
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
-
         if (!socket.joinedRooms.has(roomService.INCOGNITO_ROOM)) {
             socket.join(roomService.INCOGNITO_ROOM);
             socket.joinedRooms.add(roomService.INCOGNITO_ROOM);
@@ -331,7 +308,6 @@ async function handleJoinRoom(io, socket, { roomName }) {
         roomService.rooms[roomService.INCOGNITO_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.INCOGNITO_ROOM);
     }
-
     if (['operator', 'mod'].includes(socket.userData.role)) {
         if (!socket.joinedRooms.has(roomService.MOD_LOG_ROOM)) {
             socket.join(roomService.MOD_LOG_ROOM);
@@ -341,24 +317,21 @@ async function handleJoinRoom(io, socket, { roomName }) {
         roomService.rooms[roomService.MOD_LOG_ROOM].users[socket.id] = { ...socket.userData, socketId: socket.id };
         roomService.updateUserList(io, roomService.MOD_LOG_ROOM);
     }
-    
     if (!wasAlreadyInRoom) {
         logActivity('JOIN_ROOM', socket.userData, `Sala: ${roomName}`);
         socket.to(roomName).emit('system message', { text: `${socket.userData.nick} se ha unido a la sala.`, type: 'join', roomName });
     }
-
     socket.emit('join_success', { 
         user: socket.userData, 
         roomName: roomName, 
         joinedRooms: Array.from(socket.joinedRooms),
         users: Object.values(roomService.rooms[roomName].users)
     });
-    
     roomService.updateUserList(io, roomName);
     roomService.updateRoomData(io);
 }
 
-function handleDefinitiveDisconnect(io, socketData) {
+function handleDefinitiveDisconnect(io, socketData, closedSessions) {
     if (!socketData.userData || !socketData.userData.nick) return;
     closedSessions.add(socketData.userData.id);
     setTimeout(() => closedSessions.delete(socketData.userData.id), 5 * 60 * 1000);
@@ -382,16 +355,13 @@ function handleDefinitiveDisconnect(io, socketData) {
     }
 }
 
-function initializeSocket(io) {
+function initializeSocket(io, closedSessions) {
     global.io = io;
     io.on('connection', (socket) => {
         socket.joinedRooms = new Set();
         const userIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
-
         console.log(`[CONEXIÓN ENTRANTE] IP registrada: ${userIP}`);
-
         socket.emit('update room data', roomService.getActiveRoomsWithUserCount());
-        
         (async () => {
             try {
                 const isVpn = await vpnCheckService.isVpn(userIP);
@@ -404,7 +374,6 @@ function initializeSocket(io) {
                 console.error("Error en VPN Check:", err);
             }
         })();
-        
         socket.on('change temporary avatar', async ({ avatarBase64 }) => {
             if (!socket.userData || !socket.userData.isIncognito) {
                 return socket.emit('system message', { text: 'Esta función es solo para el modo incógnito.', type: 'error' });
@@ -412,12 +381,8 @@ function initializeSocket(io) {
             if (!avatarBase64) return;
             socket.userData.avatar_url = avatarBase64;
             roomService.updateUserDataInAllRooms(socket);
-            io.emit('user_data_updated', { 
-                nick: socket.userData.nick, 
-                avatar_url: avatarBase64 
-            });
+            io.emit('user_data_updated', { nick: socket.userData.nick, avatar_url: avatarBase64 });
         });
-
         socket.on('admin_agreement_accepted', async ({ targetNick, senderNick }) => {
             try {
                 if (socket.userData.nick.toLowerCase() !== targetNick.toLowerCase()) return;
@@ -434,7 +399,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'admin_agreement_accepted':`, error);
             }
         });
-
         socket.on('reauthenticate', async (cookieData) => {
             try {
                 if (closedSessions.has(cookieData.id)) return socket.emit('reauth_failed');
@@ -454,7 +418,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'reauthenticate':`, error);
             }
         });
-
         socket.on('login', async (data) => {
             try {
                 let { nick, id, roomName } = data;
@@ -482,7 +445,6 @@ function initializeSocket(io) {
                 socket.emit('auth_error', { message: 'Ocurrió un error interno al iniciar sesión.' });
             }
         });
-
         socket.on('guest_join', async (data) => {
             try {
                 const { nick, roomName, id } = data;
@@ -499,7 +461,6 @@ function initializeSocket(io) {
                 socket.emit('system message', { text: 'Ocurrió un error al intentar unirte como invitado.', type: 'error' });
             }
         });
-        
         socket.on('join room', async (data) => {
             try {
                 await handleJoinRoom(io, socket, data);
@@ -508,7 +469,6 @@ function initializeSocket(io) {
                 socket.emit('system message', { text: 'Ocurrió un error al unirte a la sala.', type: 'error' });
             }
         });
-        
         socket.on('leave room', (data) => {
             const { roomName } = data;
             if (!socket.userData || !socket.rooms.has(roomName) || !roomService.rooms[roomName]) return;
@@ -522,26 +482,14 @@ function initializeSocket(io) {
             roomService.updateUserList(io, roomName);
             roomService.updateRoomData(io);
         });
-
         socket.on('logout', () => {
-            handleDefinitiveDisconnect(io, {
-                id: socket.id,
-                userData: socket.userData,
-                joinedRooms: Array.from(socket.joinedRooms || [])
-            });
+            handleDefinitiveDisconnect(io, { id: socket.id, userData: socket.userData, joinedRooms: Array.from(socket.joinedRooms || []) }, closedSessions);
             socket.disconnect(true);
         });
-
         socket.on('disconnect', () => {
-            handleDefinitiveDisconnect(io, {
-                id: socket.id,
-                userData: socket.userData,
-                joinedRooms: Array.from(socket.joinedRooms || [])
-            });
+            handleDefinitiveDisconnect(io, { id: socket.id, userData: socket.userData, joinedRooms: Array.from(socket.joinedRooms || []) }, closedSessions);
         });
-        
         socket.on('request user list', ({ roomName }) => roomService.updateUserList(io, roomName));
-        
         socket.on('chat message', async (data) => {
             try {
                 await handleChatMessage(io, socket, data);
@@ -550,7 +498,6 @@ function initializeSocket(io) {
                 socket.emit('system message', { text: 'Ocurrió un error al procesar tu mensaje.', type: 'error', roomName: data.roomName || '' });
             }
         });
-
         socket.on('edit message', async (data) => {
             try {
                 await handleEditMessage(io, socket, data);
@@ -558,7 +505,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'edit message':`, error);
             }
         });
-
         socket.on('delete message', async (data) => {
             try {
                 await handleDeleteMessage(io, socket, data);
@@ -566,7 +512,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'delete message':`, error);
             }
         });
-
         socket.on('delete any message', async (data) => {
             try {
                 await handleDeleteAnyMessage(io, socket, data);
@@ -574,7 +519,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'delete any message':`, error);
             }
         });
-
         socket.on('private message', async (data) => {
             try {
                 await handlePrivateMessage(io, socket, data);
@@ -583,7 +527,6 @@ function initializeSocket(io) {
                 socket.emit('system message', { text: 'Ocurrió un error al enviar tu mensaje privado.', type: 'error' });
             }
         });
-
         socket.on('edit private message', async (data) => {
             try {
                 await handleEditPrivateMessage(io, socket, data);
@@ -591,7 +534,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'edit private message':`, error);
             }
         });
-
         socket.on('delete private message', async (data) => {
             try {
                 await handleDeletePrivateMessage(io, socket, data);
@@ -599,7 +541,6 @@ function initializeSocket(io) {
                 console.error(`Error en el evento 'delete private message':`, error);
             }
         });
-
         socket.on('request private chat', ({ targetNick }) => {
             const sender = socket.userData;
             if (!sender || !sender.nick) return;
@@ -611,7 +552,6 @@ function initializeSocket(io) {
                 socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra conectado.`, type: 'error' });
             }
         });
-        
         socket.on('request private history', ({ withNick }) => {
             try {
                 if (!socket.userData.nick || !withNick) return;
@@ -620,7 +560,6 @@ function initializeSocket(io) {
                 console.error(`Error en 'request private history' (modificado):`, error);
             }
         });
-        
         socket.on('typing', ({ context, to }) => {
             const sender = socket.userData;
             if (!sender || !context || !context.with) return;
@@ -631,7 +570,6 @@ function initializeSocket(io) {
                 if (targetSocketId) { io.to(targetSocketId).emit('typing', { nick: sender.nick, context: { type: 'private', with: sender.nick } }); }
             }
         });
-        
         socket.on('stop typing', ({ context, to }) => {
             const sender = socket.userData;
             if (!sender || !context || !context.with) return;
@@ -642,15 +580,11 @@ function initializeSocket(io) {
                 if (targetSocketId) { io.to(targetSocketId).emit('stop typing', { nick: sender.nick, context: { type: 'private', with: sender.nick } }); }
             }
         });
-        
         socket.on('toggle afk', () => {
             if (!socket.userData) return;
             socket.userData.isAFK = !socket.userData.isAFK;
             roomService.updateUserDataInAllRooms(socket);
-            socket.emit('user_data_updated', { 
-                nick: socket.userData.nick, 
-                isAFK: socket.userData.isAFK 
-            });
+            socket.emit('user_data_updated', { nick: socket.userData.nick, isAFK: socket.userData.isAFK });
             socket.joinedRooms.forEach(room => {
                 if (room !== socket.id) {
                     roomService.updateUserList(io, room);
@@ -663,14 +597,12 @@ function initializeSocket(io) {
                 }
             });
         });
-
         socket.on('toggle incognito', async ({ newNick }) => {
             if (!socket.userData) return;
             const commandText = newNick ? `/incognito ${newNick}` : '/incognito';
             const currentRoom = Array.from(socket.joinedRooms)[0] || '#General';
             await handleCommand(io, socket, commandText, currentRoom);
         });
-        
         socket.on('report user', ({ targetNick, reason }) => {
             const reporter = socket.userData;
             if (!reporter || !targetNick) return;

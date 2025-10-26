@@ -77,16 +77,30 @@ function handlePrivateMessageReception(msg) {
     } 
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 function handlePublicMessage(msg) {
     if (!state.publicMessageHistories[msg.roomName]) {
         state.publicMessageHistories[msg.roomName] = [];
     }
-    const isMention = state.myNick && msg.nick && msg.text && msg.nick !== state.myNick && msg.text.toLowerCase().includes(state.myNick.toLowerCase());
+
+    let isMention = false;
+    if (state.myNick && msg.nick && msg.text && msg.nick !== state.myNick) {
+        // Escapamos el nick para que caracteres especiales (si los tuviera) no rompan la regex.
+        const escapedNick = state.myNick.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        // Creamos la expresión regular con límites de palabra (\b) y la bandera 'i' (insensible a mayúsculas/minúsculas).
+        const mentionRegex = new RegExp(`\\b${escapedNick}\\b`, 'i');
+        isMention = mentionRegex.test(msg.text);
+    }
+    
     if (isMention) {
         msg.isMention = true;
         showNotification(`Nueva mención de ${msg.nick}`, msg.text);
     }
+    
     state.publicMessageHistories[msg.roomName].push(msg);
+
     if (state.currentChatContext.type === 'room' && state.currentChatContext.with === msg.roomName) {
         appendMessageToView(msg, false);
     } else {
@@ -94,6 +108,10 @@ function handlePublicMessage(msg) {
         updateConversationList();
     }
 }
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+
 
 export function initializeSocketEvents(socket) {
     state.socket = socket;
@@ -429,7 +447,7 @@ export function initializeSocketEvents(socket) {
             document.getElementById(`message-${messageId}`)?.remove();
         }
     });
-
+    
     socket.on('admin panel refresh', () => {
         if (dom.adminModal.classList.contains('hidden')) return;
         const activeTab = document.querySelector('.admin-tab.active');

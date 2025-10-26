@@ -172,6 +172,7 @@ async function handleEditMessage(io, socket, { messageId, newText, roomName }) {
 }
 
 async function handleDeleteMessage(io, socket, { messageId, roomName }) {
+    console.log('handleDeleteMessage messageId:', messageId); // DEBUG
     const senderNick = socket.userData.nick;
     if (!messageId || !roomName) return;
 
@@ -196,6 +197,7 @@ async function handleDeleteMessage(io, socket, { messageId, roomName }) {
 }
 
 async function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
+    console.log('handleDeleteAnyMessage messageId:', messageId); // DEBUG
     const sender = socket.userData;
     if (!['owner', 'admin'].includes(sender.role)) { 
         return socket.emit('system message', { text: 'No tienes permiso para realizar esta acción.', type: 'error', roomName }); 

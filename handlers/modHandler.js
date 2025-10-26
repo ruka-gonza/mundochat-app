@@ -7,7 +7,6 @@ const fetch = require('node-fetch');
 const config = require('../config');
 const ms = require('ms');
 
-
 function obfuscateIP(ip) {
     if (!ip) return 'N/A';
     if (ip === '::1' || ip === '127.0.0.1') return ip;
@@ -21,7 +20,6 @@ function obfuscateIP(ip) {
     }
     return 'IP Inválida';
 }
-
 
 async function handleCommand(io, socket, text, currentRoom) {
     const args = text.split(' ');
@@ -63,7 +61,6 @@ async function handleCommand(io, socket, text, currentRoom) {
         const newNick = args.slice(1).join(' ').trim();
         const wasIncognito = sender.isIncognito || false;
     
-        // --- SALIR DEL MODO INCÓGNITO ---
         if (wasIncognito) {
             const oldNick = sender.nick;
             socket.userData.nick = sender.originalNick;
@@ -88,7 +85,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                 isIncognito: false
             });
     
-        // --- ENTRAR EN MODO INCÓGNITO ---
         } else {
             if (newNick) {
                 const isRegistered = await userService.findUserByNick(newNick);
@@ -220,14 +216,12 @@ async function handleCommand(io, socket, text, currentRoom) {
                 socket.emit('system message', { text: staffMessage, type: 'highlight', roomName: currentRoom });
                 return;
             }
-
             if (createdRooms.length > 0) {
                 staffMessage += '\n\n--- Salas Creadas por Usuarios ---\n';
                 createdRooms.forEach(room => {
                     staffMessage += `▪️ Sala: ${room.name} - Creador: ${room.creatorNick}\n`;
                 });
             }
-            
             socket.emit('system message', { text: staffMessage, type: 'highlight', roomName: currentRoom });
         });
         return;
@@ -252,17 +246,11 @@ async function handleCommand(io, socket, text, currentRoom) {
             return socket.emit('system message', { text: `El nick '${newNick}' ya está en uso por otro usuario.`, type: 'error' });
         }
         const oldNick = sender.nick;
-        
         socket.userData.nick = newNick;
-        
         roomService.updateUserDataInAllRooms(socket);
-        
         socket.emit('set session cookie', { id: socket.userData.id, nick: newNick, role: socket.userData.role });
-        
         io.emit('system message', { text: `${oldNick} ahora es conocido como ${newNick}.`, type: 'highlight' });
-        
         io.emit('user_data_updated', { oldNick: oldNick, nick: newNick });
-        
         socket.joinedRooms.forEach(room => {
             if (room !== socket.id) {
                 roomService.updateUserList(io, room);
@@ -279,16 +267,13 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (!newRoomName || !/^[a-zA-Z0-9\-_#]{3,20}$/.test(newRoomName)) {
             return socket.emit('system message', { text: 'Nombre de sala inválido. Debe tener entre 3-20 caracteres y solo letras, números, -, _, #.', type: 'error', roomName: currentRoom });
         }
-
         const wasCreated = await roomService.createRoom(newRoomName, sender, io);
         if (!wasCreated) {
             return socket.emit('system message', { text: `La sala '${newRoomName}' ya existe. Intenta unirte a ella.`, type: 'error', roomName: currentRoom });
         }
-
         const creatorRoleStmt = db.prepare('INSERT OR IGNORE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
         creatorRoleStmt.run(sender.id, newRoomName, 'mod', sender.nick, new Date().toISOString());
         creatorRoleStmt.finalize();
-
         io.to(currentRoom).emit('system message', { text: `¡${sender.nick} ha creado una nueva sala: ${newRoomName}!`, type: 'highlight', roomName: currentRoom });
         socket.emit('join room', { roomName: newRoomName });
         socket.emit('room_created_success');
@@ -301,12 +286,10 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (!query) {
             return socket.emit('system message', { text: 'Uso: /yt <búsqueda>', type: 'error', roomName: currentRoom });
         }
-
         if (!config.youtubeApiKey) {
             console.error('Error: La clave de API de YouTube no está configurada en el archivo .env (YOUTUBE_API_KEY)');
             return socket.emit('system message', { text: 'El comando de YouTube no está configurado correctamente por el administrador.', type: 'error', roomName: currentRoom });
         }
-
         try {
             const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&key=${config.youtubeApiKey}&type=video&maxResults=1`;
             const response = await fetch(searchUrl);
@@ -323,11 +306,16 @@ async function handleCommand(io, socket, text, currentRoom) {
                     role: sender.role,
                     isVIP: sender.isVIP,
                     roomName: currentRoom,
-                    timestamp: timestamp
+                    timestamp: timestamp,
+                    preview: {
+                        type: 'youtube',
+                        url: videoUrl,
+                        videoId: videoId
+                    }
                 };
 
-                const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
-                stmt.run(currentRoom, sender.nick, videoUrl, sender.role, sender.isVIP ? 1 : 0, timestamp, function(err) {
+                const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+                stmt.run(currentRoom, sender.nick, videoUrl, sender.role, sender.isVIP ? 1 : 0, timestamp, 'youtube', videoUrl, function(err) {
                     if (err) {
                         console.error("Error guardando mensaje de /yt:", err);
                         return;
@@ -349,7 +337,7 @@ async function handleCommand(io, socket, text, currentRoom) {
     
     const targetNick = args[1];
     const senderEffectiveRole = await permissionService.getUserEffectiveRole(sender.id, currentRoom);
-
+    
     async function findTargetUser(nick) {
         if (!nick) return null;
         const targetSocketId = roomService.findSocketIdByNick(nick);
@@ -507,16 +495,12 @@ async function handleCommand(io, socket, text, currentRoom) {
             if (!message) {
                 return socket.emit('system message', { text: 'Uso: /global <mensaje>', type: 'error', roomName: currentRoom });
             }
-
             const announcementText = `[📢 ANUNCIO GLOBAL]: ${message}`;
-
             const publicRooms = Object.keys(roomService.rooms).filter(
                 room => room !== roomService.MOD_LOG_ROOM && room !== roomService.INCOGNITO_ROOM
             );
-
             for (const roomName of publicRooms) {
                 const timestamp = new Date().toISOString();
-                
                 const messagePayload = {
                     text: announcementText,
                     nick: sender.nick,
@@ -525,7 +509,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                     roomName: roomName,
                     timestamp: timestamp
                 };
-
                 const stmt = db.prepare('INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp) VALUES (?, ?, ?, ?, ?, ?)');
                 stmt.run(roomName, sender.nick, announcementText, sender.role, sender.isVIP ? 1 : 0, timestamp, function(err) {
                     if (err) {
@@ -537,15 +520,12 @@ async function handleCommand(io, socket, text, currentRoom) {
                 });
                 stmt.finalize();
             }
-
             io.to(roomService.MOD_LOG_ROOM).emit('system message', {
                 text: `[GLOBAL] ${sender.nick} envió un anuncio global: "${message}"`,
                 type: 'mod-log',
                 roomName: roomService.MOD_LOG_ROOM
             });
-
             socket.emit('system message', { text: 'Tu anuncio global ha sido enviado a todas las salas activas.', type: 'highlight', roomName: currentRoom });
-            
             return;
         }
 
@@ -573,13 +553,7 @@ async function handleCommand(io, socket, text, currentRoom) {
             } else {
                 const dbUser = await userService.findUserByNick(targetNick);
                 if (dbUser) {
-                    whoisData = {
-                        id: dbUser.id,
-                        nick: dbUser.nick,
-                        role: dbUser.role,
-                        isVIP: dbUser.isVIP === 1,
-                        ip: dbUser.lastIP
-                    };
+                    whoisData = { id: dbUser.id, nick: dbUser.nick, role: dbUser.role, isVIP: dbUser.isVIP === 1, ip: dbUser.lastIP };
                 }
             }
             if (!whoisData) {
@@ -590,13 +564,7 @@ async function handleCommand(io, socket, text, currentRoom) {
                     });
                 });
                 if (lastLog) {
-                    whoisData = {
-                        id: lastLog.userId,
-                        nick: lastLog.nick,
-                        role: lastLog.userRole,
-                        isVIP: false,
-                        ip: lastLog.ip
-                    };
+                    whoisData = { id: lastLog.userId, nick: lastLog.nick, role: lastLog.userRole, isVIP: false, ip: lastLog.ip };
                 }
             }
             if (!whoisData) {
@@ -644,18 +612,14 @@ async function handleCommand(io, socket, text, currentRoom) {
         default: {
             const dbUser = await userService.findUserByNick(targetNick);
             const userToActOn = await findTargetUser(targetNick);
-
             if (!userToActOn) {
                 return socket.emit('system message', { text: `No se encontró al usuario '${targetNick}'.`, type: 'error', roomName: currentRoom });
             }
-
             const rolesOrder = { 'owner': 0, 'admin': 1, 'operator': 2, 'mod': 3, 'user': 4, 'vip': 4, 'guest': 5 };
             const targetEffectiveRole = await permissionService.getUserEffectiveRole(userToActOn.id, currentRoom);
-
             if (rolesOrder[senderEffectiveRole] >= rolesOrder[targetEffectiveRole]) {
                 return socket.emit('system message', { text: 'No puedes ejecutar acciones sobre un usuario de tu mismo rango o superior en esta sala.', type: 'error', roomName: currentRoom });
             }
-            
             if (command === '/kick') {
                 if (!targetSocket) return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra conectado.`, type: 'error', roomName: currentRoom });
                 if (!targetSocket.rooms.has(currentRoom)) return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra en esta sala.`, type: 'error', roomName: currentRoom });
@@ -674,7 +638,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                 roomService.updateUserList(io, currentRoom);
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[KICK] ${sender.nick} expulsó a ${targetNick} de la sala ${currentRoom}. Razón: ${kickReason}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             }
-
             if (command === '/ban') {
                 if (userToActOn.role === 'guest') {
                     return socket.emit('system message', { text: `El comando /ban es solo para usuarios registrados. Para invitados, usa /kick o /zlined.`, type: 'error', roomName: currentRoom });
@@ -695,7 +658,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                 io.emit('admin panel refresh');
                 break;
             }
-            
             if (command === '/mute') {
                 if (!targetSocket) return socket.emit('system message', { text: `El usuario '${targetNick}' no se encuentra conectado.`, type: 'error', roomName: currentRoom });
                 const targetIsRegistered = targetSocket.userData.role !== 'guest';
@@ -711,7 +673,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                 targetSocket.emit('system message', { text: `Has sido ${actionTextMute} por ${sender.nick}.`, type: 'warning' });
                 io.emit('admin panel refresh');
             }
-
             if (command === '/vip') {
                 if (!dbUser) return socket.emit('system message', { text: `Solo los usuarios registrados pueden ser VIP.`, type: 'error', roomName: currentRoom });
                 const newVipStatus = !(dbUser.isVIP === 1);
@@ -724,13 +685,11 @@ async function handleCommand(io, socket, text, currentRoom) {
                     io.emit('user_data_updated', { nick: dbUser.nick, isVIP: newVipStatus });
                 }
             }
-
             if (command === '/promote') {
                 const newRole = (args[2] || '').toLowerCase();
                 const specificRoom = args[3];
                 if (!dbUser) return socket.emit('system message', { text: `El usuario '${targetNick}' debe estar registrado.`, type: 'error', roomName: currentRoom });
                 if (!['admin', 'mod', 'operator'].includes(newRole)) return socket.emit('system message', { text: `Rol '${newRole}' no válido. Roles permitidos: admin, mod, operator.`, type: 'error', roomName: currentRoom });
-                
                 if (specificRoom) {
                     if (!roomService.rooms[specificRoom]) return socket.emit('system message', { text: `La sala '${specificRoom}' no existe.`, type: 'error', roomName: currentRoom });
                     const stmt = db.prepare('INSERT OR REPLACE INTO room_staff (userId, roomName, role, assignedBy, assignedAt) VALUES (?, ?, ?, ?, ?)');
@@ -762,7 +721,6 @@ async function handleCommand(io, socket, text, currentRoom) {
                     }
                 }
             }
-
             if (command === '/demote') {
                 const roomToDemote = args[2];
                 if (!dbUser) return socket.emit('system message', { text: `El usuario '${targetNick}' debe estar registrado.`, type: 'error', roomName: currentRoom });

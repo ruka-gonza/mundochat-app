@@ -3,11 +3,9 @@ import { getUserIcons, replaceEmoticons } from '../utils.js';
 import { openImageModal } from './modals.js';
 
 function createPreviewCard(preview) {
-    // No mostrar preview card para videos, ya que los incrustaremos directamente
     if (!preview || !preview.url || ['image', 'audio', 'youtube'].includes(preview.type)) {
         return null;
     }
-
     const linkCard = document.createElement('a');
     linkCard.href = preview.url;
     linkCard.target = '_blank';
@@ -128,10 +126,10 @@ export function createMessageElement(msg, isPrivate = false) {
         }
     }
 
-    if (!contentRendered) {
+    if (!contentRendered && msg.text) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text || ''));
+        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text));
         contentDiv.appendChild(textContainer);
 
         const linkPreview = createPreviewCard(msg.preview);
@@ -154,10 +152,14 @@ export function createMessageElement(msg, isPrivate = false) {
 
     mainContentWrapper.appendChild(contentDiv);
 
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     const iAmModerator = (state.myUserData.role === 'owner' || state.myUserData.role === 'admin') || (state.myOriginalRole === 'owner' || state.myOriginalRole === 'admin');
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
     
+    // El botón de editar solo aparece si el mensaje TIENE texto.
     if (isSent && msg.text) {
         const editBtn = document.createElement('button');
         editBtn.textContent = '✏️';
@@ -167,6 +169,7 @@ export function createMessageElement(msg, isPrivate = false) {
         actionsDiv.appendChild(editBtn);
     }
 
+    // El botón de borrar aparece siempre que el mensaje sea tuyo o seas moderador.
     if (isSent || iAmModerator) {
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = '🗑️';
@@ -182,6 +185,9 @@ export function createMessageElement(msg, isPrivate = false) {
     if (actionsDiv.hasChildNodes()) {
         mainContentWrapper.appendChild(actionsDiv);
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
 
     item.appendChild(mainContentWrapper);
 

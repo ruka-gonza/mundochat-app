@@ -76,18 +76,20 @@ function createYoutubeEmbed(text) {
 
     if (youtubeMatch && youtubeMatch[1]) {
         const videoId = youtubeMatch[1];
+        console.log('YouTube Video ID:', videoId); // DEBUG
         const originalUrl = youtubeMatch[0];
         
         const iframe = document.createElement('iframe');
         iframe.width = "480";
         iframe.height = "270";
         iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}?origin=${window.location.origin}`;
+        console.log('iFrame SRC:', iframe.src); // DEBUG
         iframe.frameBorder = "0";
         iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
         iframe.allowFullscreen = true;
         iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
         
-        checkIframeLoad(iframe, originalUrl);
+        // checkIframeLoad(iframe, originalUrl);
         
         return iframe;
     }

@@ -105,6 +105,13 @@ router.post('/chat-file', chatUpload, (req, res) => {
         from: sender.nick,
         role: sender.role,
         isVIP: sender.isVIP,
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        text: '', // <-- ¡LÍNEA AÑADIDA! Asegura que la propiedad 'text' siempre exista.
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
         preview: {
             type: isImage ? 'image' : (isAudio ? 'audio' : 'file'),
             url: fileUrl,
@@ -120,12 +127,16 @@ router.post('/chat-file', chatUpload, (req, res) => {
         io.to(contextWith).emit('chat message', messagePayload);
     } else if (contextType === 'private') {
         messagePayload.to = contextWith;
-        const targetSocketId = roomService.findSocketIdByNick(contextWith);
+        const targetSocketId = require('../services/roomService').findSocketIdByNick(contextWith);
         if (targetSocketId) {
             io.to(targetSocketId).emit('private message', messagePayload);
         }
-        // Enviar eco al remitente
-        io.to(req.socketId).emit('private message', messagePayload); // Asumiendo que adjuntas socketId en un middleware
+        // Buscar el socket del remitente para enviar el eco.
+        // req.verifiedUser.id contiene el ID de usuario o el UUID del invitado.
+        const senderSocketId = roomService.findSocketIdByUserId(req.verifiedUser.id);
+        if(senderSocketId) {
+             io.to(senderSocketId).emit('private message', messagePayload);
+        }
     }
 
     res.json({ message: 'Archivo subido y enviado correctamente.' });

@@ -27,6 +27,25 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
+function createYoutubeEmbed(text) {
+    const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
+    const youtubeMatch = text.match(youtubeRegex);
+
+    if (youtubeMatch && youtubeMatch[1]) {
+        const videoId = youtubeMatch[1];
+        return `<iframe 
+                    width="480" 
+                    height="270" 
+                    src="https://www.youtube.com/embed/${videoId}" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen 
+                    referrerpolicy="strict-origin-when-cross-origin">
+                </iframe>`;
+    }
+    return null; // Devuelve nulo si no es un enlace de YouTube
+}
+
 export function createMessageElement(msg, isPrivate = false) {
     if (!msg.nick && !msg.from) {
         const item = document.createElement('li');
@@ -87,56 +106,60 @@ export function createMessageElement(msg, isPrivate = false) {
     
     let contentRendered = false;
 
-    if (msg.preview) {
-        if (msg.preview.type === 'youtube') {
-            const textContainer = document.createElement('div');
-            textContainer.className = 'message-text';
-            textContainer.innerHTML = `<iframe 
-                width="480" height="270" 
-                src="https://www.youtube.com/embed/${msg.preview.videoId}" 
-                frameborder="0" 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                allowfullscreen 
-                referrerpolicy="strict-origin-when-cross-origin">
-            </iframe>`;
-            contentDiv.appendChild(textContainer);
-            contentRendered = true;
-        } else if (msg.preview.type === 'image' || msg.preview.type === 'audio') {
-            contentDiv.classList.add('media-only-content');
-            if (msg.preview.type === 'image') {
-                const img = document.createElement('img');
-                img.src = msg.preview.url;
-                img.alt = msg.preview.title;
-                img.className = 'media-message image-message';
-                img.loading = 'lazy';
-                const link = document.createElement('a');
-                link.href = msg.preview.url;
-                link.target = '_blank';
-                link.appendChild(img);
-                contentDiv.appendChild(link);
-            } else if (msg.preview.type === 'audio') {
-                const audioPlayer = document.createElement('audio');
-                audioPlayer.src = msg.preview.url;
-                audioPlayer.controls = true;
-                audioPlayer.preload = 'metadata';
-                audioPlayer.className = 'media-message audio-message';
-                contentDiv.appendChild(audioPlayer);
-            }
-            contentRendered = true;
-        }
-    }
+    // =========================================================================
+    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
+    const youtubeEmbedHTML = createYoutubeEmbed(msg.text || '');
 
-    if (!contentRendered && msg.text) {
+    if (youtubeEmbedHTML) {
+        // Si es un video de YouTube, lo renderizamos y marcamos como renderizado.
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text));
+        textContainer.innerHTML = youtubeEmbedHTML;
+        contentDiv.appendChild(textContainer);
+        contentRendered = true;
+
+    } else if (msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio')) {
+        // Si es un archivo subido, lo renderizamos.
+        contentDiv.classList.add('media-only-content');
+        if (msg.preview.type === 'image') {
+            const img = document.createElement('img');
+            img.src = msg.preview.url;
+            img.alt = msg.preview.title;
+            img.className = 'media-message image-message';
+            img.loading = 'lazy';
+            const link = document.createElement('a');
+            link.href = msg.preview.url;
+            link.target = '_blank';
+            link.appendChild(img);
+            contentDiv.appendChild(link);
+        } else if (msg.preview.type === 'audio') {
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.src = msg.preview.url;
+            audioPlayer.controls = true;
+            audioPlayer.preload = 'metadata';
+            audioPlayer.className = 'media-message audio-message';
+            contentDiv.appendChild(audioPlayer);
+        }
+        contentRendered = true;
+    }
+
+    if (!contentRendered) {
+        // Si no es ninguno de los anteriores, es texto normal.
+        const textContainer = document.createElement('div');
+        textContainer.className = 'message-text';
+        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text || ''));
         contentDiv.appendChild(textContainer);
 
+        // Y si además tiene un `link preview` (de una sala pública), lo añadimos.
         const linkPreview = createPreviewCard(msg.preview);
         if (linkPreview) {
             contentDiv.appendChild(linkPreview);
         }
     }
+    // =========================================================================
+    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+    // =========================================================================
     
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'message-timestamp';
@@ -152,15 +175,12 @@ export function createMessageElement(msg, isPrivate = false) {
 
     mainContentWrapper.appendChild(contentDiv);
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     const iAmModerator = (state.myUserData.role === 'owner' || state.myUserData.role === 'admin') || (state.myOriginalRole === 'owner' || state.myOriginalRole === 'admin');
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
     
-    // El botón de editar solo aparece si el mensaje TIENE texto.
-    if (isSent && msg.text) {
+    // El botón de editar solo aparece si el mensaje TIENE texto y no es un video.
+    if (isSent && msg.text && !youtubeEmbedHTML) {
         const editBtn = document.createElement('button');
         editBtn.textContent = '✏️';
         editBtn.title = 'Editar mensaje';
@@ -169,7 +189,7 @@ export function createMessageElement(msg, isPrivate = false) {
         actionsDiv.appendChild(editBtn);
     }
 
-    // El botón de borrar aparece siempre que el mensaje sea tuyo o seas moderador.
+    // El botón de borrar aparece siempre.
     if (isSent || iAmModerator) {
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = '🗑️';
@@ -185,9 +205,6 @@ export function createMessageElement(msg, isPrivate = false) {
     if (actionsDiv.hasChildNodes()) {
         mainContentWrapper.appendChild(actionsDiv);
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
 
     item.appendChild(mainContentWrapper);
 

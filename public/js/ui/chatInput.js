@@ -4,7 +4,7 @@ import { createMessageElement } from './renderer.js';
 import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
-import { fetchWithCredentials } from './modals.js';
+import { fetchWithCredentials } from './modals.js'; // <-- IMPORTAMOS LA FUNCIÓN
 
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
@@ -148,6 +148,9 @@ export function sendMessage() {
     hideReplyContextBar();
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 export async function handleFileUpload(file) {
     if (!file || !state.currentChatContext.with || state.currentChatContext.type === 'none') {
         alert('Por favor, selecciona una sala o chat privado para enviar el archivo.');
@@ -175,8 +178,7 @@ export async function handleFileUpload(file) {
             const options = {
                 method: 'POST',
                 headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${state.authToken}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     fileBase64,
@@ -186,19 +188,18 @@ export async function handleFileUpload(file) {
                 })
             };
 
-            const response = await fetch('/api/upload/chat-file', options);
+            // Usamos la función importada que añade el token automáticamente
+            const result = await fetchWithCredentials('/api/upload/chat-file', options);
             
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detalle || errorData.error || 'Error desconocido del servidor');
-            }
-
-            const result = await response.json();
             console.log(result.message);
 
         } catch (error) {
             console.error('Error al subir archivo:', error);
-            alert(`Error al subir archivo: ${error.message}`);
+            let errorMessage = error.message;
+            if (errorMessage.includes("401")) {
+                errorMessage = "No estás autorizado. Tu sesión puede haber expirado. Intenta recargar la página.";
+            }
+            alert(`Error al subir archivo: ${errorMessage}`);
         } finally {
             if(indicator) indicator.remove();
         }
@@ -208,6 +209,10 @@ export async function handleFileUpload(file) {
         if(indicator) indicator.remove();
     };
 };
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
+
 
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {
@@ -304,7 +309,147 @@ export function updateTypingIndicator() {
 }
 
 export function initChatInput() {
-    // ... (toda la lógica de grabación de audio no cambia) ...
+    let recordingStartTime;
+    let recordingInterval;
+    let sendButton = document.getElementById('send-icon-button');
+    let supportedMimeType = '';
+
+    function resetAudioRecorderUI() {
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            state.mediaRecorder.stop();
+        }
+        if (state.audioStream) {
+            state.audioStream.getTracks().forEach(track => track.stop());
+        }
+        clearInterval(recordingInterval);
+        
+        dom.form.classList.remove('is-recording');
+        const recordingControls = document.getElementById('audio-recording-controls');
+        const recordButton = document.getElementById('record-audio-button');
+        
+        if (recordButton) recordButton.classList.remove('hidden');
+        if (recordingControls) recordingControls.classList.add('hidden');
+
+        dom.input.disabled = false;
+        if(sendButton) sendButton.disabled = false;
+        
+        const imageUploadInput = document.getElementById('image-upload');
+        if(imageUploadInput) imageUploadInput.disabled = false;
+        dom.emojiButton.disabled = false;
+
+        state.audioChunks = [];
+        state.audioBlob = null;
+        state.mediaRecorder = null;
+        state.audioStream = null;
+    }
+
+    async function handleMicClick() {
+        if (!state.currentChatContext.with || state.currentChatContext.type === 'none') {
+            alert('Selecciona una sala o chat privado para enviar notas de voz.');
+            return;
+        }
+
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            stopRecording();
+            return;
+        }
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            state.audioStream = stream;
+
+            const recordingControls = document.getElementById('audio-recording-controls');
+            const recordButton = document.getElementById('record-audio-button');
+            const stopBtn = document.getElementById('stop-recording-button');
+            const sendBtn = document.getElementById('send-audio-button');
+            const cancelBtn = document.getElementById('cancel-recording-button');
+            
+            dom.form.classList.add('is-recording');
+            if (recordButton) recordButton.classList.add('hidden');
+            if (recordingControls) recordingControls.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            if (sendBtn) sendBtn.classList.add('hidden');
+            if (cancelBtn) cancelBtn.classList.remove('hidden');
+
+            dom.input.disabled = true;
+            if (sendButton) sendButton.disabled = true;
+            const imageUploadInput = document.getElementById('image-upload');
+            if(imageUploadInput) imageUploadInput.disabled = true;
+            dom.emojiButton.disabled = true;
+            
+            const MimeTypes = [
+                'audio/webm; codecs=opus',
+                'audio/webm',
+                'audio/ogg; codecs=opus',
+                'audio/ogg',
+                'audio/mp4'
+            ];
+            supportedMimeType = MimeTypes.find(type => MediaRecorder.isTypeSupported(type));
+
+            if (!supportedMimeType) {
+                alert('Tu navegador no soporta la grabación de audio o ningún formato compatible.');
+                resetAudioRecorderUI();
+                return;
+            }
+            
+            console.log(`Usando formato de audio: ${supportedMimeType}`);
+            const options = { mimeType: supportedMimeType };
+            state.mediaRecorder = new MediaRecorder(stream, options);
+            state.audioChunks = [];
+
+            state.mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) state.audioChunks.push(event.data);
+            };
+
+            state.mediaRecorder.onstop = () => {
+                state.audioBlob = new Blob(state.audioChunks, { type: supportedMimeType });
+                if (stopBtn) stopBtn.classList.add('hidden');
+                if (sendBtn) sendBtn.classList.remove('hidden');
+            };
+
+            state.mediaRecorder.start();
+
+            recordingStartTime = Date.now();
+            const timer = document.getElementById('recording-timer');
+            if (timer) timer.textContent = '00:00';
+            recordingInterval = setInterval(() => {
+                if (!timer) return;
+                const elapsed = Date.now() - recordingStartTime;
+                const seconds = String(Math.floor(elapsed / 1000) % 60).padStart(2, '0');
+                const minutes = String(Math.floor(elapsed / (1000 * 60))).padStart(2, '0');
+                timer.textContent = `${minutes}:${seconds}`;
+            }, 1000);
+            
+        } catch (err) {
+            console.error('Error al solicitar permiso o iniciar grabación:', err);
+            alert('No se pudo acceder al micrófono. Asegúrate de haber concedido el permiso en la configuración de tu navegador.');
+            resetAudioRecorderUI();
+        }
+    }
+
+    function stopRecording() {
+        if (state.mediaRecorder && state.mediaRecorder.state === 'recording') {
+            state.mediaRecorder.stop();
+            clearInterval(recordingInterval);
+        }
+    }
+
+    const recordButton = document.getElementById('record-audio-button');
+    const stopRecordingButton = document.getElementById('stop-recording-button');
+    const cancelRecordingButton = document.getElementById('cancel-recording-button');
+    const sendAudioButton = document.getElementById('send-audio-button');
+
+    if (recordButton) recordButton.addEventListener('click', handleMicClick);
+    if (stopRecordingButton) stopRecordingButton.addEventListener('click', stopRecording);
+    if (cancelRecordingButton) cancelRecordingButton.addEventListener('click', resetAudioRecorderUI);
+    if (sendAudioButton) sendAudioButton.addEventListener('click', () => {
+        if (state.audioBlob) {
+            const extension = (supportedMimeType || 'audio/webm').split('/')[1].split(';')[0];
+            const fileName = `audio-${Date.now()}.${extension}`;
+            handleFileUpload(new File([state.audioBlob], fileName, { type: state.audioBlob.type }));
+            resetAudioRecorderUI();
+        }
+    });
 
     dom.input.addEventListener('input', () => {
         handleTypingIndicator();
@@ -321,24 +466,14 @@ export function initChatInput() {
             dom.commandSuggestions.classList.add('hidden');
             state.suggestionState.list = [];
         }
-
-        // --- INICIO DE LA CORRECCIÓN CLAVE ---
         if (e.key === 'Tab' && state.suggestionState.list.length > 0) {
             e.preventDefault(); 
-
             state.suggestionState.index = (state.suggestionState.index + 1) % state.suggestionState.list.length;
-            
             const selectedUser = state.suggestionState.list[state.suggestionState.index];
-            
             autocompleteNick(selectedUser.nick);
-            
-            // Actualizamos la palabra original con la que acabamos de autocompletar.
-            // Esto es crucial para que el siguiente 'Tab' reemplace la palabra correcta.
             state.suggestionState.originalWord = selectedUser.nick;
-            
             renderSuggestions();
         }
-        // --- FIN DE LA CORRECCIÓN CLAVE ---
     });
 
     dom.imageUpload.addEventListener('change', (e) => {

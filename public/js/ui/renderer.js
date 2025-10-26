@@ -112,9 +112,6 @@ export function createMessageElement(msg, isPrivate = false) {
     
     contentDiv.appendChild(headerDiv);
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     const processedHTML = processMessageText(msg.text);
     const isYoutubeVideo = processedHTML.startsWith('<iframe');
 
@@ -139,9 +136,6 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(linkPreview);
         }
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'message-timestamp';

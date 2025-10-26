@@ -87,7 +87,7 @@ function createYoutubeEmbed(text) {
         iframe.allowFullscreen = true;
         iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
         
-        checkIframeLoad(iframe, originalUrl);
+        // checkIframeLoad(iframe, originalUrl);
         
         return iframe;
     }

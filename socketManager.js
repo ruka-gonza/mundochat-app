@@ -11,8 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const fetch = require('node-fetch');
 
-// La importación circular ha sido eliminada.
-// const { closedSessions } = require('../socketManager');
+const { closedSessions } = require('../socketManager');
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -20,11 +19,6 @@ async function generateLinkPreview(text) {
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
-
-    const youtubeRegexSimple = /(?:youtube\.com|youtu\.be)/;
-    if (youtubeRegexSimple.test(url)) {
-        return null;
-    }
 
     const fetchWithTimeout = (url, options, timeout = 2000) => {
         return Promise.race([
@@ -42,6 +36,16 @@ async function generateLinkPreview(text) {
 
         if (contentType && contentType.startsWith('image/')) {
              return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
+        }
+
+        const youtubeRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+        const youtubeMatch = url.match(youtubeRegex);
+        if (youtubeMatch && youtubeMatch[1]) {
+            const videoId = youtubeMatch[1];
+            const oembedRes = await fetchWithTimeout(`https://www.youtube.com/oembed?url=http://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (!oembedRes.ok) return null;
+            const data = await oembedRes.json();
+            return { type: 'youtube', url: url, title: data.title, image: data.thumbnail_url, description: `Video de YouTube por ${data.author_name}` };
         }
 
         if (contentType && contentType.includes('text/html')) {
@@ -68,7 +72,6 @@ async function generateLinkPreview(text) {
         }
         return null;
     }
-
     return null;
 }
 

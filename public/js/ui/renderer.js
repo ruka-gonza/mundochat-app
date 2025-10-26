@@ -3,9 +3,11 @@ import { getUserIcons, replaceEmoticons } from '../utils.js';
 import { openImageModal } from './modals.js';
 
 function createPreviewCard(preview) {
+    // No mostrar preview card para videos, ya que los incrustaremos directamente
     if (!preview || !preview.url || ['image', 'audio', 'youtube'].includes(preview.type)) {
         return null;
     }
+
     const linkCard = document.createElement('a');
     linkCard.href = preview.url;
     linkCard.target = '_blank';
@@ -27,9 +29,6 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
-// =========================================================================
-// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-// =========================================================================
 function createYoutubeEmbed(text) {
     if (!text) return null;
     const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
@@ -38,7 +37,6 @@ function createYoutubeEmbed(text) {
     if (youtubeMatch && youtubeMatch[1]) {
         const videoId = youtubeMatch[1];
         
-        // Creamos el elemento iframe como un objeto del DOM
         const iframe = document.createElement('iframe');
         iframe.width = "480";
         iframe.height = "270";
@@ -48,7 +46,7 @@ function createYoutubeEmbed(text) {
         iframe.allowFullscreen = true;
         iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
         
-        return iframe; // Devolvemos el elemento, no un string
+        return iframe;
     }
     return null;
 }
@@ -117,7 +115,7 @@ export function createMessageElement(msg, isPrivate = false) {
     if (youtubeEmbedElement) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        textContainer.appendChild(youtubeEmbedElement); // Usamos appendChild en lugar de innerHTML
+        textContainer.appendChild(youtubeEmbedElement);
         contentDiv.appendChild(textContainer);
         contentRendered = true;
     } else if (msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio')) {
@@ -147,7 +145,6 @@ export function createMessageElement(msg, isPrivate = false) {
     if (!contentRendered) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        // Para imágenes pegadas como enlace, usamos una lógica simple
         const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
         textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text || '').replace(imageRegex, '<a href="$1" target="_blank"><img src="$1" class="chat-image" alt="Image" loading="lazy"></a>'));
         contentDiv.appendChild(textContainer);
@@ -157,10 +154,6 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(linkPreview);
         }
     }
-    
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'message-timestamp';

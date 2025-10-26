@@ -23,7 +23,7 @@ const isCurrentUser = async (req, res, next) => {
              }
 
              if (userInDb.nick.toLowerCase() !== sessionData.nick.toLowerCase()) {
-                const io = req.io;
+                const io = req.io; // Usamos el 'io' adjunto a la petición
                 let isValidIncognitoSession = false;
 
                 if (io && sessionData.id) {

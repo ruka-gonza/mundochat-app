@@ -43,7 +43,7 @@ function createPreviewCard(preview) {
 // =========================================================================
 function processMessageText(text) {
     // Esta expresión regular busca enlaces de YouTube solitarios en una línea.
-    const youtubeRegex = /^(https?:\/\/(?:www\\.)?(?:youtube\\.com\\/(?:watch\\?v=|embed\\/)|youtu\\.be\\/)([a-zA-Z0-9_-]{11}))\\s*$/i;
+    const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
     const youtubeMatch = text.match(youtubeRegex);
 
     if (youtubeMatch && youtubeMatch[1]) {

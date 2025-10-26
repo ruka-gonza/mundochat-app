@@ -3,7 +3,6 @@ const roomService = require('../services/roomService');
 
 const isCurrentUser = async (req, res, next) => {
     try {
-        // Obtenemos 'closedSessions' desde 'app.locals' donde lo centralizamos.
         const closedSessions = req.app.locals.closedSessions;
 
         const authCookieString = req.cookies.user_auth;
@@ -24,7 +23,7 @@ const isCurrentUser = async (req, res, next) => {
              }
 
              if (userInDb.nick.toLowerCase() !== sessionData.nick.toLowerCase()) {
-                const io = global.io;
+                const io = req.io;
                 let isValidIncognitoSession = false;
 
                 if (io && sessionData.id) {

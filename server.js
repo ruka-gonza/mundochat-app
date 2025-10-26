@@ -9,11 +9,9 @@ const { connectDb } = require('./services/db-connection');
 
 async function startServer() {
     try {
-        // 1. Conectar a la base de datos y esperar a que esté lista
         await connectDb();
         console.log('La base de datos está conectada, procediendo con el arranque del servidor...');
 
-        // 2. Una vez conectado, requerir los módulos que dependen de la BD
         const { initializeRooms } = require('./services/roomService');
         const { initializeSocket } = require('./socketManager');
         const botService = require('./services/botService'); 
@@ -25,16 +23,13 @@ async function startServer() {
         const guestRoutes = require('./routes/guest');
         const uploadRoutes = require('./routes/upload');
 
-        // 3. Inicializar las salas (ahora con la BD disponible)
         initializeRooms();
 
         const app = express();
         app.set('trust proxy', 1);
         const server = http.createServer(app);
 
-        // Definimos closedSessions aquí en el punto de entrada principal.
         const closedSessions = new Set();
-        // Hacemos que sea accesible para otros módulos (como el middleware) a través de 'app.locals'.
         app.locals.closedSessions = closedSessions;
 
         const isProduction = process.env.NODE_ENV === 'production';
@@ -105,7 +100,6 @@ async function startServer() {
         app.use('/api/guest', guestRoutes);
         app.use('/api/upload', isCurrentUser, uploadRoutes);
 
-        // Pasamos 'closedSessions' como argumento a initializeSocket.
         initializeSocket(io, closedSessions);
         botService.initialize(io);
 

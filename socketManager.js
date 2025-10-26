@@ -8,9 +8,11 @@ const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection').getInstance();
 const fs = require('fs');
+const path = require('path');
 const fetch = require('node-fetch');
 
-const { closedSessions } = require('../socketManager');
+// La importación circular ha sido eliminada.
+// const { closedSessions } = require('../socketManager');
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -19,7 +21,6 @@ async function generateLinkPreview(text) {
     if (!match) return null;
     const url = match[0];
 
-    // --- LÍNEA CLAVE: Ignoramos los enlaces de YouTube para que el frontend los maneje ---
     const youtubeRegexSimple = /(?:youtube\.com|youtu\.be)/;
     if (youtubeRegexSimple.test(url)) {
         return null;

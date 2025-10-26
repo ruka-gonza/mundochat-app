@@ -27,23 +27,30 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 function createYoutubeEmbed(text) {
+    if (!text) return null;
     const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
     const youtubeMatch = text.match(youtubeRegex);
 
     if (youtubeMatch && youtubeMatch[1]) {
         const videoId = youtubeMatch[1];
-        return `<iframe 
-                    width="480" 
-                    height="270" 
-                    src="https://www.youtube.com/embed/${videoId}" 
-                    frameborder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowfullscreen 
-                    referrerpolicy="strict-origin-when-cross-origin">
-                </iframe>`;
+        
+        // Creamos el elemento iframe como un objeto del DOM
+        const iframe = document.createElement('iframe');
+        iframe.width = "480";
+        iframe.height = "270";
+        iframe.src = `https://www.youtube.com/embed/${videoId}`;
+        iframe.frameBorder = "0";
+        iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+        iframe.allowFullscreen = true;
+        iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        
+        return iframe; // Devolvemos el elemento, no un string
     }
-    return null; // Devuelve nulo si no es un enlace de YouTube
+    return null;
 }
 
 export function createMessageElement(msg, isPrivate = false) {
@@ -105,22 +112,15 @@ export function createMessageElement(msg, isPrivate = false) {
     contentDiv.appendChild(headerDiv);
     
     let contentRendered = false;
+    const youtubeEmbedElement = createYoutubeEmbed(msg.text || '');
 
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
-    const youtubeEmbedHTML = createYoutubeEmbed(msg.text || '');
-
-    if (youtubeEmbedHTML) {
-        // Si es un video de YouTube, lo renderizamos y marcamos como renderizado.
+    if (youtubeEmbedElement) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        textContainer.innerHTML = youtubeEmbedHTML;
+        textContainer.appendChild(youtubeEmbedElement); // Usamos appendChild en lugar de innerHTML
         contentDiv.appendChild(textContainer);
         contentRendered = true;
-
     } else if (msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio')) {
-        // Si es un archivo subido, lo renderizamos.
         contentDiv.classList.add('media-only-content');
         if (msg.preview.type === 'image') {
             const img = document.createElement('img');
@@ -145,18 +145,19 @@ export function createMessageElement(msg, isPrivate = false) {
     }
 
     if (!contentRendered) {
-        // Si no es ninguno de los anteriores, es texto normal.
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text || ''));
+        // Para imágenes pegadas como enlace, usamos una lógica simple
+        const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
+        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text || '').replace(imageRegex, '<a href="$1" target="_blank"><img src="$1" class="chat-image" alt="Image" loading="lazy"></a>'));
         contentDiv.appendChild(textContainer);
 
-        // Y si además tiene un `link preview` (de una sala pública), lo añadimos.
         const linkPreview = createPreviewCard(msg.preview);
         if (linkPreview) {
             contentDiv.appendChild(linkPreview);
         }
     }
+    
     // =========================================================================
     // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
     // =========================================================================
@@ -179,8 +180,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
     
-    // El botón de editar solo aparece si el mensaje TIENE texto y no es un video.
-    if (isSent && msg.text && !youtubeEmbedHTML) {
+    if (isSent && msg.text && !youtubeEmbedElement) {
         const editBtn = document.createElement('button');
         editBtn.textContent = '✏️';
         editBtn.title = 'Editar mensaje';
@@ -189,7 +189,6 @@ export function createMessageElement(msg, isPrivate = false) {
         actionsDiv.appendChild(editBtn);
     }
 
-    // El botón de borrar aparece siempre.
     if (isSent || iAmModerator) {
         const deleteBtn = document.createElement('button');
         deleteBtn.textContent = '🗑️';

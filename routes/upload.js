@@ -19,7 +19,8 @@ const avatarStorage = multer.diskStorage({
     },
     filename: function (req, file, cb) {
         const userId = req.verifiedUser.id;
-        cb(null, `user-${userId}${path.extname(file.originalname)}`);
+        const uniqueSuffix = Date.now(); // Añadimos un timestamp para evitar problemas de caché
+        cb(null, `user-${userId}-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
 });
 
@@ -43,7 +44,7 @@ const chatStorage = multer.diskStorage({
     filename: function (req, file, cb) {
         const senderNick = req.verifiedUser.nick;
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, `${senderNick}-${uniqueSuffix}${path.extname(file.originalname)}`);
+        cb(null, `${senderNick.replace(/[^a-zA-Z0-9]/g, '_')}-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
 });
 
@@ -94,27 +95,21 @@ router.post('/chat-file', chatUpload, (req, res) => {
     const sender = req.verifiedUser;
     const io = req.io;
 
-    // Construir la URL pública del archivo
     const fileUrl = `/data/chat_uploads/${req.file.filename}`;
     const isImage = req.file.mimetype.startsWith('image/');
     const isAudio = req.file.mimetype.startsWith('audio/');
 
     const messagePayload = {
-        id: `file-${Date.now()}`,
+        id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         nick: sender.nick,
         from: sender.nick,
         role: sender.role,
         isVIP: sender.isVIP,
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
-        text: '', // <-- ¡LÍNEA AÑADIDA! Asegura que la propiedad 'text' siempre exista.
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
+        text: '',
         preview: {
             type: isImage ? 'image' : (isAudio ? 'audio' : 'file'),
             url: fileUrl,
+            filePath: req.file.path, // <-- AÑADIMOS LA RUTA COMPLETA DEL ARCHIVO
             title: req.file.originalname,
             image: isImage ? fileUrl : null,
             description: `Archivo ${isImage ? 'de imagen' : (isAudio ? 'de audio' : '')} compartido.`
@@ -127,12 +122,10 @@ router.post('/chat-file', chatUpload, (req, res) => {
         io.to(contextWith).emit('chat message', messagePayload);
     } else if (contextType === 'private') {
         messagePayload.to = contextWith;
-        const targetSocketId = require('../services/roomService').findSocketIdByNick(contextWith);
+        const targetSocketId = roomService.findSocketIdByNick(contextWith);
         if (targetSocketId) {
             io.to(targetSocketId).emit('private message', messagePayload);
         }
-        // Buscar el socket del remitente para enviar el eco.
-        // req.verifiedUser.id contiene el ID de usuario o el UUID del invitado.
         const senderSocketId = roomService.findSocketIdByUserId(req.verifiedUser.id);
         if(senderSocketId) {
              io.to(senderSocketId).emit('private message', messagePayload);

@@ -8,9 +8,11 @@ const permissionService = require('./services/permissionService');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./services/db-connection').getInstance();
 const fs = require('fs');
+const path = require('path');
 const fetch = require('node-fetch');
 
-// Ya no se define 'closedSessions' aquí.
+// La variable `closedSessions` ahora se pasa como parámetro a `initializeSocket`
+// y ya no se importa desde aquí.
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -18,6 +20,7 @@ async function generateLinkPreview(text) {
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
+
     const fetchWithTimeout = (url, options, timeout = 2000) => {
         return Promise.race([
             fetch(url, options),
@@ -26,18 +29,22 @@ async function generateLinkPreview(text) {
             )
         ]);
     };
+
     try {
         const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
         const youtubeMatch = url.match(youtubeRegex);
         if (youtubeMatch && youtubeMatch[1]) {
             return { type: 'youtube', url: url, videoId: youtubeMatch[1] };
         }
+
         const response = await fetchWithTimeout(url);
         if (!response.ok) return null;
         const contentType = response.headers.get('content-type');
+
         if (contentType && contentType.startsWith('image/')) {
              return { type: 'image', url: url, title: url.split('/').pop(), image: url, description: 'Imagen compartida en el chat' };
         }
+
         if (contentType && contentType.includes('text/html')) {
             const html = await response.text();
             const titleMatch = html.match(/<title>(.*?)<\/title>/);
@@ -167,17 +174,24 @@ async function handleEditMessage(io, socket, { messageId, newText, roomName }) {
 async function handleDeleteMessage(io, socket, { messageId, roomName }) {
     const senderNick = socket.userData.nick;
     if (!messageId || !roomName) return;
-    const row = await new Promise((resolve, reject) => {
-        db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
-    });
-    if (row && row.nick.toLowerCase() === senderNick.toLowerCase()) {
-        await new Promise((resolve, reject) => {
-            db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
-                if (err) return reject(err);
-                io.to(roomName).emit('message deleted', { messageId, roomName });
-                resolve();
-            });
+
+    if (messageId.toString().startsWith('file-')) {
+        // Para archivos, asumimos que el frontend ya verificó que es el propio usuario.
+        io.to(roomName).emit('message deleted', { messageId, roomName });
+    } else {
+        // Para mensajes de texto, verificamos en la BD.
+        const row = await new Promise((resolve, reject) => {
+            db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
         });
+        if (row && row.nick.toLowerCase() === senderNick.toLowerCase()) {
+            await new Promise((resolve, reject) => {
+                db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
+                    if (err) return reject(err);
+                    io.to(roomName).emit('message deleted', { messageId, roomName });
+                    resolve();
+                });
+            });
+        }
     }
 }
 
@@ -187,20 +201,27 @@ async function handleDeleteAnyMessage(io, socket, { messageId, roomName }) {
         return socket.emit('system message', { text: 'No tienes permiso para realizar esta acción.', type: 'error', roomName }); 
     }
     if (!messageId || !roomName) return;
-    const row = await new Promise((resolve, reject) => {
-        db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
-    });
-    if (row) {
-        const originalAuthor = row.nick;
-        await new Promise((resolve, reject) => {
-            db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
-                if (err) { console.error("Error al borrar mensaje por moderador:", err); return reject(err); }
-                io.to(roomName).emit('message deleted', { messageId, roomName });
-                const logMessage = `[MOD_DELETE] ${sender.nick} ha borrado un mensaje de ${originalAuthor} en la sala ${roomName}.`;
-                io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
-                resolve();
-            });
+
+    if (messageId.toString().startsWith('file-')) {
+        // Lógica para borrar archivo visualmente para todos.
+        io.to(roomName).emit('message deleted', { messageId, roomName });
+        io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[MOD_DELETE] ${sender.nick} ha borrado un archivo en la sala ${roomName}.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+    } else {
+        const row = await new Promise((resolve, reject) => {
+            db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => err ? reject(err) : resolve(row));
         });
+        if (row) {
+            const originalAuthor = row.nick;
+            await new Promise((resolve, reject) => {
+                db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
+                    if (err) { console.error("Error al borrar mensaje por moderador:", err); return reject(err); }
+                    io.to(roomName).emit('message deleted', { messageId, roomName });
+                    const logMessage = `[MOD_DELETE] ${sender.nick} ha borrado un mensaje de ${originalAuthor} en la sala ${roomName}.`;
+                    io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
+                    resolve();
+                });
+            });
+        }
     }
 }
 

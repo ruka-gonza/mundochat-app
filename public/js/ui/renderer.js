@@ -42,24 +42,29 @@ function createPreviewCard(preview) {
 // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
 // =========================================================================
 function processMessageText(text) {
-    // Esta expresión regular busca enlaces de YouTube solitarios en una línea.
+    // Expresión regular corregida. Se escapa correctamente la barra inclinada (/).
     const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
     const youtubeMatch = text.match(youtubeRegex);
 
     if (youtubeMatch && youtubeMatch[1]) {
         const videoId = youtubeMatch[1];
-        // Si encuentra un video de YouTube, devuelve el código del iframe para incrustarlo.
-        return `<iframe width="480" height="270" src="https://www.youtube.com/embed/${videoId}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+        return `<iframe 
+                    width="480" 
+                    height="270" 
+                    src="https://www.youtube.com/embed/${videoId}" 
+                    frameborder="0" 
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                    allowfullscreen 
+                    referrerpolicy="strict-origin-when-cross-origin">
+                </iframe>`;
     }
 
-    // Esta expresión regular busca enlaces de imágenes para mostrarlas directamente.
     const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
     return text.replace(imageRegex, '<a href="$1" target="_blank"><img src="$1" class="chat-image" alt="Image" loading="lazy"></a>');
 }
 // =========================================================================
 // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
 // =========================================================================
-
 
 export function createMessageElement(msg, isPrivate = false) {
     if (!msg.nick && !msg.from) {
@@ -115,7 +120,9 @@ export function createMessageElement(msg, isPrivate = false) {
         const quoteNick = document.createElement('strong');
         quoteNick.textContent = msg.replyTo.nick;
         const quoteText = document.createElement('p');
-        const previewText = msg.replyTo.text.length > 70 ? msg.replyTo.text.substring(0, 70) + '...' : msg.replyTo.text;
+        const previewText = msg.replyTo.text.length > 70 
+            ? msg.replyTo.text.substring(0, 70) + '...' 
+            : msg.replyTo.text;
         
         quoteText.innerHTML = twemoji.parse(replaceEmoticons(previewText));
         quoteDiv.appendChild(quoteNick);
@@ -145,11 +152,8 @@ export function createMessageElement(msg, isPrivate = false) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
         
-        // La función processMessageText se encarga de convertir el enlace en un iframe si es necesario
         const processedHTML = processMessageText(msg.text);
         
-        // Si el texto fue convertido a un iframe, lo insertamos directamente.
-        // Si no, lo procesamos con twemoji y emoticonos como antes.
         if (processedHTML.startsWith('<iframe')) {
             textContainer.innerHTML = processedHTML;
         } else {
@@ -158,7 +162,6 @@ export function createMessageElement(msg, isPrivate = false) {
         contentDiv.appendChild(textContainer);
     }
 
-    // El `createPreviewCard` del backend sigue funcionando para otros tipos de enlaces en salas públicas
     const linkPreview = createPreviewCard(msg.preview);
     if (linkPreview) {
         contentDiv.appendChild(linkPreview);

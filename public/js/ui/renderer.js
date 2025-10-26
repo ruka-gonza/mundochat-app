@@ -3,9 +3,11 @@ import { getUserIcons, replaceEmoticons } from '../utils.js';
 import { openImageModal } from './modals.js';
 
 function createPreviewCard(preview) {
-    if (!preview || !preview.url || preview.type === 'image' || preview.type === 'audio' || preview.type === 'youtube') {
+    // No mostrar preview card para videos, ya que los incrustaremos directamente
+    if (!preview || !preview.url || ['image', 'audio', 'youtube'].includes(preview.type)) {
         return null;
     }
+
     const linkCard = document.createElement('a');
     linkCard.href = preview.url;
     linkCard.target = '_blank';
@@ -25,29 +27,6 @@ function createPreviewCard(preview) {
     innerHTML += '</div>';
     linkCard.innerHTML = innerHTML;
     return linkCard;
-}
-
-function processMessageText(text) {
-    if (!text) return ''; // Prevenir errores si el texto es nulo o undefined
-    
-    const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
-    const youtubeMatch = text.match(youtubeRegex);
-
-    if (youtubeMatch && youtubeMatch[1]) {
-        const videoId = youtubeMatch[1];
-        return `<iframe 
-                    width="480" 
-                    height="270" 
-                    src="https://www.youtube.com/embed/${videoId}" 
-                    frameborder="0" 
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-                    allowfullscreen 
-                    referrerpolicy="strict-origin-when-cross-origin">
-                </iframe>`;
-    }
-
-    const imageRegex = /(https?:\/\/[^\s]+\.(?:gif|png|jpg|jpeg|webp))/gi;
-    return text.replace(imageRegex, '<a href="$1" target="_blank"><img src="$1" class="chat-image" alt="Image" loading="lazy"></a>');
 }
 
 export function createMessageElement(msg, isPrivate = false) {
@@ -107,58 +86,59 @@ export function createMessageElement(msg, isPrivate = false) {
     }
     
     contentDiv.appendChild(headerDiv);
-
-    // =========================================================================
-    // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     
-    // Simplificamos la lógica de renderizado
-    const processedHTML = processMessageText(msg.text);
-    const isYoutubeVideo = processedHTML.startsWith('<iframe');
+    let contentRendered = false;
 
-    if (msg.preview && (msg.preview.type === 'image' || msg.preview.type === 'audio')) {
-        // CASO 1: Es un archivo subido (imagen o audio)
-        contentDiv.classList.add('media-only-content');
-        if (msg.preview.type === 'image') {
-            const img = document.createElement('img');
-            img.src = msg.preview.url;
-            img.alt = msg.preview.title;
-            img.className = 'media-message image-message';
-            img.loading = 'lazy';
-            const link = document.createElement('a');
-            link.href = msg.preview.url;
-            link.target = '_blank';
-            link.appendChild(img);
-            contentDiv.appendChild(link);
-        } else if (msg.preview.type === 'audio') {
-            const audioPlayer = document.createElement('audio');
-            audioPlayer.src = msg.preview.url;
-            audioPlayer.controls = true;
-            audioPlayer.preload = 'metadata';
-            audioPlayer.className = 'media-message audio-message';
-            contentDiv.appendChild(audioPlayer);
+    if (msg.preview) {
+        if (msg.preview.type === 'youtube') {
+            const textContainer = document.createElement('div');
+            textContainer.className = 'message-text';
+            textContainer.innerHTML = `<iframe 
+                width="480" height="270" 
+                src="https://www.youtube.com/embed/${msg.preview.videoId}" 
+                frameborder="0" 
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                allowfullscreen 
+                referrerpolicy="strict-origin-when-cross-origin">
+            </iframe>`;
+            contentDiv.appendChild(textContainer);
+            contentRendered = true;
+        } else if (msg.preview.type === 'image' || msg.preview.type === 'audio') {
+            contentDiv.classList.add('media-only-content');
+            if (msg.preview.type === 'image') {
+                const img = document.createElement('img');
+                img.src = msg.preview.url;
+                img.alt = msg.preview.title;
+                img.className = 'media-message image-message';
+                img.loading = 'lazy';
+                const link = document.createElement('a');
+                link.href = msg.preview.url;
+                link.target = '_blank';
+                link.appendChild(img);
+                contentDiv.appendChild(link);
+            } else if (msg.preview.type === 'audio') {
+                const audioPlayer = document.createElement('audio');
+                audioPlayer.src = msg.preview.url;
+                audioPlayer.controls = true;
+                audioPlayer.preload = 'metadata';
+                audioPlayer.className = 'media-message audio-message';
+                contentDiv.appendChild(audioPlayer);
+            }
+            contentRendered = true;
         }
-    } else if (isYoutubeVideo) {
-        // CASO 2: Es un enlace de YouTube
+    }
+
+    if (!contentRendered) {
         const textContainer = document.createElement('div');
         textContainer.className = 'message-text';
-        textContainer.innerHTML = processedHTML;
+        textContainer.innerHTML = twemoji.parse(replaceEmoticons(msg.text || ''));
         contentDiv.appendChild(textContainer);
-    } else {
-        // CASO 3: Es un mensaje de texto normal (puede contener otras imágenes o previews)
-        const textContainer = document.createElement('div');
-        textContainer.className = 'message-text';
-        textContainer.innerHTML = twemoji.parse(replaceEmoticons(processedHTML));
-        contentDiv.appendChild(textContainer);
-        
+
         const linkPreview = createPreviewCard(msg.preview);
         if (linkPreview) {
             contentDiv.appendChild(linkPreview);
         }
     }
-    // =========================================================================
-    // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-    // =========================================================================
     
     const timestampSpan = document.createElement('span');
     timestampSpan.className = 'message-timestamp';
@@ -178,7 +158,7 @@ export function createMessageElement(msg, isPrivate = false) {
     const actionsDiv = document.createElement('div');
     actionsDiv.className = 'message-actions';
     
-    if (isSent && msg.text && !isYoutubeVideo) {
+    if (isSent && msg.text) {
         const editBtn = document.createElement('button');
         editBtn.textContent = '✏️';
         editBtn.title = 'Editar mensaje';

@@ -10,10 +10,7 @@ const db = require('./services/db-connection').getInstance();
 const fs = require('fs');
 const fetch = require('node-fetch');
 
-// Almacenamiento en memoria de sesiones que han sido cerradas.
-const closedSessions = new Set();
-// Exportamos el set para que otros módulos (como el middleware) puedan acceder a él.
-module.exports.closedSessions = closedSessions;
+const { closedSessions } = require('../socketManager');
 
 async function generateLinkPreview(text) {
     if (!text) return null;
@@ -21,12 +18,6 @@ async function generateLinkPreview(text) {
     const match = text.match(urlRegex);
     if (!match) return null;
     const url = match[0];
-
-    // Ignoramos los enlaces de YouTube para que el frontend los maneje siempre.
-    const youtubeRegexSimple = /(?:youtube\.com|youtu\.be)/;
-    if (youtubeRegexSimple.test(url)) {
-        return null;
-    }
 
     const fetchWithTimeout = (url, options, timeout = 2000) => {
         return Promise.race([
@@ -38,6 +29,12 @@ async function generateLinkPreview(text) {
     };
 
     try {
+        const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
+        const youtubeMatch = url.match(youtubeRegex);
+        if (youtubeMatch && youtubeMatch[1]) {
+            return { type: 'youtube', url: url, videoId: youtubeMatch[1] };
+        }
+
         const response = await fetchWithTimeout(url);
         if (!response.ok) return null;
         const contentType = response.headers.get('content-type');

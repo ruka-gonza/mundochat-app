@@ -1,123 +1,134 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../services/db-connection').getInstance();
-const fs = require('fs').promises;
+const multer = require('multer');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+const userService = require('../services/userService');
 const roomService = require('../services/roomService');
 
-const chatUploadsDir = path.join(__dirname, '..', 'data', 'chat_uploads');
+// --- DIRECTORIOS DE SUBIDA ---
+const avatarUploadPath = path.join(__dirname, '..', 'data', 'avatars');
+const chatUploadPath = path.join(__dirname, '..', 'data', 'chat_uploads');
+fs.mkdirSync(avatarUploadPath, { recursive: true });
+fs.mkdirSync(chatUploadPath, { recursive: true });
 
-async function ensureUploadsDir() {
-    try {
-        await fs.access(chatUploadsDir);
-    } catch {
-        await fs.mkdir(chatUploadsDir, { recursive: true });
+// --- CONFIGURACIÓN DE MULTER PARA AVATARES ---
+const avatarStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, avatarUploadPath);
+    },
+    filename: function (req, file, cb) {
+        const userId = req.verifiedUser.id;
+        cb(null, `user-${userId}${path.extname(file.originalname)}`);
     }
-}
+});
 
-router.post('/chat-file', async (req, res) => {
-    const { fileBase64, contextType, contextWith } = req.body;
-    const sender = req.verifiedUser; // Del middleware isCurrentUser
-    const io = req.io;
-
-    if (!fileBase64 || !contextType || !contextWith) {
-        return res.status(400).json({ error: 'Faltan datos para la subida.' });
+const avatarUpload = multer({ 
+    storage: avatarStorage,
+    limits: { fileSize: 5 * 1024 * 1024 }, // Límite de 5MB para avatares
+    fileFilter: function (req, file, cb) {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('Solo se permiten archivos de imagen.'), false);
+        }
+        cb(null, true);
     }
-    
-    const match = fileBase64.match(/^data:((image|audio|video)\/([a-zA-Z0-9\w\-\+]+)(;[a-zA-Z0-9\w\-\+=;.\s]*)?);base64,(.+)$/);
-    if (!match) {
-        const debugMatch = fileBase64.match(/^data:([a-zA-Z0-9\/_\-\+;=\s]+);base64,/);
-        const receivedType = debugMatch ? debugMatch[1] : 'Desconocido';
-        console.error(`[DEBUG] Formato de archivo rechazado. Tipo recibido: ${receivedType}`);
-        return res.status(400).json({ 
-            error: `Formato de archivo inválido. El servidor recibió el tipo: ${receivedType}` 
-        });
+}).single('avatarFile');
+
+
+// --- CONFIGURACIÓN DE MULTER PARA ARCHIVOS DE CHAT ---
+const chatStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, chatUploadPath);
+    },
+    filename: function (req, file, cb) {
+        const senderNick = req.verifiedUser.nick;
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, `${senderNick}-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
+});
 
-    const mimeType = match[1];
-    const fileKind = match[2];
-    // Tomar solo la parte principal de la extensión, antes de cualquier ';'
-    const extension = match[3].split(';')[0].replace('x-matroska', 'mkv'); 
-    const base64Data = match[5];
-    const fileBuffer = Buffer.from(base64Data, 'base64');
-    
-    if (fileBuffer.length > 15 * 1024 * 1024) {
-        return res.status(413).json({ error: 'El archivo es demasiado grande.' });
-    }
+const chatUpload = multer({ 
+    storage: chatStorage,
+    limits: { fileSize: 50 * 1024 * 1024 } // Límite de 50MB para archivos de chat
+}).single('chatFile');
 
-    try {
-        await ensureUploadsDir();
-        const fileName = `${uuidv4()}.${extension}`;
-        const filePath = path.join(chatUploadsDir, fileName);
-        await fs.writeFile(filePath, fileBuffer);
-        
-        const fileUrl = `data/chat_uploads/${fileName}`;
-        const previewType = fileKind === 'image' ? 'image' : 'audio';
-        const textPlaceholder = `[${previewType === 'image' ? 'Imagen' : 'Audio'}: ${fileName}]`;
 
-        const previewData = {
-            type: previewType,
-            url: fileUrl,
-            title: fileName,
-            image: previewType === 'image' ? fileUrl : null,
-            description: `${previewType === 'image' ? 'Imagen' : 'Audio'} subido por el usuario`
-        };
+// --- RUTAS ---
 
-        const timestamp = new Date().toISOString();
-
-        if (contextType === 'room') {
-            const stmt = db.prepare(`INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-            const { lastID } = await new Promise((resolve, reject) => {
-                stmt.run(contextWith, sender.nick, textPlaceholder, sender.role, sender.isVIP ? 1:0, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
-                    if (err) return reject(err);
-                    resolve(this);
-                });
-                stmt.finalize();
-            });
-            const messagePayload = { id: lastID, text: textPlaceholder, nick: sender.nick, role: sender.role, isVIP: sender.isVIP, roomName: contextWith, timestamp, preview: previewData };
-            io.to(contextWith).emit('chat message', messagePayload);
-
-        } else if (contextType === 'private') {
-            const stmt = db.prepare(`INSERT INTO private_messages (from_nick, to_nick, text, timestamp, preview_type, preview_url, preview_title, preview_description, preview_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-            const { lastID } = await new Promise((resolve, reject) => {
-                // Guardar en la BD siempre con el nick real
-                stmt.run(sender.nick, contextWith, textPlaceholder, timestamp, previewData.type, previewData.url, previewData.title, previewData.description, previewData.image, function(err) {
-                    if (err) return reject(err);
-                    resolve(this);
-                });
-                stmt.finalize();
-            });
-
-            // Encontrar el socket del remitente por su ID de usuario para obtener su nick actual (que puede ser el de incógnito)
-            const mySocketId = roomService.findSocketIdByUserId(sender.id);
-            let fromNick = sender.nick; // Usar el nick real por defecto
-            if (mySocketId) {
-                const mySock = io.sockets.sockets.get(mySocketId);
-                if (mySock && mySock.userData) {
-                    fromNick = mySock.userData.nick; // Usar el nick del socket si se encuentra
-                }
-            }
-
-            const messagePayload = { id: lastID, text: textPlaceholder, from: fromNick, to: contextWith, role: sender.role, isVIP: sender.isVIP, timestamp, preview: previewData };
-            
-            // Enviar al destinatario
-            const targetSocketId = roomService.findSocketIdByNick(contextWith);
-            if (targetSocketId) io.to(targetSocketId).emit('private message', messagePayload);
-
-            // Enviar de vuelta al remitente (si se encontró su socket)
-            if (mySocketId) io.to(mySocketId).emit('private message', messagePayload);
+// RUTA PARA CAMBIAR AVATAR (USA FormData)
+router.post('/avatar', (req, res) => {
+    avatarUpload(req, res, async function (err) {
+        if (err instanceof multer.MulterError) {
+            return res.status(400).json({ error: `Error de Multer: ${err.message}` });
+        } else if (err) {
+            return res.status(400).json({ error: err.message });
         }
 
-        res.status(201).json({ success: true, message: 'Archivo subido y enviado.' });
+        if (!req.file) {
+            return res.status(400).json({ error: 'No se ha subido ningún archivo de avatar.' });
+        }
 
-    } catch (error) {
-        console.error('Error al subir archivo de chat:', error);
-        res.status(500).json({ 
-            error: 'Error interno del servidor.',
-            detalle: error.message
-        });
+        const avatarUrl = `/data/avatars/${req.file.filename}`;
+        const userId = req.verifiedUser.id;
+        const userNick = req.verifiedUser.nick;
+
+        try {
+            await userService.setAvatarUrl(userId, avatarUrl);
+            req.io.emit('user_avatar_changed', { nick: userNick, newAvatarUrl: avatarUrl });
+            res.json({ message: 'Avatar actualizado correctamente.', newAvatarUrl: avatarUrl });
+        } catch (dbError) {
+            console.error('Error al actualizar la URL del avatar en la BD:', dbError);
+            res.status(500).json({ error: 'Error al guardar el avatar en la base de datos.' });
+        }
+    });
+});
+
+
+// RUTA PARA SUBIR ARCHIVOS DE CHAT (USA FormData)
+router.post('/chat-file', chatUpload, (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: 'No se recibió ningún archivo.' });
     }
+
+    const { contextType, contextWith } = req.body;
+    const sender = req.verifiedUser;
+    const io = req.io;
+
+    // Construir la URL pública del archivo
+    const fileUrl = `/data/chat_uploads/${req.file.filename}`;
+    const isImage = req.file.mimetype.startsWith('image/');
+    const isAudio = req.file.mimetype.startsWith('audio/');
+
+    const messagePayload = {
+        id: `file-${Date.now()}`,
+        nick: sender.nick,
+        from: sender.nick,
+        role: sender.role,
+        isVIP: sender.isVIP,
+        preview: {
+            type: isImage ? 'image' : (isAudio ? 'audio' : 'file'),
+            url: fileUrl,
+            title: req.file.originalname,
+            image: isImage ? fileUrl : null,
+            description: `Archivo ${isImage ? 'de imagen' : (isAudio ? 'de audio' : '')} compartido.`
+        },
+        timestamp: new Date().toISOString()
+    };
+
+    if (contextType === 'room') {
+        messagePayload.roomName = contextWith;
+        io.to(contextWith).emit('chat message', messagePayload);
+    } else if (contextType === 'private') {
+        messagePayload.to = contextWith;
+        const targetSocketId = roomService.findSocketIdByNick(contextWith);
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('private message', messagePayload);
+        }
+        // Enviar eco al remitente
+        io.to(req.socketId).emit('private message', messagePayload); // Asumiendo que adjuntas socketId en un middleware
+    }
+
+    res.json({ message: 'Archivo subido y enviado correctamente.' });
 });
 
 module.exports = router;

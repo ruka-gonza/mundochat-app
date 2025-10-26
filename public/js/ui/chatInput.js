@@ -4,7 +4,7 @@ import { createMessageElement } from './renderer.js';
 import { renderUserList } from './userInteractions.js';
 import { addPrivateChat, updateConversationList } from './conversations.js';
 import { updateUnreadCounts } from '../socket.js';
-import { fetchWithCredentials } from './modals.js'; // <-- ¡ESTA LÍNEA ES CLAVE!
+// Ya no necesitamos fetchWithCredentials aquí, fetch normal funciona con FormData
 
 export function showReplyContextBar() {
     if (!state.replyingTo) return;
@@ -153,8 +153,8 @@ export async function handleFileUpload(file) {
         alert('Por favor, selecciona una sala o chat privado para enviar el archivo.');
         return;
     }
-    if (file.size > 15 * 1024 * 1024) {
-        alert('El archivo es demasiado grande (máx 15MB).');
+    if (file.size > 50 * 1024 * 1024) { // Coincide con el límite del backend
+        alert('El archivo es demasiado grande (máx 50MB).');
         return;
     }
 
@@ -162,50 +162,42 @@ export async function handleFileUpload(file) {
     indicator.className = 'system-message';
     indicator.textContent = `Subiendo ${file.name}...`;
     const container = state.currentChatContext.type === 'room' ? dom.messagesContainer : dom.privateChatWindow.querySelector('ul');
-    if(container) {
+    if (container) {
         container.appendChild(indicator);
         container.scrollTop = container.scrollHeight;
     }
 
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = async () => {
-        const fileBase64 = reader.result;
-        try {
-            const options = {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    fileBase64,
-                    contextType: state.currentChatContext.type,
-                    contextWith: state.currentChatContext.with,
-                    senderNick: state.myNick
-                })
-            };
+    const formData = new FormData();
+    formData.append('chatFile', file);
+    formData.append('contextType', state.currentChatContext.type);
+    formData.append('contextWith', state.currentChatContext.with);
+    
+    try {
+        const response = await fetch('/api/upload/chat-file', {
+            method: 'POST',
+            body: formData,
+            // Las cookies de autenticación se envían automáticamente
+        });
 
-            // Usamos la función importada que añade el token automáticamente
-            const result = await fetchWithCredentials('/api/upload/chat-file', options);
-            
-            console.log(result.message);
-
-        } catch (error) {
-            console.error('Error al subir archivo:', error);
-            let errorMessage = error.message;
-            if (errorMessage.includes("401")) {
-                errorMessage = "No estás autorizado. Tu sesión puede haber expirado. Intenta recargar la página.";
-            }
-            alert(`Error al subir archivo: ${errorMessage}`);
-        } finally {
-            if(indicator) indicator.remove();
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.error || 'Error desconocido del servidor');
         }
-    };
-    reader.onerror = () => {
-        alert('No se pudo leer el archivo seleccionado.');
-        if(indicator) indicator.remove();
-    };
-};
+        console.log(result.message);
+
+    } catch (error) {
+        console.error('Error al subir archivo:', error);
+        let errorMessage = error.message;
+        if (String(error).includes("401")) {
+            errorMessage = "No estás autorizado. Tu sesión puede haber expirado. Intenta recargar la página.";
+        } else if (String(error).includes("413")) {
+            errorMessage = "El archivo es demasiado grande.";
+        }
+        alert(`Error al subir archivo: ${errorMessage}`);
+    } finally {
+        if (indicator) indicator.remove();
+    }
+}
 
 export function switchToChat(contextId, contextType) {
     if (contextType === 'private') {

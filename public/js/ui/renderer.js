@@ -81,7 +81,7 @@ function createYoutubeEmbed(text) {
         const iframe = document.createElement('iframe');
         iframe.width = "480";
         iframe.height = "270";
-        iframe.src = `https://www.youtube.com/embed/${videoId}`;
+        iframe.src = `https://www.youtube-nocookie.com/embed/${videoId}`;
         iframe.frameBorder = "0";
         iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
         iframe.allowFullscreen = true;

@@ -3,11 +3,9 @@ import { getUserIcons, replaceEmoticons } from '../utils.js';
 import { openImageModal } from './modals.js';
 
 function createPreviewCard(preview) {
-    // No mostrar preview card para videos, ya que los incrustaremos directamente
     if (!preview || !preview.url || ['image', 'audio', 'youtube'].includes(preview.type)) {
         return null;
     }
-
     const linkCard = document.createElement('a');
     linkCard.href = preview.url;
     linkCard.target = '_blank';
@@ -29,6 +27,48 @@ function createPreviewCard(preview) {
     return linkCard;
 }
 
+function checkIframeLoad(iframe, originalUrl) {
+    iframe.onload = () => {
+        try {
+            // Si podemos acceder al contenido del iframe, es que ha cargado.
+            // Si está bloqueado, esto lanzará un error de seguridad (cross-origin).
+            const hasContent = iframe.contentWindow && iframe.contentDocument;
+        } catch (e) {
+            // El error cross-origin es esperado y significa que cargó.
+        }
+    };
+    
+    // Si después de un tiempo prudencial el iframe no ha disparado 'onload',
+    // es muy probable que haya sido bloqueado.
+    setTimeout(() => {
+        try {
+            if (!iframe.contentWindow || !iframe.contentDocument || iframe.contentWindow.length === 0) {
+                 throw new Error('Blocked by client');
+            }
+        } catch (e) {
+            // Reemplazamos el iframe con un mensaje de error amigable.
+            const errorMessage = document.createElement('div');
+            errorMessage.className = 'youtube-blocked-error';
+            errorMessage.innerHTML = `
+                El video no se pudo cargar. Esto puede deberse a un bloqueador de anuncios (AdBlocker).<br>
+                Intenta desactivarlo para este sitio o haz clic aquí para ver el video: 
+                <a href="${originalUrl}" target="_blank" rel="noopener noreferrer">Ver en YouTube</a>
+            `;
+            // Aplicamos algo de estilo básico
+            errorMessage.style.padding = '15px';
+            errorMessage.style.border = '1px solid #ff0000';
+            errorMessage.style.borderRadius = '8px';
+            errorMessage.style.backgroundColor = '#fff5f5';
+            errorMessage.style.color = '#c53030';
+            errorMessage.style.fontSize = '0.9em';
+
+            if (iframe.parentNode) {
+                iframe.parentNode.replaceChild(errorMessage, iframe);
+            }
+        }
+    }, 2000); // Esperamos 2 segundos
+}
+
 function createYoutubeEmbed(text) {
     if (!text) return null;
     const youtubeRegex = /^(https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11}))\s*$/i;
@@ -36,6 +76,7 @@ function createYoutubeEmbed(text) {
 
     if (youtubeMatch && youtubeMatch[1]) {
         const videoId = youtubeMatch[1];
+        const originalUrl = youtubeMatch[0];
         
         const iframe = document.createElement('iframe');
         iframe.width = "480";
@@ -45,6 +86,8 @@ function createYoutubeEmbed(text) {
         iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
         iframe.allowFullscreen = true;
         iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+        
+        checkIframeLoad(iframe, originalUrl);
         
         return iframe;
     }

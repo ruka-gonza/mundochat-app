@@ -5,7 +5,10 @@ const path = require('path');
 const fs = require('fs');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
-const { getInstance: getDb } = require('../services/db-connection');
+const sqlite3 = require('sqlite3').verbose();
+
+const dbPath = path.join(__dirname, '..', 'data', 'chat.db');
+const db = new sqlite3.Database(dbPath);
 
 // --- DIRECTORIOS DE SUBIDA ---
 const avatarUploadPath = path.join(__dirname, '..', 'data', 'avatars');

@@ -190,24 +190,8 @@ document.addEventListener('DOMContentLoaded', () => {
         .then(response => response.json())
         .then(result => {
             if (result.success) {
-                const messagePayload = {
-                    file: result.fileUrl,
-                    type: result.fileType,
-                    nick: myNick,
-                    from: myNick,
-                    roomName: currentChatContext.type === 'room' ? currentChatContext.with : undefined,
-                    to: currentChatContext.type === 'private' ? currentChatContext.with : undefined,
-                    role: myUserData.role,
-                    isVIP: myUserData.isVIP,
-                    id: Date.now()
-                };
-
-                // Emitir el mensaje con la URL del archivo
-                if (currentChatContext.type === 'room') {
-                    socket.emit('chat message', messagePayload);
-                } else if (currentChatContext.type === 'private') {
-                    socket.emit('private message', messagePayload);
-                }
+                // El servidor ahora se encarga de emitir el mensaje de socket
+                // después de guardar en la base de datos. No es necesario hacer nada aquí.
             } else {
                 alert(`Error al subir la imagen: ${result.error || 'Desconocido'}`);
             }
@@ -241,23 +225,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const result = await response.json();
 
             if (response.ok && result.success) {
-                const messagePayload = {
-                    file: result.fileUrl,
-                    type: result.fileType,
-                    nick: myNick,
-                    from: myNick,
-                    roomName: currentChatContext.type === 'room' ? currentChatContext.with : undefined,
-                    to: currentChatContext.type === 'private' ? currentChatContext.with : undefined,
-                    role: myUserData.role,
-                    isVIP: myUserData.isVIP,
-                    id: Date.now()
-                };
-
-                if (currentChatContext.type === 'room') {
-                    socket.emit('chat message', messagePayload);
-                } else if (currentChatContext.type === 'private') {
-                    socket.emit('private message', messagePayload);
-                }
+                // El servidor ahora se encarga de emitir el mensaje de socket
+                // después de guardar en la base de datos. No es necesario hacer nada aquí.
             } else {
                 alert(`Error al subir el audio: ${result.error || 'Desconocido'}`);
             }

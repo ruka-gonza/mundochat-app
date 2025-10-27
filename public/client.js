@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('file', file, file.name);
         formData.append('nick', myNick); // Necesario para el nombre del archivo en S3
 
-        fetch('/api/user/upload-message-file', {
+/api/upload/chat-file
             method: 'POST',
             body: formData,
         })
@@ -234,7 +234,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('nick', myNick); // Necesario para el nombre del archivo en S3
 
         try {
-            const response = await fetch('/api/user/upload-message-file', {
+            const response = await fetch(/api/upload/chat-file {
                 method: 'POST',
                 body: formData,
             });

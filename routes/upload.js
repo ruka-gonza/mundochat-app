@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const userService = require('../services/userService');
 const roomService = require('../services/roomService');
+const { getInstance: getDb } = require('../services/db-connection');
 
 // --- DIRECTORIOS DE SUBIDA ---
 const avatarUploadPath = path.join(__dirname, '..', 'data', 'avatars');
@@ -94,45 +95,46 @@ router.post('/chat-file', chatUpload, (req, res) => {
     const { contextType, contextWith } = req.body;
     const sender = req.verifiedUser;
     const io = req.io;
+    const db = getDb();
 
     const fileUrl = `/data/chat_uploads/${req.file.filename}`;
-    const isImage = req.file.mimetype.startsWith('image/');
-    const isAudio = req.file.mimetype.startsWith('audio/');
+    const fileType = req.file.mimetype;
 
     const messagePayload = {
-        id: `file-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         nick: sender.nick,
-        from: sender.nick,
         role: sender.role,
         isVIP: sender.isVIP,
-        text: '',
-        preview: {
-            type: isImage ? 'image' : (isAudio ? 'audio' : 'file'),
-            url: fileUrl,
-            filePath: req.file.path, // <-- AÑADIMOS LA RUTA COMPLETA DEL ARCHIVO
-            title: req.file.originalname,
-            image: isImage ? fileUrl : null,
-            description: `Archivo ${isImage ? 'de imagen' : (isAudio ? 'de audio' : '')} compartido.`
-        },
+        file: fileUrl,
+        type: fileType,
         timestamp: new Date().toISOString()
     };
 
-    if (contextType === 'room') {
-        messagePayload.roomName = contextWith;
-        io.to(contextWith).emit('chat message', messagePayload);
-    } else if (contextType === 'private') {
-        messagePayload.to = contextWith;
-        const targetSocketId = roomService.findSocketIdByNick(contextWith);
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('private message', messagePayload);
-        }
-        const senderSocketId = roomService.findSocketIdByUserId(req.verifiedUser.id);
-        if(senderSocketId) {
-             io.to(senderSocketId).emit('private message', messagePayload);
-        }
-    }
+    const stmt = db.prepare(
+        'INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, file_url, file_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
 
-    res.json({ message: 'Archivo subido y enviado correctamente.' });
+    stmt.run(contextWith, sender.nick, null, sender.role, sender.isVIP ? 1 : 0, messagePayload.timestamp, fileUrl, fileType, function(err) {
+        if (err) {
+            console.error("Error guardando mensaje de archivo:", err);
+            // Si falla la BD, borramos el archivo para no dejar huérfanos
+            fs.unlink(req.file.path, (unlinkErr) => {
+                if (unlinkErr) console.error("Error borrando archivo tras fallo de BD:", unlinkErr);
+            });
+            return res.status(500).json({ error: 'Error al guardar el mensaje en la base de datos.' });
+        }
+
+        messagePayload.id = this.lastID; // Usamos el ID de la base de datos
+
+        if (contextType === 'room') {
+            messagePayload.roomName = contextWith;
+            io.to(contextWith).emit('chat message', messagePayload);
+        } else if (contextType === 'private') {
+            // Lógica para mensajes privados (si se implementa en el futuro)
+        }
+
+        res.json({ success: true, message: 'Archivo subido y enviado correctamente.', messagePayload });
+    });
+    stmt.finalize();
 });
 
 module.exports = router;

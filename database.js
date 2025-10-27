@@ -146,7 +146,7 @@ db.serialize(async () => {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 roomName TEXT NOT NULL,
                 nick TEXT NOT NULL,
-                text TEXT NOT NULL,
+                text TEXT,
                 role TEXT NOT NULL,
                 isVIP INTEGER NOT NULL,
                 timestamp TEXT NOT NULL,
@@ -165,6 +165,8 @@ db.serialize(async () => {
     await addColumn('messages', 'preview_description', 'TEXT');
     await addColumn('messages', 'preview_image', 'TEXT');
     await addColumn('messages', 'replyToId', 'INTEGER DEFAULT NULL');
+    await addColumn('messages', 'file_url', 'TEXT');
+    await addColumn('messages', 'file_type', 'TEXT');
 
      await new Promise(resolve => {
         db.run(`
@@ -200,6 +202,8 @@ db.serialize(async () => {
     await addColumn('private_messages', 'preview_title', 'TEXT');
     await addColumn('private_messages', 'preview_description', 'TEXT');
     await addColumn('private_messages', 'preview_image', 'TEXT');
+    await addColumn('private_messages', 'file_url', 'TEXT');
+    await addColumn('private_messages', 'file_type', 'TEXT');
     
     // --- Tabla 'activity_logs' ---
     await new Promise(resolve => {

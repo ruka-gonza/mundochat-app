@@ -1,5 +1,7 @@
 // handlers/chatHandler.js (REVISADO: No necesita cambios para audio si ya maneja fileData.type)
 const { handleCommand } = require('./modHandler');
+const fs = require('fs');
+const path = require('path');
 const roomService = require('../services/roomService');
 const botService = require('../services/botService');
 const sqlite3 = require('sqlite3').verbose();
@@ -145,19 +147,40 @@ function handleEditMessage(io, socket, { messageId, newText, roomName }) {
     });
 }
 
+const fs = require('fs');
+const path = require('path');
+
 function handleDeleteMessage(io, socket, { messageId, roomName }) {
     const sender = socket.userData;
     if (!messageId || !roomName) return;
 
-    db.get('SELECT nick FROM messages WHERE id = ?', [messageId], (err, row) => {
+    db.get('SELECT nick, file_url FROM messages WHERE id = ?', [messageId], (err, row) => {
         if (err || !row) return;
 
         const isOwner = row.nick.toLowerCase() === sender.nick.toLowerCase();
         const canDelete = ['owner', 'admin'].includes(sender.role);
 
         if (isOwner || canDelete) {
+            // Si hay una URL de archivo, intentamos borrarlo
+            if (row.file_url) {
+                const fileName = path.basename(row.file_url);
+                const filePath = path.join(__dirname, '..', 'data', 'chat_uploads', fileName);
+                
+                fs.unlink(filePath, (unlinkErr) => {
+                    if (unlinkErr) {
+                        // Si el archivo no se encuentra, no es un error crítico
+                        if (unlinkErr.code !== 'ENOENT') {
+                            console.error(`Error al eliminar el archivo ${filePath}:`, unlinkErr);
+                        }
+                    }
+                });
+            }
+
             db.run('DELETE FROM messages WHERE id = ?', [messageId], function(err) {
-                if (err) return;
+                if (err) {
+                    console.error("Error al borrar mensaje de la BD:", err);
+                    return;
+                }
                 io.to(roomName).emit('message deleted', { messageId, roomName });
             });
         }

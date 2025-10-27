@@ -4,15 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const userService = require('../services/userService');
-const roomService = require('../services/roomService');
-const sqlite3 = require('sqlite3').verbose();
-
-const dbPath = path.join(__dirname, '..', 'data', 'chat.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('Error al abrir la base de datos en upload.js:', err.message);
-    }
-});
+const { getInstance } = require('../services/db-connection');
 
 // --- DIRECTORIOS DE SUBIDA ---
 const avatarUploadPath = path.join(__dirname, '..', 'data', 'avatars');
@@ -102,7 +94,7 @@ router.post('/chat-file', chatUpload, (req, res) => {
     const { contextType, contextWith } = req.body;
     const sender = req.verifiedUser;
     const io = req.io;
-    const db = getDb();
+    const db = getInstance();
 
     const fileUrl = `/data/chat_uploads/${req.file.filename}`;
     const fileType = req.file.mimetype;

@@ -141,6 +141,28 @@ export function createMessageElement(msg, isPrivate = false) {
             contentDiv.appendChild(audioPlayer);
         }
         contentRendered = true;
+    } else if (msg.file && msg.type) {
+        contentDiv.classList.add('media-only-content');
+        if (msg.type.startsWith('image/')) {
+            const img = document.createElement('img');
+            img.src = msg.file;
+            img.alt = 'Imagen subida';
+            img.className = 'media-message image-message';
+            img.loading = 'lazy';
+            const link = document.createElement('a');
+            link.href = msg.file;
+            link.target = '_blank';
+            link.appendChild(img);
+            contentDiv.appendChild(link);
+        } else if (msg.type.startsWith('audio/')) {
+            const audioPlayer = document.createElement('audio');
+            audioPlayer.src = msg.file;
+            audioPlayer.controls = true;
+            audioPlayer.preload = 'metadata';
+            audioPlayer.className = 'media-message audio-message';
+            contentDiv.appendChild(audioPlayer);
+        }
+        contentRendered = true;
     }
 
     if (!contentRendered) {

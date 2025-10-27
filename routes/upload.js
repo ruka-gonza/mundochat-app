@@ -112,7 +112,7 @@ router.post('/chat-file', chatUpload, (req, res) => {
         'INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, file_url, file_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
 
-    stmt.run(contextWith, sender.nick, null, sender.role, sender.isVIP ? 1 : 0, messagePayload.timestamp, fileUrl, fileType, function(err) {
+    stmt.run(contextWith, sender.nick, '', sender.role, sender.isVIP ? 1 : 0, messagePayload.timestamp, fileUrl, fileType, function(err) {
         if (err) {
             console.error("Error guardando mensaje de archivo:", err);
             // Si falla la BD, borramos el archivo para no dejar huérfanos

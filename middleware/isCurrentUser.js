@@ -22,27 +22,17 @@ const isCurrentUser = async (req, res, next) => {
                 return res.status(401).json({ error: 'Sesión inválida. Por favor, vuelve a iniciar sesión.' });
              }
 
-             if (userInDb.nick.toLowerCase() !== sessionData.nick.toLowerCase()) {
-                const io = req.io; // Usamos el 'io' adjunto a la petición
-                let isValidIncognitoSession = false;
-
-                if (io && sessionData.id) {
-                    const socketId = roomService.findSocketIdByUserId(sessionData.id);
-                    if (socketId) {
-                        const userSocket = io.sockets.sockets.get(socketId);
-                        if (userSocket && userSocket.userData) {
-                            if (userSocket.userData.isIncognito && userSocket.userData.original_nick && userSocket.userData.original_nick.toLowerCase() === userInDb.nick.toLowerCase()) {
-                                isValidIncognitoSession = true;
-                            }
-                        }
-                    }
-                }
-
-                if (!isValidIncognitoSession) {
-                    res.clearCookie('user_auth');
-                    return res.status(401).json({ error: 'Sesión inválida. Por favor, vuelve a iniciar sesión.' });
-                }
-             }
+             // Si los nicks no coinciden, es una sesión de incógnito.
+             // Fusionamos los datos: usamos el ID y rol real de la BD para seguridad,
+             // pero mantenemos el nick de la cookie que es el de incógnito.
+             req.verifiedUser = {
+                ...sessionData, // Mantenemos datos de la cookie como el nick de incógnito
+                id: userInDb.id, // Sobrescribimos con el ID real de la BD
+                role: userInDb.role, // Sobrescribimos con el ROL real de la BD para permisos
+                originalNick: userInDb.nick, // Guardamos el nick original
+                isIncognito: true // Marcamos explícitamente como incógnito
+             };
+             return next();
         }
         
         req.verifiedUser = sessionData;

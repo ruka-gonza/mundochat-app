@@ -362,13 +362,26 @@ export function initChatInput() {
             if(imageUploadInput) imageUploadInput.disabled = true;
             dom.emojiButton.disabled = true;
             
-            const MimeTypes = [
+            let MimeTypes = [
                 'audio/webm; codecs=opus',
                 'audio/webm',
                 'audio/ogg; codecs=opus',
                 'audio/ogg',
                 'audio/mp4'
             ];
+
+            // Detección de Safari para priorizar MP4
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+            if (isSafari) {
+                MimeTypes = [
+                    'audio/mp4',
+                    'audio/webm; codecs=opus',
+                    'audio/webm',
+                    'audio/ogg; codecs=opus',
+                    'audio/ogg'
+                ];
+            }
+
             supportedMimeType = MimeTypes.find(type => MediaRecorder.isTypeSupported(type));
 
             if (!supportedMimeType) {

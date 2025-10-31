@@ -84,6 +84,13 @@ async function handleCommand(io, socket, text, currentRoom) {
                 isVIP: socket.userData.isVIP,
                 isIncognito: false
             });
+
+            socket.emit('set session cookie', { 
+                id: socket.userData.id, 
+                nick: socket.userData.nick, 
+                role: socket.userData.role, 
+                isIncognito: false 
+            });
     
         } else {
             if (newNick) {
@@ -119,6 +126,13 @@ async function handleCommand(io, socket, text, currentRoom) {
                 role: 'user',
                 avatar_url: 'image/default-avatar.png',
                 isIncognito: true
+            });
+    
+            socket.emit('set session cookie', { 
+                id: socket.userData.id, 
+                nick: socket.userData.nick, 
+                role: socket.userData.role, 
+                isIncognito: true 
             });
         }
         

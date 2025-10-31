@@ -476,8 +476,7 @@ async function handleCommand(io, socket, text, currentRoom) {
         if (!['owner', 'admin'].includes(senderEffectiveRole)) {
             return socket.emit('system message', { text: 'Comando denegado.', type: 'error', roomName: currentRoom });
         }
-        const banId = targetNick.toLowerCase();
-        const success = await banService.removeGlobalBan(banId);
+        const success = await banService.removeGlobalBanByNick(targetNick);
         if (success) {
             io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[UNBAN-GLOBAL] ${sender.nick} quitó el baneo global a ${targetNick}.`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             io.emit('system message', { text: `${targetNick} ha sido desbaneado (global) por ${sender.nick}.`, type: 'highlight' });

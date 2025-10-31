@@ -113,11 +113,24 @@ function removeRoomBan(userId, roomName) {
     });
 }
 
+/**
+ * Elimina un baneo global por el NICK.
+ */
+function removeGlobalBanByNick(nick) {
+    return new Promise((resolve, reject) => {
+        db.run('DELETE FROM global_bans WHERE nick = ? COLLATE NOCASE', [nick], function(err) {
+            if (err) return reject(err);
+            resolve(this.changes > 0);
+        });
+    });
+}
+
 
 module.exports = { 
     isUserBanned, 
     addGlobalBan, 
     addRoomBan,
     removeGlobalBan,
-    removeRoomBan
+    removeRoomBan,
+    removeGlobalBanByNick
 };

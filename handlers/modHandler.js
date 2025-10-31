@@ -361,7 +361,31 @@ async function handleCommand(io, socket, text, currentRoom) {
                 return targetSocket.userData;
             }
         }
-        return await userService.findUserByNick(nick);
+        let targetUser = await userService.findUserByNick(nick);
+    if (targetUser) {
+        return targetUser;
+    }
+
+    // Si no se encuentra en la BD (podría ser un invitado desconectado), busca en los logs
+    const lastLog = await new Promise((resolve, reject) => {
+        db.get("SELECT * FROM activity_logs WHERE nick = ? ORDER BY timestamp DESC LIMIT 1", [nick], (err, row) => {
+            if (err) return reject(err);
+            resolve(row);
+        });
+    });
+
+    if (lastLog) {
+        return { 
+            id: lastLog.userId, 
+            nick: lastLog.nick, 
+            role: lastLog.userRole, 
+            isVIP: false, // No se puede determinar desde el log, asumimos false
+            ip: lastLog.ip, // La IP es crucial para el ban
+            isOfflineGuest: true // Flag para indicar que es un invitado offline
+        };
+    }
+
+    return null; // No se encontró al usuario
     }
 
     const commandPermissions = {
@@ -652,10 +676,7 @@ async function handleCommand(io, socket, text, currentRoom) {
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: `[KICK] ${sender.nick} expulsó a ${targetNick} de la sala ${currentRoom}. Razón: ${kickReason}`, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });
             }
             if (command === '/ban') {
-                if (userToActOn.role === 'guest') {
-                    return socket.emit('system message', { text: `El comando /ban es solo para usuarios registrados. Para invitados, usa /kick o /zlined.`, type: 'error', roomName: currentRoom });
-                }
-                const reason = args.slice(2).join(' ') || 'No se especificó una razón.';
+                                const reason = args.slice(2).join(' ') || 'No se especificó una razón.';
                 await banService.addRoomBan(userToActOn.id, currentRoom, reason, sender.nick);
                 const logMessage = `[BAN-SALA] ${sender.nick} baneó a ${targetNick} de la sala ${currentRoom}. Razón: ${reason}`;
                 io.to(roomService.MOD_LOG_ROOM).emit('system message', { text: logMessage, type: 'mod-log', roomName: roomService.MOD_LOG_ROOM });

@@ -21,9 +21,15 @@ async function generateLinkPreview(text) {
     if (!match) return null;
     const url = match[0];
 
-    const fetchWithTimeout = (url, options, timeout = 2000) => {
+    const fetchWithTimeout = (url, options, timeout = 3000) => {
+        const fetchOptions = {
+            ...options,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+            }
+        };
         return Promise.race([
-            fetch(url, options),
+            fetch(url, fetchOptions),
             new Promise((_, reject) =>
                 setTimeout(() => reject(new Error('timeout')), timeout)
             )
@@ -54,7 +60,8 @@ async function generateLinkPreview(text) {
             const imageMatch = html.match(/<meta\s+property=[^'"']"og:image"['"]\s+content=[^'"']"(.*?)"['"]\s*\/?>/i);
             const image = imageMatch ? imageMatch[1] : null;
             if (image) {
-                if (/\.gif(\?.*)?$/i.test(image)) {
+                const isKnownGifProvider = /giphy\.com|tenor\.com/i.test(url);
+                if (/\.gif(\?.*)?$/i.test(image) || isKnownGifProvider) {
                     return { type: 'image', url: url, title: title, image: image, description: description };
                 }
                 return { type: 'link', url: url, title: title, image: image, description: description };

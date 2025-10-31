@@ -110,7 +110,6 @@ async function handleCommand(io, socket, text, currentRoom) {
             socket.userData.originalIsVIP = sender.isVIP;
     
             socket.userData.isIncognito = true;
-            socket.userData.role = 'user';
             socket.userData.avatar_url = 'image/default-avatar.png';
             socket.userData.isVIP = false;
     

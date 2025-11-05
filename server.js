@@ -12,7 +12,16 @@ async function startServer() {
         await connectDb();
         console.log('La base de datos está conectada, procediendo con el arranque del servidor...');
 
-        const roomService = require('./services/roomService');
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        // Esta es la línea que faltaba y causaba el error.
+        // Importamos la función `initializeRooms` desde el servicio de salas.
+        const { initializeRooms } = require('./services/roomService');
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+
         const { initializeSocket } = require('./socketManager');
         const botService = require('./services/botService'); 
         const { isCurrentUser } = require('./middleware/isCurrentUser');
@@ -23,20 +32,15 @@ async function startServer() {
         const guestRoutes = require('./routes/guest');
         const uploadRoutes = require('./routes/upload');
 
+        // Ahora esta llamada funciona porque la función ya fue importada.
         initializeRooms();
 
         const app = express();
         app.set('trust proxy', 1);
         const server = http.createServer(app);
 
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
         const closedSessions = new Set();
-        app.locals.closedSessions = closedSessions; // Hacemos accesible para el middleware
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
+        app.locals.closedSessions = closedSessions;
 
         const isProduction = process.env.NODE_ENV === 'production';
         const allowedOrigins = [
@@ -77,8 +81,6 @@ async function startServer() {
             req.io = io;
             next();
         });
-
-        app.set('roomService', roomService);
         
         app.use('/api/admin', adminRoutes);
         app.use('/api/user', isCurrentUser, userRoutes);
@@ -86,7 +88,6 @@ async function startServer() {
         app.use('/api/guest', guestRoutes);
         app.use('/api/upload', isCurrentUser, uploadRoutes);
         
-        // Pasamos 'closedSessions' como argumento
         initializeSocket(io, closedSessions);
         botService.initialize(io);
 

@@ -130,28 +130,45 @@ router.post('/chat-file', chatUpload, (req, res) => {
         // No es necesario stmt.finalize() aquí, se maneja automáticamente.
 
     } else if (contextType === 'private') {
+        const db = getInstance();
         const roomService = req.app.get('roomService');
         const targetSocketId = roomService.findSocketIdByNick(contextWith);
+        const timestamp = new Date().toISOString();
 
         const privateMessagePayload = {
-            id: `file-${Date.now()}`,
             from: sender.nick,
             to: contextWith,
             role: sender.role,
             isVIP: sender.isVIP,
             file: fileUrl,
             type: fileType,
-            timestamp: new Date().toISOString()
+            timestamp: timestamp
         };
 
-        if (targetSocketId) {
-            io.to(targetSocketId).emit('private message', privateMessagePayload);
-        }
-        if (socketId) {
-            io.to(socketId).emit('private message', privateMessagePayload);
-        }
+        const stmt = db.prepare(
+            'INSERT INTO private_messages (sender_nick, recipient_nick, file_url, file_type, timestamp, role, is_vip) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        );
 
-        res.json({ success: true, message: 'Archivo enviado en privado.', messagePayload: privateMessagePayload });
+        stmt.run(sender.nick, contextWith, fileUrl, fileType, timestamp, sender.role, sender.isVIP ? 1 : 0, function(err) {
+            if (err) {
+                console.error("Error guardando mensaje de archivo privado:", err);
+                fs.unlink(req.file.path, (unlinkErr) => {
+                    if (unlinkErr) console.error("Error borrando archivo tras fallo de BD:", unlinkErr);
+                });
+                return res.status(500).json({ error: 'Error al guardar el mensaje privado en la base de datos.' });
+            }
+
+            privateMessagePayload.id = this.lastID;
+
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('private message', privateMessagePayload);
+            }
+            if (socketId) {
+                io.to(socketId).emit('private message', privateMessagePayload);
+            }
+    
+            res.json({ success: true, message: 'Archivo enviado en privado.', messagePayload: privateMessagePayload });
+        });
 
     } else {
         // Si el contextType no es ni 'room' ni 'private', es un error.

@@ -77,6 +77,8 @@ async function startServer() {
             req.io = io;
             next();
         });
+
+        app.set('roomService', roomService);
         
         app.use('/api/admin', adminRoutes);
         app.use('/api/user', isCurrentUser, userRoutes);

@@ -15,6 +15,7 @@ let db = null;
 function connectDb() {
     return new Promise((resolve, reject) => {
         if (db) {
+            console.log('La base de datos ya estaba conectada.');
             return resolve(db);
         }
 
@@ -30,4 +31,15 @@ function connectDb() {
     });
 }
 
-module.exports = { connectDb, getInstance: () => db };
+function getInstance() {
+    // --- INICIO DE LA CORRECCIÓN CLAVE ---
+    // Si la instancia 'db' es nula, significa que se está pidiendo antes de tiempo.
+    // Lanzar un error claro es mejor que devolver null y causar un crash silencioso.
+    if (!db) {
+        throw new Error("Se intentó obtener la instancia de la base de datos antes de que la conexión fuera establecida. Asegúrate de que 'connectDb()' se complete primero.");
+    }
+    return db;
+    // --- FIN DE LA CORRECCIÓN CLAVE ---
+}
+
+module.exports = { connectDb, getInstance };

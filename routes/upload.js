@@ -91,7 +91,7 @@ router.post('/chat-file', chatUpload, (req, res) => {
         return res.status(400).json({ error: 'No se recibió ningún archivo.' });
     }
 
-    const { contextType, contextWith } = req.body;
+    const { contextType, contextWith, socketId } = req.body;
     const sender = req.verifiedUser;
     const io = req.io;
     const db = getInstance();
@@ -128,7 +128,28 @@ router.post('/chat-file', chatUpload, (req, res) => {
             messagePayload.roomName = contextWith;
             io.to(contextWith).emit('chat message', messagePayload);
         } else if (contextType === 'private') {
-            // Lógica para mensajes privados (si se implementa en el futuro)
+            const roomService = req.app.get('roomService');
+            const targetSocketId = roomService.findSocketIdByNick(contextWith);
+
+            // Adaptamos el payload para que coincida con el formato de mensaje privado
+            const privateMessagePayload = {
+                id: `file-${Date.now()}`, // ID único para el elemento del DOM
+                from: sender.nick,
+                to: contextWith,
+                role: sender.role,
+                isVIP: sender.isVIP,
+                file: fileUrl,
+                type: fileType,
+                timestamp: messagePayload.timestamp
+            };
+
+            if (targetSocketId) {
+                io.to(targetSocketId).emit('private message', privateMessagePayload);
+            }
+            // Enviamos el mensaje también al emisor para que lo vea en su ventana de chat
+            if (socketId) {
+                io.to(socketId).emit('private message', privateMessagePayload);
+            }
         }
 
         res.json({ success: true, message: 'Archivo subido y enviado correctamente.', messagePayload });

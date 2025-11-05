@@ -171,6 +171,7 @@ export async function handleFileUpload(file) {
     formData.append('chatFile', file);
     formData.append('contextType', state.currentChatContext.type);
     formData.append('contextWith', state.currentChatContext.with);
+    formData.append('socketId', state.socket.id);
     
     try {
         const response = await fetch('/api/upload/chat-file', {

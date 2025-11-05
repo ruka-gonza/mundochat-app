@@ -5,28 +5,29 @@ const path = require('path');
 const fs = require('fs');
 const userService = require('../services/userService');
 const { getInstance } = require('../services/db-connection');
+const { v4: uuidv4 } = require('uuid'); // Importamos uuid para IDs de mensajes privados
+const roomService = require('../services/roomService'); // Necesitamos esto para encontrar al usuario
 
-// --- DIRECTORIOS DE SUBIDA ---
+// --- DIRECTORIOS DE SUBIDA (sin cambios) ---
 const avatarUploadPath = path.join(__dirname, '..', 'data', 'avatars');
 const chatUploadPath = path.join(__dirname, '..', 'data', 'chat_uploads');
 fs.mkdirSync(avatarUploadPath, { recursive: true });
 fs.mkdirSync(chatUploadPath, { recursive: true });
 
-// --- CONFIGURACIÓN DE MULTER PARA AVATARES ---
+// --- CONFIGURACIÓN DE MULTER PARA AVATARES (sin cambios) ---
 const avatarStorage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, avatarUploadPath);
     },
     filename: function (req, file, cb) {
         const userId = req.verifiedUser.id;
-        const uniqueSuffix = Date.now(); // Añadimos un timestamp para evitar problemas de caché
+        const uniqueSuffix = Date.now();
         cb(null, `user-${userId}-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
 });
-
 const avatarUpload = multer({ 
     storage: avatarStorage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // Límite de 5MB para avatares
+    limits: { fileSize: 5 * 1024 * 1024 },
     fileFilter: function (req, file, cb) {
         if (!file.mimetype.startsWith('image/')) {
             return cb(new Error('Solo se permiten archivos de imagen.'), false);
@@ -36,7 +37,7 @@ const avatarUpload = multer({
 }).single('avatarFile');
 
 
-// --- CONFIGURACIÓN DE MULTER PARA ARCHIVOS DE CHAT ---
+// --- CONFIGURACIÓN DE MULTER PARA ARCHIVOS DE CHAT (sin cambios) ---
 const chatStorage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, chatUploadPath);
@@ -47,17 +48,17 @@ const chatStorage = multer.diskStorage({
         cb(null, `${senderNick.replace(/[^a-zA-Z0-9]/g, '_')}-${uniqueSuffix}${path.extname(file.originalname)}`);
     }
 });
-
 const chatUpload = multer({ 
     storage: chatStorage,
-    limits: { fileSize: 50 * 1024 * 1024 } // Límite de 50MB para archivos de chat
+    limits: { fileSize: 50 * 1024 * 1024 }
 }).single('chatFile');
 
 
 // --- RUTAS ---
 
-// RUTA PARA CAMBIAR AVATAR (USA FormData)
+// RUTA PARA CAMBIAR AVATAR (sin cambios)
 router.post('/avatar', (req, res) => {
+    // ... (esta ruta no cambia)
     avatarUpload(req, res, async function (err) {
         if (err instanceof multer.MulterError) {
             return res.status(400).json({ error: `Error de Multer: ${err.message}` });
@@ -85,108 +86,97 @@ router.post('/avatar', (req, res) => {
 });
 
 
+// =========================================================================
+// ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 // RUTA PARA SUBIR ARCHIVOS DE CHAT (USA FormData)
 router.post('/chat-file', chatUpload, (req, res) => {
     if (!req.file) {
         return res.status(400).json({ error: 'No se recibió ningún archivo.' });
     }
 
-    const { contextType, contextWith, socketId } = req.body;
+    const { contextType, contextWith } = req.body;
     const sender = req.verifiedUser;
     const io = req.io;
+    const db = getInstance();
 
     const fileUrl = `/data/chat_uploads/${req.file.filename}`;
     const fileType = req.file.mimetype;
+    const timestamp = new Date().toISOString();
 
     if (contextType === 'room') {
-        const db = getInstance();
-        const messagePayload = {
-            nick: sender.nick,
-            role: sender.role,
-            isVIP: sender.isVIP,
-            file: fileUrl,
-            type: fileType,
-            timestamp: new Date().toISOString(),
-            roomName: contextWith
-        };
-
         const stmt = db.prepare(
             'INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, file_url, file_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
-
-        stmt.run(contextWith, sender.nick, '', sender.role, sender.isVIP ? 1 : 0, messagePayload.timestamp, fileUrl, fileType, function(err) {
+        stmt.run(contextWith, sender.nick, '', sender.role, sender.isVIP ? 1 : 0, timestamp, fileUrl, fileType, function(err) {
             if (err) {
-                console.error("Error guardando mensaje de archivo en sala:", err);
-                fs.unlink(req.file.path, (unlinkErr) => {
-                    if (unlinkErr) console.error("Error borrando archivo tras fallo de BD:", unlinkErr);
-                });
-                return res.status(500).json({ error: 'Error al guardar el mensaje en la base de datos.' });
+                console.error("Error guardando mensaje de archivo de sala:", err);
+                fs.unlink(req.file.path, () => {});
+                return res.status(500).json({ error: 'Error al guardar en la base de datos.' });
             }
 
-            messagePayload.id = this.lastID;
+            const messagePayload = {
+                id: this.lastID,
+                nick: sender.nick,
+                role: sender.role,
+                isVIP: sender.isVIP,
+                file: fileUrl,
+                type: fileType,
+                timestamp: timestamp,
+                roomName: contextWith
+            };
+
             io.to(contextWith).emit('chat message', messagePayload);
             res.json({ success: true, message: 'Archivo subido y enviado a la sala.', messagePayload });
         });
-        // No es necesario stmt.finalize() aquí, se maneja automáticamente.
+        stmt.finalize();
 
     } else if (contextType === 'private') {
-        const db = getInstance();
-        const roomService = req.app.get('roomService');
-        const targetSocketId = roomService.findSocketIdByNick(contextWith);
-        const timestamp = new Date().toISOString();
-
-        const privateMessagePayload = {
-            from: sender.nick,
-            to: contextWith,
-            role: sender.role,
-            isVIP: sender.isVIP,
-            file: fileUrl,
-            type: fileType,
-            timestamp: timestamp
-        };
-
-        // =========================================================================
-        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
-        // La consulta SQL ahora coincide con la estructura de la tabla 'private_messages'
-        // Se usan las columnas correctas 'from_nick', 'to_nick' y se añade un 'text' vacío.
+        const recipientNick = contextWith;
         const stmt = db.prepare(
-            'INSERT INTO private_messages (from_nick, to_nick, text, file_url, file_type, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
+            'INSERT INTO private_messages (from_nick, to_nick, text, timestamp, file_url, file_type) VALUES (?, ?, ?, ?, ?, ?)'
         );
-        
-        // Los parámetros ahora coinciden con la consulta SQL corregida.
-        stmt.run(sender.nick, contextWith, '', fileUrl, fileType, timestamp, function(err) {
-        // =========================================================================
-        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
-        // =========================================================================
-            const io = req.io;
+        stmt.run(sender.nick, recipientNick, '', timestamp, fileUrl, fileType, function(err) {
             if (err) {
                 console.error("Error guardando mensaje de archivo privado:", err);
-                fs.unlink(req.file.path, (unlinkErr) => {
-                    if (unlinkErr) console.error("Error borrando archivo tras fallo de BD:", unlinkErr);
-                });
-                return res.status(500).json({ error: 'Error al guardar el mensaje privado en la base de datos.' });
+                fs.unlink(req.file.path, () => {});
+                return res.status(500).json({ error: 'Error al guardar en la base de datos.' });
             }
 
-            privateMessagePayload.id = this.lastID;
+            const messagePayload = {
+                id: uuidv4(), // Los privados usan UUID para evitar colisiones de ID
+                from: sender.nick,
+                to: recipientNick,
+                role: sender.role,
+                isVIP: sender.isVIP,
+                file: fileUrl,
+                type: fileType,
+                timestamp: timestamp
+            };
+            
+            const targetSocketId = roomService.findSocketIdByNick(recipientNick);
+            const senderSocketId = roomService.findSocketIdByNick(sender.nick);
 
+            // Enviar al destinatario si está conectado
             if (targetSocketId) {
-                io.to(targetSocketId).emit('private message', privateMessagePayload);
+                io.to(targetSocketId).emit('private message', messagePayload);
             }
-            if (socketId) {
-                io.to(socketId).emit('private message', privateMessagePayload);
+            // Enviar un eco de vuelta al remitente para que vea su propio mensaje
+            if (senderSocketId) {
+                io.to(senderSocketId).emit('private message', messagePayload);
             }
-    
-            res.json({ success: true, message: 'Archivo enviado en privado.', messagePayload: privateMessagePayload });
+
+            res.json({ success: true, message: 'Archivo subido y enviado de forma privada.', messagePayload });
         });
+        stmt.finalize();
 
     } else {
-        // Si el contextType no es ni 'room' ni 'private', es un error.
-        fs.unlink(req.file.path, (unlinkErr) => {
-            if (unlinkErr) console.error("Error borrando archivo por contexto inválido:", unlinkErr);
-        });
-        return res.status(400).json({ error: 'Contexto de chat no válido.' });
+        fs.unlink(req.file.path, () => {}); // Borra el archivo si el contexto no es válido
+        res.status(400).json({ error: 'Tipo de contexto no válido.' });
     }
 });
+// =========================================================================
+// ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+// =========================================================================
 
 module.exports = router;

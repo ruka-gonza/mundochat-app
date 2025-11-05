@@ -145,11 +145,20 @@ router.post('/chat-file', chatUpload, (req, res) => {
             timestamp: timestamp
         };
 
+        // =========================================================================
+        // ===                    INICIO DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
+        // La consulta SQL ahora coincide con la estructura de la tabla 'private_messages'
+        // Se usan las columnas correctas 'from_nick', 'to_nick' y se añade un 'text' vacío.
         const stmt = db.prepare(
-            'INSERT INTO private_messages (sender_nick, recipient_nick, file_url, file_type, timestamp, role, is_vip) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO private_messages (from_nick, to_nick, text, file_url, file_type, timestamp) VALUES (?, ?, ?, ?, ?, ?)'
         );
-
-        stmt.run(sender.nick, contextWith, fileUrl, fileType, timestamp, sender.role, sender.isVIP ? 1 : 0, function(err) {
+        
+        // Los parámetros ahora coinciden con la consulta SQL corregida.
+        stmt.run(sender.nick, contextWith, '', fileUrl, fileType, timestamp, function(err) {
+        // =========================================================================
+        // ===                     FIN DE LA CORRECCIÓN CLAVE                    ===
+        // =========================================================================
             const io = req.io;
             if (err) {
                 console.error("Error guardando mensaje de archivo privado:", err);

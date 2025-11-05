@@ -12,7 +12,7 @@ async function startServer() {
         await connectDb();
         console.log('La base de datos está conectada, procediendo con el arranque del servidor...');
 
-        const { initializeRooms, default: roomService } = require('./services/roomService');
+        const roomService = require('./services/roomService');
         const { initializeSocket } = require('./socketManager');
         const botService = require('./services/botService'); 
         const { isCurrentUser } = require('./middleware/isCurrentUser');

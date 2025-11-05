@@ -150,6 +150,7 @@ router.post('/chat-file', chatUpload, (req, res) => {
         );
 
         stmt.run(sender.nick, contextWith, fileUrl, fileType, timestamp, sender.role, sender.isVIP ? 1 : 0, function(err) {
+            const io = req.io;
             if (err) {
                 console.error("Error guardando mensaje de archivo privado:", err);
                 fs.unlink(req.file.path, (unlinkErr) => {

@@ -94,67 +94,72 @@ router.post('/chat-file', chatUpload, (req, res) => {
     const { contextType, contextWith, socketId } = req.body;
     const sender = req.verifiedUser;
     const io = req.io;
-    const db = getInstance();
 
     const fileUrl = `/data/chat_uploads/${req.file.filename}`;
     const fileType = req.file.mimetype;
 
-    const messagePayload = {
-        nick: sender.nick,
-        role: sender.role,
-        isVIP: sender.isVIP,
-        file: fileUrl,
-        type: fileType,
-        timestamp: new Date().toISOString()
-    };
+    if (contextType === 'room') {
+        const db = getInstance();
+        const messagePayload = {
+            nick: sender.nick,
+            role: sender.role,
+            isVIP: sender.isVIP,
+            file: fileUrl,
+            type: fileType,
+            timestamp: new Date().toISOString(),
+            roomName: contextWith
+        };
 
-    const stmt = db.prepare(
-        'INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, file_url, file_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    );
+        const stmt = db.prepare(
+            'INSERT INTO messages (roomName, nick, text, role, isVIP, timestamp, file_url, file_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
 
-    stmt.run(contextWith, sender.nick, '', sender.role, sender.isVIP ? 1 : 0, messagePayload.timestamp, fileUrl, fileType, function(err) {
-        if (err) {
-            console.error("Error guardando mensaje de archivo:", err);
-            // Si falla la BD, borramos el archivo para no dejar huérfanos
-            fs.unlink(req.file.path, (unlinkErr) => {
-                if (unlinkErr) console.error("Error borrando archivo tras fallo de BD:", unlinkErr);
-            });
-            return res.status(500).json({ error: 'Error al guardar el mensaje en la base de datos.' });
-        }
+        stmt.run(contextWith, sender.nick, '', sender.role, sender.isVIP ? 1 : 0, messagePayload.timestamp, fileUrl, fileType, function(err) {
+            if (err) {
+                console.error("Error guardando mensaje de archivo en sala:", err);
+                fs.unlink(req.file.path, (unlinkErr) => {
+                    if (unlinkErr) console.error("Error borrando archivo tras fallo de BD:", unlinkErr);
+                });
+                return res.status(500).json({ error: 'Error al guardar el mensaje en la base de datos.' });
+            }
 
-        messagePayload.id = this.lastID; // Usamos el ID de la base de datos
-
-        if (contextType === 'room') {
-            messagePayload.roomName = contextWith;
+            messagePayload.id = this.lastID;
             io.to(contextWith).emit('chat message', messagePayload);
-        } else if (contextType === 'private') {
-            const roomService = req.app.get('roomService');
-            const targetSocketId = roomService.findSocketIdByNick(contextWith);
+            res.json({ success: true, message: 'Archivo subido y enviado a la sala.', messagePayload });
+        });
+        // No es necesario stmt.finalize() aquí, se maneja automáticamente.
 
-            // Adaptamos el payload para que coincida con el formato de mensaje privado
-            const privateMessagePayload = {
-                id: `file-${Date.now()}`, // ID único para el elemento del DOM
-                from: sender.nick,
-                to: contextWith,
-                role: sender.role,
-                isVIP: sender.isVIP,
-                file: fileUrl,
-                type: fileType,
-                timestamp: messagePayload.timestamp
-            };
+    } else if (contextType === 'private') {
+        const roomService = req.app.get('roomService');
+        const targetSocketId = roomService.findSocketIdByNick(contextWith);
 
-            if (targetSocketId) {
-                io.to(targetSocketId).emit('private message', privateMessagePayload);
-            }
-            // Enviamos el mensaje también al emisor para que lo vea en su ventana de chat
-            if (socketId) {
-                io.to(socketId).emit('private message', privateMessagePayload);
-            }
+        const privateMessagePayload = {
+            id: `file-${Date.now()}`,
+            from: sender.nick,
+            to: contextWith,
+            role: sender.role,
+            isVIP: sender.isVIP,
+            file: fileUrl,
+            type: fileType,
+            timestamp: new Date().toISOString()
+        };
+
+        if (targetSocketId) {
+            io.to(targetSocketId).emit('private message', privateMessagePayload);
+        }
+        if (socketId) {
+            io.to(socketId).emit('private message', privateMessagePayload);
         }
 
-        res.json({ success: true, message: 'Archivo subido y enviado correctamente.', messagePayload });
-    });
-    stmt.finalize();
+        res.json({ success: true, message: 'Archivo enviado en privado.', messagePayload: privateMessagePayload });
+
+    } else {
+        // Si el contextType no es ni 'room' ni 'private', es un error.
+        fs.unlink(req.file.path, (unlinkErr) => {
+            if (unlinkErr) console.error("Error borrando archivo por contexto inválido:", unlinkErr);
+        });
+        return res.status(400).json({ error: 'Contexto de chat no válido.' });
+    }
 });
 
 module.exports = router;
